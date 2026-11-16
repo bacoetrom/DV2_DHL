@@ -1,0 +1,108 @@
+#INCLUDE 'TOTVS.CH'
+#INCLUDE 'DHL.CH'
+
+/*/{Protheus.doc} User Function AglNfRetSimbolico
+    Faturamento de NF de retorno simbolico
+    @type  Function
+    @author TOTVS IP
+    @since 02/11/2023
+    @version 1.0
+    @see ImpMsafNfe
+    /*/
+User Function AglNfRetSimbolico(cEmpProc, cFilProc, cDocRCO, cSerieRCO)
+	Local oLibFat := nil
+	Local oSqlUtil := nil
+	Local oDadosSZ8 := nil
+	Local cSerieRet := ""
+	Local cNumPedRet := ""
+	Local nRecnoSZ8 := 0
+    Local lOk := .f.
+
+	Default cEmpProc    := ""
+	Default cFilProc    := ""
+	Default cDocRCO     := ""
+	Default cSerieRCO   := ""
+
+	if !empty(cEmpProc) .and. !empty(cFilProc)
+		RPCSetType(3)
+		RPCSetEnv(cEmpProc, cFilProc, nil, nil, "FAT")
+	else
+		if !empty(cDocRCO) .and. !empty(cSerieRCO)
+
+			oSqlUtil := IpSqlObject():newIpSqlObject()
+			oDadosSZ8 := IpSqlObject():newIpSqlObject()
+
+			oDadosSZ8:newTable("SZ8", "Z8_DOC, Z8_SERIE, Z8_CLIEMIT, Z8_LOJEMIT, R_E_C_N_O_ RECNOSZ8", "Z8_FILIAL = '%SZ8.FILIAL%' "+;
+				" AND %SZ8.NOTDEL%  " +;
+				" AND SZ8.Z8_NFRCO = '" + cDocRCO + "' "+;
+				" AND SZ8.Z8_SERRCO = '" + cSerieRCO + "' ")
+
+			if oDadosSZ8:hasRecords()
+                nRecnoSZ8 := oDadosSZ8:getValue("RECNOSZ8")
+
+				cNumPedRet := oSqlUtil:getFieldValue("SC5", "C5_NUM", "C5_FILIAL = '%SC5.FILIAL%' "+;
+					" AND %SC5.NOTDEL%  " +;
+					" AND SC5.C5_ZZNFTER = '" + oDadosSZ8:getValue("Z8_DOC") + "' "+;
+					" AND SC5.C5_ZZSETER = '" + oDadosSZ8:getValue("Z8_SERIE") + "' "+;
+					" AND SC5.C5_CLIENTE = '" + oDadosSZ8:getValue("Z8_CLIEMIT") + "' "+;
+					" AND SC5.C5_LOJACLI = '" + oDadosSZ8:getValue("Z8_LOJEMIT") + "' "+;
+					" AND SC5.C5_ZZTPPV = '" + RETORNO_SIMBOLICO + "' ")
+
+
+				DbSelectArea("SC5")
+				SC5->(dbSetOrder(1))
+				SC5->(dbSeek( FWxFilial("SC5") + cNumPedRet ))
+
+				DbSelectArea("SC6")
+				SC6->(dbSetOrder(1))
+				SC6->(dbSeek( FWxFilial("SC6") + cNumPedRet ))
+
+				cSerieRet := fSerieAut("RET")
+				//--- 3o. Liberacao do Pedido de Venda:
+				oLibFat:= DhlDisControl():newDhlDisControl()
+				oLibFat:setSeries(cSerieRet)
+				oLibFat:libSalesOrder()
+				If !oLibFat:lError
+					//--- 4o. Gera Nota Fiscal Saida - Fatura o Pedido:
+					oLibFat:incOutFlowInv(SC5->C5_NUM)
+					If !oLibFat:lError
+                        lOk := .t.
+                        DbSelectArea("SZ8")
+                        SZ8->(dbSetOrder(0))
+                        SZ8->(dbGoto( nRecnoSZ8 ))
+						
+                        RecLock("SZ8",.F.)
+
+						SZ8->Z8_NFRET  := SF2->F2_DOC
+						SZ8->Z8_SERRET := SF2->F2_SERIE
+						SZ8->Z8_CLIRET := SF2->F2_CLIENTE
+						SZ8->Z8_LOJRET := SF2->F2_LOJA
+
+						SZ8->(MsUnLock())
+					endif
+				endif
+			endif
+		endif
+	endif
+
+Return (lOk)
+
+
+/*
+* Definição de série automatica
+*/
+Static Function fSerieAut(cFilSerie)
+	Local cRet := ""
+	Local cSeries := GetAdvFVal("SA1", "A1_ZSERAUT", FWxFilial("SA1")+SC5->(C5_CLIENTE + C5_LOJACLI), 1, "")
+	Local aSeries := {}
+	Local nPosSerie := 0
+
+	aSeries := StrToKarr2( cSeries, ";" )
+
+	nPosSerie := aScan( aSeries, {|x| cFilSerie $  x })
+
+	If nPosSerie > 0
+		cRet := StrToKarr2( aSeries[nPosSerie], "=" )[2]
+	EndIf
+
+Return (cRet)

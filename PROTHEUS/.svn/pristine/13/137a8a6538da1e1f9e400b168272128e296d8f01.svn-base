@@ -1,0 +1,987 @@
+#Include 'Protheus.ch'
+#include "dhl.ch"
+
+#define ERROR_CLIENTE 		1
+#define INVOICE_HAS_IMPORT  2
+#define ERROR_INCLU_INVOICE 3
+#define SALDO_PODER3 		4
+#define GERA_RETORNO_EFET 	5
+
+#define PRODUCT      		1
+#define QUANTITY      		2
+
+#define CONSUMIDO 			0
+
+/*/{Protheus.doc} MondRetEfetivo
+
+Rotina em gerar retorno efetivo MONDELEZ
+
+@author Gustavo Luiz
+@since 12/04/2019
+
+@param nil
+/*/
+User Function MondRetEfetivo(cParFilePath)
+	
+	local lOk := .F.
+	
+	private cFilePath 	:= cParFilePath
+	private lMsErroAuto	:= .F.
+	
+	
+	if incCustomer()
+		if (validorder())
+			lOk := incOutflowOrder()
+		endIf
+	else
+		DisarmTransaction()
+		geraLog(ERROR_CLIENTE)
+	endIf
+	
+Return lOk
+
+/**
+* Inclui o Pedido de Venda
+**/
+static function incOutflowOrder()
+	
+	local aHeader		:= {}
+	local aDetails  	:= {}
+	local lOk			:= .T.
+	local cCliFor 		:= ""
+	local cLoja   		:= ""
+	local cEmail  		:= ""
+	local cTipoCliFor	:= ""
+	local cErro			:= ""
+	
+	getCliFor(@cClifor, @cLoja, @cEmail, @cTipoCliFor)
+	
+	aHeader := getHeader(cClifor, cLoja)
+	aDetails:= getDetails(cClifor, cLoja, cTipoCliFor, @lOk)
+	
+	if lOk
+		
+		lMsErroAuto := .F.
+		MSExecAuto({|x,y,z| MATA410(x,y,z)},aHeader,aDetails,3)
+		
+		if lMsErroAuto
+			disarmTransactio()
+			geraLog(ERROR_INCLU_INVOICE)
+		else
+			//lOk := geraRetEfetivo(aDetails)  //23/04/2019 - Não será gerado o faturamento automático. Motivo: Tem que ser informado o lacre no pedido de vendas de forma manual.
+		endif
+		
+	endIf
+	
+return lOk
+
+/*
+** Gera a nota de retorno efetivo.
+*/
+static function geraRetEfetivo(aDetails)
+	
+	local aItens		:= getItens(aDetails)
+	local nI			:= 0
+	local aPvlNfs		:= {}
+	local dDataAnt		:= Nil
+	local lOk			:= .F.
+	local cSerie		:= alltrim((GetNewPar("ZZ_SERIAUT", "")))
+	
+	for nI := 1 to len(aItens)
+		
+		SC9->(DbSetOrder(1))
+		SC9->(DbSeek(xFilial("SC9")+SC5->C5_NUM+aItens[nI][1]) )	//FILIAL+NUMERO+ITEM
+		SC5->(DbSetOrder(1))
+		SC5->(DbSeek(xFilial("SC5")+SC5->C5_NUM ) )					//FILIAL+NUMERO
+		SC6->(DbSetOrder(1))
+		SC6->(DbSeek(xFilial("SC6")+SC5->C5_NUM+aItens[nI][1]) )	//FILIAL+NUMERO+ITEM
+		SE4->(DbSetOrder(1))
+		SE4->(DbSeek(xFilial("SE4")+SC5->C5_CONDPAG) )				//FILIAL+CONDPAG
+		SB1->(DbSetOrder(1))
+		SB1->(DbSeek(xFilial("SB1")+aItens[nI][2]) )				//FILIAL+PRODUTO
+		SB2->(DbSetOrder(1))
+		SB2->(DbSeek(xFilial("SB2")+aItens[nI][2]+aItens[nI][3]) )	//FILIAL+PRODUTO+LOCAL
+		SF4->(DbSetOrder(1))
+		SF4->(DbSeek(xFilial("SF4")+SC6->C6_TES ))					//FILIAL+CODIGO
+		
+		aAdd( aPvlNfs , {       SC5->C5_NUM			,+;		//NUMERO PEDIDO
+		SC9->C9_ITEM			,+;      					//ITEM PEDIDO
+		SC9->C9_SEQUEN			,+;      					//SEQUENCIA
+		SC9->C9_QTDLIB			,+;      					//QUANTIDADE
+		SC6->C6_PRCVEN			,+;     					//PRECO VENDA
+		SC6->C6_PRODUTO			,+;							//PRODUTO
+		SF4->F4_ISS=="S"		,+;
+			SC9->(RecNo())		,+;
+			SC5->(RecNo())		,+;
+			SC6->(RecNo())		,+;
+			SE4->(RecNo())		,+;
+			SB1->(RecNo())		,+;
+			SB2->(RecNo())		,+;
+			SF4->(RecNo())		})
+		
+	next nI
+	
+	abreTabelas()
+	
+	cNota     := MaPvlNfs(aPvlNfs,cSerie,.F.,.F.,.F.,.F.,.F.,0,0,.F.,.F.)
+	
+	if empty(cNota)
+		disarmTransactio()
+		geraLog(ERROR_INCLU_INVOICE)
+	else
+		conout("SUCESSO")
+		lOk			:= .T.
+	endIf
+	
+return lOk
+
+/**
+* Retorna os itens para a geração das notas
+**/
+static function getItens(aDetails)
+	
+	local nI 	:= 0
+	local aItem := {}
+	local aItens:= {}
+	
+	for nI := 1 to len(aDetails)
+		
+		aAdd(aItem, {aDetails[nI][1][2], aDetails[nI][2][2], aDetails[nI][8][2]})
+		
+	next nI
+	
+return aItem
+
+/**
+* Abre as tabelas. Necessário, pois na segunda iteração da nota estava dando ajustar DOC_SEQ.
+* É necessário abrir as 3 tabelas
+**/
+static function abreTabelas()
+	
+	local lStatus := .F.
+	
+	If Select('SD1') <= 0
+		dbSelectArea('SD1')
+	EndIf
+	If Select('SD2') <= 0
+		dbSelectArea('SD2')
+	EndIf
+	If Select('SD3') <= 0
+		dbSelectArea('SD3')
+	EndIf
+	
+	lStatus := (Select('SD1')>0) .And. (Select('SD2')>0) .And. (Select('SD3')>0)
+	
+return
+
+/*
+** Obtém os itens do pedido.
+*/
+static function getDetails(cClifor, cLoja, cTipoCliFor, lOk)
+	
+	local oSql 					:= IpSqlObject():newIpSqlObject()
+	local cQuery        		:= ""
+	local aProducts   			:= retProducts()
+	local nI					:= 0
+	local nJ					:= 0
+	local cProduto				:= ""
+	local aItens				:= {}
+	local aItem					:= {}
+	local cItem					:= ""
+	local nQtdInterface			:= 0
+	local nSaldoB6				:= 0
+	local nQuantB6				:= 0
+	local nVunitD1				:= 0
+	local nVTotal				:= 0
+	local nSaldoRestante		:= 0
+	local nQtdProdInInterface 	:= 0
+	local aDocumentos			:= {}
+	local aValorUnit			:= {}
+	local nVlrUnit				:= 0
+	local nVlrParcial           := 0
+	local nSldTotal				:= 0
+	local nScanSaldo			:= 0
+	
+	aProducts := groupProducts(aProducts)
+	
+	for nI := 1 to len(aProducts)
+		
+		if lOk
+			
+			aDocumentos				:= {}
+			aItem					:= {}
+			nScanSaldo              := 0
+			cProduto 				:= aProducts[nI][PRODUCT]
+			nQtdProdInInterface 	:= aProducts[nI][QUANTITY]
+			
+			cQuery := 			getQueryItens(cClifor, cLoja, cTipoCliFor, cProduto)
+			
+			oSql:newAlias(cQuery)
+			if oSql:hasRecords()
+				
+				aDocumentos := getDocumentos(oSql)
+				
+				checkDocIsUsed(aDocumentos, nQtdProdInInterface)
+				
+				for nJ := 1 to len(aDocumentos)
+				
+					if "COMPROMETIDO PEDIDO" $ aDocumentos[nJ][18][1]
+						loop
+					endif
+					
+					if lOk
+						
+						nSaldoB6:= getValue(aDocumentos[nJ], "B6_SALDO")
+						nQuantB6:= getValue(aDocumentos[nJ], "B6_QUANT")
+						nVunitD1:= getValue(aDocumentos[nJ], "D1_VUNIT")
+						nVTotal := getValue(aDocumentos[nJ], "D1_TOTAL")
+						
+						aItem   := {}
+						
+						cItem 	:= getItem(aItens)
+						
+						if nQtdProdInInterface <= nSaldoB6
+							
+							aValorUnit := getVlrUnit(nQtdProdInInterface, nQuantB6, nVunitD1, nVTotal)
+							nSldTotal  := aValorUnit[1]
+							nVlrUnit   := aValorUnit[2]
+							nVlrParcial:= aValorUnit[3]
+							
+							nSaldoRestante  := getSaldoRestante(nQtdProdInInterface, nSaldoB6)
+							cTes			:= getValue(aDocumentos[nJ], "F4_TESDV")
+							
+							aAdd(aItem,{"C6_ITEM"   ,cItem           								,nil})
+							aAdd(aItem,{"C6_PRODUTO",getValue(aDocumentos[nJ], "B6_PRODUTO")		,nil})
+							aAdd(aItem,{"C6_QTDVEN" ,nQtdProdInInterface                     		,nil})
+							aAdd(aItem,{"C6_PRCVEN" ,A410Arred(nVlrUnit ,"C6_PRCVEN")  				,nil})
+							aAdd(aItem,{"C6_VALOR"  ,A410Arred(nVlrParcial,"C6_VALOR")				,nil})
+							aAdd(aItem,{"C6_QTDLIB" ,nQtdProdInInterface                     		,nil})
+							aAdd(aItem,{"C6_TES"    ,cTes              								,nil})
+							aAdd(aItem,{"C6_LOCAL"  ,getValue(aDocumentos[nJ], "D1_LOCAL")  		,nil})
+							aAdd(aItem,{"C6_NFORI"  ,getValue(aDocumentos[nJ], "D1_DOC")    		,nil})
+							aAdd(aItem,{"C6_SERIORI",getValue(aDocumentos[nJ], "D1_SERIE")  		,nil})
+							aAdd(aItem,{"C6_ITEMORI",getValue(aDocumentos[nJ], "D1_ITEM")   		,nil})
+							aAdd(aItem,{"C6_IDENTB6",getValue(aDocumentos[nJ], "B6_IDENT")  		,nil})
+							aAdd(aItem,{"C6_PRUNIT",0  												,nil})
+							
+							aAdd(aItens, aItem)
+							
+							nQtdProdInInterface := CONSUMIDO
+							
+							exit
+							
+						else
+							
+							nSaldoRestante 			:= getSaldoRestante(nQtdProdInInterface, nSaldoB6)
+							aDocumentos[nJ][14][1] 	:= nSaldoRestante
+							aDocumentos[nJ][18][1] 	:= "SEM_SALDO"
+							nQtdProdInInterface     := nQtdProdInInterface - nSaldoB6
+							
+							//if nQtdProdInInterface <= nSaldoB6
+								
+							aValorUnit 				:= getVlrUnit(nSaldoB6, nQuantB6, nVunitD1, nVTotal)
+							nSldTotal  				:= aValorUnit[1]
+							nVlrUnit   				:= aValorUnit[2]
+							nVlrParcial				:= aValorUnit[3]
+								
+							cTes					:= getValue(aDocumentos[nJ], "F4_TESDV")
+								
+							aAdd(aItem,{"C6_ITEM"   ,cItem           								,nil})
+							aAdd(aItem,{"C6_PRODUTO",getValue(aDocumentos[nJ], "B6_PRODUTO")		,nil})
+							aAdd(aItem,{"C6_QTDVEN" ,nSaldoB6                     					,nil})
+							aAdd(aItem,{"C6_PRCVEN" ,A410Arred(nVlrUnit ,"C6_PRCVEN")  				,nil})
+							aAdd(aItem,{"C6_VALOR"  ,A410Arred(nVlrParcial,"C6_VALOR")				,nil})
+							aAdd(aItem,{"C6_QTDLIB" ,nSaldoB6                     					,nil})
+							aAdd(aItem,{"C6_TES"    ,cTes              								,nil})
+							aAdd(aItem,{"C6_LOCAL"  ,getValue(aDocumentos[nJ], "D1_LOCAL")  		,nil})
+							aAdd(aItem,{"C6_NFORI"  ,getValue(aDocumentos[nJ], "D1_DOC")    		,nil})
+							aAdd(aItem,{"C6_SERIORI",getValue(aDocumentos[nJ], "D1_SERIE")  		,nil})
+							aAdd(aItem,{"C6_ITEMORI",getValue(aDocumentos[nJ], "D1_ITEM")   		,nil})
+							aAdd(aItem,{"C6_IDENTB6",getValue(aDocumentos[nJ], "B6_IDENT")  		,nil})
+							aAdd(aItem,{"C6_PRUNIT",0  												,nil})
+								
+							aAdd(aItens, aItem)
+								
+								//QUANTIDADE QUE FALTA PARA SER PROCESSADO 
+							if nQtdProdInInterface > 0
+								nScanSaldo := existDocComSaldo(aDocumentos)
+								if nScanSaldo == 0
+									lOk := .F.
+									exit
+								endIf
+							endIf
+								
+							//else
+								
+								//DisarmTransaction()
+								//geraLog(SALDO_PODER3, cProduto)
+								//lOk := .F.
+								//exit
+								
+							//endIf							
+						endIf
+					endIf
+					
+				next nJ
+			else
+				
+				DisarmTransaction()
+				geraLog(SALDO_PODER3, cProduto)
+				lOk := .F.
+				exit
+				
+			endIf
+		endIf
+	next nI
+	
+	if nQtdProdInInterface > 0
+		DisarmTransaction()
+		geraLog(SALDO_PODER3, cProduto)
+		lOk := .F.
+	endIf
+	
+return aItens
+
+/**
+* verifica se o documento origem esta em algum pedido de vendas
+**/
+static function isDocOrigemInPedido(cDoc, cSerie, cItem, cProduto, cIdentB6, nRecnoSC5, cPedido)
+	
+	local cQuery   				:= ""
+	local oSql 					:= IpSqlObject():newIpSqlObject()
+	local lIsDocOrigemInPedido	:= .F.
+	
+	cQuery := " SELECT " 																																					+ CRLF
+	cQuery += "   SC5.C5_NUM, SC5.R_E_C_N_O_ RECNO FROM " + retSqlName("SC5") + " SC5"  	+ CRLF
+	cQuery += " INNER JOIN "+retSqlName("SC6")+" SC6 ON 1 = 1" 		+ CRLF
+	cQuery += "    AND SC5.C5_FILIAL = SC6.C6_FILIAL " 				+ CRLF
+	cQuery += "    AND SC5.C5_NUM = SC6.C6_NUM " 					+ CRLF
+	cQuery += "    AND SC5.D_E_L_E_T_ = ' ' " 						+ CRLF
+	cQuery += " WHERE 1 = 1 " 										+ CRLF
+	cQuery += "    AND SC6.C6_FILIAL ='"+fwxFilial("SC6")+"' " 		+ CRLF
+	cQuery += "    AND SC6.C6_NFORI ='" + cDoc + "' "				+ CRLF
+	cQuery += "    AND SC6.C6_SERIORI = '" + cSerie + "' " 			+ CRLF
+	cQuery += "    AND SC6.C6_IDENTB6 = '" + cIdentB6+ "' " 		+ CRLF
+	cQuery += "    AND SC6.C6_PRODUTO ='" + cProduto + "'" 			+ CRLF
+	cQuery += "    AND SC6.D_E_L_E_T_ =' '" 						+ CRLF
+	
+	oSql:newAlias(cQuery)
+	
+	if oSql:hasRecords()
+		nRecnoSC5 				:= oSql:getValue("RECNO")
+		cPedido   				:= oSql:getValue("C5_NUM")
+		lIsDocOrigemInPedido 	:= .T.
+	endIf
+	
+	oSql:Close()
+	
+return lIsDocOrigemInPedido
+
+/**
+* verifica se os documentos já estão reservados
+* Referente ao ajuste, onde tem pedidos de vendas em aberto, e a rotina considerava o mesmo doc já reservado no pedido
+**/
+static function checkDocIsUsed(aDocumentos,nQtdProdInInterface)
+	
+	local aArea		:= getArea()
+	local aAReaSC5  := SC5->(getArea())
+	local aAreaSC6	:= SC6->(getArea())
+	local nI 		:= 0
+	local cProduto	:= ""
+	local cDoc		:= ""
+	local cSerie	:= ""
+	local cCliFor	:= ""
+	local cLoja		:= ""
+	local cItem		:= ""
+	local cIdentB6	:= ""
+	local nSaldoB6	:= 0
+	local lIsDocIsUsed	:= .F.
+	local cPedido	:= ""
+	local nRecnoSC5 := 0
+	local nQtdaFaturar	:= 0
+	local nSaldoFaturar := 0
+	
+	SC5->(dbSetOrder(1))
+	
+	for nI := 1 to len(aDocumentos)
+		
+		cDoc	 := getValue(aDocumentos[nI], "D1_DOC")
+		cSerie	 := getValue(aDocumentos[nI], "D1_SERIE")
+		cItem	 := getValue(aDocumentos[nI], "D1_ITEM")
+		cProduto := getValue(aDocumentos[nI], "B6_PRODUTO")
+		cLocal	 := getValue(aDocumentos[nI], "D1_LOCAL")
+		cIdentB6 := getValue(aDocumentos[nI], "B6_IDENT")
+		nSaldoB6 := getValue(aDocumentos[nI], "B6_SALDO")
+		
+		if isDocOrigemInPedido(cDoc, cSerie, cItem, cProduto, cIdentB6, @nRecnoSC5, @cPedido)
+			
+			nQtdaFaturar := getQtdAFatura(cDoc, cSerie, cItem, cProduto, cIdentB6)
+
+			if 	nQtdaFaturar > 0
+				nSaldoFaturar		   := nSaldoB6 - nQtdaFaturar
+				
+				aDocumentos[nI][14][1] := nSaldoFaturar
+				
+				if nSaldoFaturar == 0				
+					aDocumentos[nI][18][1] := "COMPROMETIDO PEDIDO " + allTrim(cPedido)
+				else				
+					aDocumentos[nI][18][1] := "COMPROMETIDO PARCIALMENTE PEDIDO " + allTrim(cPedido)
+				endIf
+			endIf					
+		
+		endif
+		
+	next nI
+	
+	restArea(aAreaSC5)
+	restArea(aAreaSC6)
+	restArea(aArea)
+	
+return
+
+/**
+* obtém a qtd a faturar
+**/
+static function getQtdAFatura(cDoc, cSerie, cItem, cProduto, cIdentB6)
+
+	local cQuery   				:= ""
+	local oSql 					:= IpSqlObject():newIpSqlObject()
+	local nQtdAFaturar			:= 0
+	local nQtdC6				:= 0
+	local nEntregC6				:= 0
+	
+	cQuery := " SELECT " 																																					+ CRLF
+	cQuery += "   SUM(SC6.C6_QTDVEN) QUANT,SUM(SC6.C6_QTDENT) ENTREG FROM " + retSqlName("SC5") + " SC5"  	+ CRLF
+	cQuery += " INNER JOIN "+retSqlName("SC6")+" SC6 ON 1 = 1" 					+ CRLF
+	cQuery += "    AND SC5.C5_FILIAL = SC6.C6_FILIAL " 							+ CRLF
+	cQuery += "    AND SC5.C5_NUM = SC6.C6_NUM " 								+ CRLF
+	cQuery += "    AND SC5.D_E_L_E_T_ = ' ' " 									+ CRLF
+	cQuery += " WHERE 1 = 1 " 													+ CRLF
+	cQuery += "    AND SC6.C6_FILIAL ='"+fwxFilial("SC6")+"' " 					+ CRLF
+	cQuery += "    AND SC6.C6_NFORI ='" + cDoc + "' "							+ CRLF
+	cQuery += "    AND SC6.C6_SERIORI = '" + cSerie + "' " 						+ CRLF
+	cQuery += "    AND SC6.C6_IDENTB6 = '" + cIdentB6+ "' " 					+ CRLF
+	//cQuery += "    AND (SC6.C6_QTDVEN > (SC6.C6_QTDENT + SC6.C6_QTDEMP) ) " 	+ CRLF	
+	cQuery += "    AND C6_BLQ != 'R'  " 										+ CRLF
+	cQuery += "    AND SC6.C6_PRODUTO ='" + cProduto + "'" 						+ CRLF
+	cQuery += "    AND SC6.D_E_L_E_T_ =' '" 									+ CRLF
+	
+	oSql:newAlias(cQuery)
+	
+	if oSql:hasRecords()
+		nQtdC6 				:= oSql:getValue("QUANT")
+		nEntregC6   		:= oSql:getValue("ENTREG")
+		nQtdAFaturar		:= nQtdC6 - nEntregC6		
+	endIf
+	
+	oSql:Close()
+	
+return nQtdAFaturar
+	
+	
+
+return
+
+/**
+* Verifica se possui mais docs com saldo
+**/
+static function existDocComSaldo(aDocumentos)
+	
+	local nPos := 0
+	
+	nPos := aScan(aDocumentos, {|x| allTrim(x[18][1]) == "COM_SALDO"})
+	
+return nPos
+
+/**
+* Coleta a Tes a ser utilizada
+**/
+static function getTes(oSql)
+	
+	local cTes := ""
+	
+	if upper(alltrim(SC5->C5_ZZESPEC)) ==  DHL_ESPECIE_INVENTARIO
+		cTes := AllTrim(GetMv("ZZ_TESINV"))
+	else
+		cTes := iif(lTemPA, oSql:getValue("F4_TESDV"), oSql:getValue("F4_ZZTESFE"))
+	endif
+	
+return cTes
+
+
+/**
+* Obtém o valor unitário
+**/
+static function getVlrUnit(nQtdProd, nQuantB6, nVunitD1, nVTotal)
+	
+	local nSldTotal 	:= 0
+	local nVlrUnit  	:= 0
+	local nVlrParcial 	:= 0
+	
+	if nQtdProd <= nQuantB6
+		nSldTotal 	:= nQuantB6
+		nVlrUnit    := nVunitD1
+		nVlrParcial := nVlrUnit * nQtdProd
+	else
+		nVlrParcial	:= nVTotal
+		nVlrUnit 	:= nVlrParcial / nQuantB6
+	endif
+	
+return {nSldTotal, nVlrUnit, nVlrParcial}
+
+/**
+* Obtém o valor do array de acordo com o campo passado
+**/
+static function  getValue(aDocumentos, cCampo)
+	
+	local xValue := ""
+	local nPos   := 0
+	
+	nPos := aScan(aDocumentos, {|x| x[2] = cCampo })
+	
+	if nPos > 0
+		xValue := aDocumentos[nPos][1]
+	endIf
+	
+return xValue
+
+/**
+* Obtém os documentos de origem
+**/
+static function getDocumentos(oSql)
+	
+	local aDocumentos := {}
+	
+	while oSql:notIsEof()
+		
+		aAdd(aDocumentos,{;
+			{oSql:getValue("D1_DOC")	,"D1_DOC"}				,;
+			{oSql:getValue("D1_SERIE")	,"D1_SERIE"}			,;
+			{oSql:getValue("D1_ITEM")	,"D1_ITEM"}				,;
+			{oSql:getValue("D1_VUNIT")	,"D1_VUNIT"}			,;
+			{oSql:getValue("D1_LOCAL")	,"D1_LOCAL"}			,;
+			{oSql:getValue("D1_TOTAL")	,"D1_TOTAL"}			,;
+			{oSql:getValue("B6_FILIAL")	,"B6_FILIAL"}			,;
+			{oSql:getValue("B6_PRODUTO"),"B6_PRODUTO"}			,;
+			{oSql:getValue("B6_QUANT")	,"B6_QUANT"}			,;
+			{oSql:getValue("B6_CLIFOR")	,"B6_CLIFOR"}			,;
+			{oSql:getValue("B6_LOJA")	,"B6_LOJA"}				,;
+			{oSql:getValue("B6_IDENT")	,"B6_IDENT"}			,;
+			{oSql:getValue("B6_PRUNIT")	,"B6_PRUNIT"}			,;
+			{oSql:getValue("B6_SALDO")	,"B6_SALDO"}			,;
+			{oSql:getValue("F4_TESDV")	,"F4_TESDV"}			,;
+			{oSql:getValue("F4_ZZTESFE"),"F4_ZZTESFE"}			,;
+			{oSql:getValue("D1_DTDIGIT"),"D1_DTDIGIT"}			,;
+			{"COM_SALDO", "STATUS"}								;
+			})
+		
+		oSql:skip()
+		
+	endDo
+	
+	oSql:close()
+	
+return aDocumentos
+
+/**
+* Obtém o saldo restante do documento
+**/
+static function getSaldoRestante(nQtdProdInInterface, nSaldoB6)
+	
+	local nSaldoRestante := nSaldoB6 - nQtdProdInInterface
+	
+	if nSaldoRestante < 0
+		nSaldoRestante := 0
+	endIf
+	
+return nSaldoRestante
+
+/**
+* Obtém o número do item da SC6 (C6_ITEM)
+**/
+static function getItem(aItens)
+	
+	if len(aItens) == 0
+		cItem := "01"
+	else
+		cItem := Soma1(aItens[len(aItens),1,2])
+	endif
+	
+return cItem
+
+/**
+* Agrupa os Produtos do Pedido de Vendas
+*/
+static function groupProducts(aProducts)
+	
+	local nI	   	 := 0
+	local nScan		 := 0
+	local nQuantity  := 0
+	local cProduct   := ""
+	local cLote		 := ""
+	local cUnidMedi	 := ""
+	local aGroupProd := {}
+	
+	for nI := 1 to Len(aProducts)
+		
+		cProduct  := aProducts[nI,1]
+		nQuantity := aProducts[nI,2]
+		cLote	  := aProducts[nI,3]
+		cUnidMedi := aProducts[nI,4]
+		nScan	  := aScan(aGroupProd, {|x| x[1] == cProduct })
+		
+		if (nScan > 0)
+			aGroupProd[nScan,2] += nQuantity
+		else
+			aAdd(aGroupProd, {cProduct, nQuantity, cLote, cUnidMedi})
+		endIf
+		
+	next nI
+	
+	aProducts := aClone(aGroupProd)
+	
+return aProducts
+
+/**
+* Coleta os Items da interface Invoice Request
+**/
+static function retProducts()
+	
+	local aItems       := {}
+	local nItem        := 1
+	local nLenItem     := 0
+	
+	if ValType(oXml:_INV_REQ:_BODY) <> nil
+		if ValType(oXml:_INV_REQ:_BODY:_FILEITEM) == "A"
+			
+			nLenItem := Len(oXml:_INV_REQ:_BODY:_FILEITEM)
+			aItems   := {}
+			
+			for nItem := 1 to nLenItem
+				aAdd(aItems,{getProduct(@nItem),getQuantity(@nItem), getLote(@nItem), getUOM(@nItem), getSubLote(@nItem), getExpDate(@nItem)})
+			next
+			
+		elseif ValType(oXml:_INV_REQ:_BODY:_FILEITEM) == "O"
+			
+			nItem	:= 0
+			aItems  := {}
+			
+			aAdd(aItems,{getProduct(@nItem),getQuantity(@nItem), getLote(@nItem), getUOM(@nItem) , getSubLote(@nItem), getExpDate(@nItem)})
+			
+		endif
+		
+	else
+		aAdd(aItems,{})
+	endif
+	
+return aItems
+
+/**
+* Coleta o Produto
+**/
+static function getProduct(nItem)
+	local xRet := ""
+	
+	if nItem > 0
+		xRet := AllTrim(oXml:_INV_REQ:_BODY:_FILEITEM[nItem]:_ITEM:TEXT)
+	else
+		xRet := AllTrim(oXml:_INV_REQ:_BODY:_FILEITEM:_ITEM:TEXT)
+	endif
+	
+return (xRet)
+
+/**
+* Coleta o lote
+**/
+static function getLote(nItem)
+	local xRet := ""
+	
+	if nItem > 0
+		xRet := oXml:_INV_REQ:_BODY:_FILEITEM[nItem]:_LOT:TEXT
+	else
+		xRet := oXml:_INV_REQ:_BODY:_FILEITEM:_LOT:TEXT
+	endif
+return (xRet)
+
+/**
+* Coleta o sublote
+**/
+static function getSubLote(nItem)
+	local xRet := ""
+	
+	if nItem > 0
+		xRet := oXml:_INV_REQ:_BODY:_FILEITEM[nItem]:_SUBLOT:TEXT
+	else
+		xRet := oXml:_INV_REQ:_BODY:_FILEITEM:_SUBLOT:TEXT
+	endif
+return (xRet)
+
+/**
+* Coleta a data de expriração
+**/
+static function getExpDate(nItem)
+	local xRet 	:= ""
+	local aData	:= {}
+	local cMes  := ""
+	local cDia	:= ""
+	local cAno	:= ""
+	
+	if nItem > 0
+		xRet := oXml:_INV_REQ:_BODY:_FILEITEM[nItem]:_EXPIRATION_DATE:TEXT
+	else
+		xRet := oXml:_INV_REQ:_BODY:_FILEITEM:_EXPIRATION_DATE:TEXT
+	endif
+	
+	if !empty(xRet)
+		aData:=StrToKarr(xRet, "-")
+		cAno := aData[1]
+		cMes := aData[2]
+		cDia := aData[3]
+		
+		xRet:=cAno+cMes+cDia
+	endif
+	
+return (xRet)
+
+
+/**
+* UNidade de Medida
+**/
+static function getUOM(nItem)
+	local xRet := ""
+	
+	if nItem > 0
+		xRet := oXml:_INV_REQ:_BODY:_FILEITEM[nItem]:_UOM:TEXT
+	else
+		xRet := oXml:_INV_REQ:_BODY:_FILEITEM:_UOM:TEXT
+	endif
+return (xRet)
+
+
+/**
+* Coleta a Quantidade
+**/
+static function getQuantity(nItem)
+	local xRet := ""
+	
+	if nItem > 0
+		xRet := Val(oXml:_INV_REQ:_BODY:_FILEITEM[nItem]:_QUANTITY:TEXT)
+	else
+		xRet := Val(oXml:_INV_REQ:_BODY:_FILEITEM:_QUANTITY:TEXT)
+	endif
+return (xRet)
+
+/**
+* Obtem a query dos itens do pedido de venda
+*/
+static function getQueryItens(cClifor, cLoja, cTipoCliFor, cProduto)
+	
+	local cQuery   := ""
+	
+	cQuery := " SELECT " 																																					+ CRLF
+	cQuery += "   SD1.D1_DOC,SD1.D1_SERIE,SD1.D1_ITEM,SD1.D1_VUNIT,SD1.D1_LOCAL,SD1.D1_TOTAL,SB6.B6_FILIAL,SB6.B6_PRODUTO,SB6.B6_QUANT,"									+ CRLF
+	cQuery += "   SB6.B6_CLIFOR,SB6.B6_LOJA,SB6.B6_PODER3,SB6.B6_TPCF,SB6.B6_TIPO,SB6.B6_IDENT,SB6.B6_PRUNIT,SB6.B6_SALDO,SF4.F4_TESDV, SF4.F4_ZZTESFE, SD1.D1_DTDIGIT " 	+ CRLF
+	cQuery += " FROM " + RetSqlName("SB6") + " SB6 " 																														+ CRLF
+	
+	cQuery += " INNER JOIN " + RetSqlName("SD1") + " SD1 ON 1 = 1" 																											+ CRLF
+	cQuery += "   AND SD1.D1_FILIAL = SB6.B6_FILIAL "                                                                                                                       + CRLF
+	cQuery += "   AND SD1.D1_IDENTB6 = SB6.B6_IDENT  "                                                                                                                      + CRLF
+	cQuery += "   AND SD1.D1_COD    = SB6.B6_PRODUTO "                                                                                                                      + CRLF
+	cQuery += "   AND SD1.D_E_L_E_T_ = ' '" 																																+ CRLF
+	
+	cQuery += " INNER JOIN " + RetSqlName("SF4") + " SF4 ON 1 = 1" 																											+ CRLF
+	cQuery += "   AND SF4.F4_FILIAL = SB6.B6_FILIAL   "                                                                                                                     + CRLF
+	cQuery += "   AND SF4.F4_CODIGO = SB6.B6_TES "                                                                                                                      	+ CRLF
+	cQuery += "   AND SF4.D_E_L_E_T_ = ' ' "                                                                                                                     			+ CRLF
+	
+	cQuery += " WHERE 1 = 1  "                                                                                                                                              + CRLF
+	
+	cQuery += "   AND SB6.B6_FILIAL = '" + xFilial("SB6") + "'"                                                                                                             + CRLF
+	cQuery += "   AND SB6.B6_CLIFOR = '" + cClifor + "'"                                                                                                                    + CRLF
+	cQuery += "   AND SB6.B6_LOJA   = '" + cLoja + "'"         	                                                                                                            + CRLF
+	cQuery += "   AND SB6.B6_PODER3 = 'R' " 				                                                                                                            	+ CRLF
+	cQuery += "   AND SB6.B6_TPCF   = '" + cTipoCliFor + "'" 	                                                                                                            + CRLF
+	cQuery += "   AND SB6.B6_TIPO   = 'D'"						                                                                                                            + CRLF
+	cQuery += "   AND SB6.B6_SALDO  > 0"						                                                                                                            + CRLF
+	cQuery += "   AND SB6.D_E_L_E_T_ = ' '"						                                                                                                            + CRLF
+	cQuery += "   AND SB6.B6_PRODUTO = '" + cProduto + "'"			                                                                                                        + CRLF
+	cQuery += " ORDER BY D1_DTDIGIT, D1_EMISSAO "				                                                                                                            + CRLF
+	
+return cQuery
+
+/*
+** Obtém o Header do pedido de vendas
+*/
+static function getHeader(cClifor, cLoja)
+	
+	local aHeader 		:= {}
+	local cShipping   	:= getShipping()
+	local cSalesOrd   	:= getSalesOrder()
+	
+	aAdd(aHeader,{"C5_TIPO"   , getDocType()                 ,nil})
+	aAdd(aHeader,{"C5_CLIENTE", cCliFor  					 ,nil})
+	aAdd(aHeader,{"C5_LOJACLI", cLoja 						 ,nil})
+	aAdd(aHeader,{"C5_CONDPAG" , GetMV("ZZ_CONDINT")         ,nil})
+	aAdd(aHeader,{"C5_ZZSHIP"  , cShipping                   ,nil})
+	aAdd(aHeader,{"C5_ZZTIPO"  , getDocType()   			 ,nil})
+	aAdd(aHeader,{"C5_ZZORDEX" , getSalesOrder()			 ,nil})
+	aAdd(aHeader,{"C5_TPFRETE" , "F"			             ,nil})
+	
+return aHeader
+
+/*
+** Obtém o cliente/fornecedor
+*/
+static function getCliFor(cClifor, cLoja, cEmail, cTipoCliFor)
+	
+	local oSqlUtil		:= IpSqlObject():newIpSqlObject()
+	local lOk	 		:= .t.
+	
+	default cClifor 	:= ""
+	default cLoja 		:= ""
+	default cEmail 		:= ""
+	default cTipoCliFor := ""
+	
+	
+	if getDocType() == 'N'
+		oSqlUtil:newTable("SA1", "A1_COD, A1_LOJA, A1_EMAIL", "A1_FILIAL = '%SA1.FILIAL%' AND A1_CGC = '" + cCnpjCli + "' ")
+		if oSqlUtil:hasRecords()
+			cClifor		:= oSqlUtil:getValue("A1_COD")
+			cLoja		:= oSqlUtil:getValue("A1_LOJA")
+			cEmail		:= oSqlUtil:getValue("A1_EMAIL")
+			cTipoCliFor := "C"
+		else
+			lOk := .f.
+		endif
+	else
+		oSqlUtil:newTable("SA2", "A2_COD, A2_LOJA, A2_EMAIL", "A2_FILIAL = '%SA2.FILIAL%' AND A2_CGC = '" + cCnpjCli + "' ")
+		if oSqlUtil:hasRecords()
+			cClifor		:= oSqlUtil:getValue("A2_COD")
+			cLoja		:= oSqlUtil:getValue("A2_LOJA")
+			cEmail		:= oSqlUtil:getValue("A2_EMAIL")
+			cTipoCliFor := "F"
+		else
+			lOk := .f.
+		endif
+	endif
+	
+	oSqlUtil:close()
+	
+return (lOk)
+
+/*
+** Verifica se existe cliente/fornecedor
+*/
+static function incCustomer()
+	
+	lOk := getCliFor()
+	
+return (lOk)
+
+/**
+* Gera Log
+**/
+static function geraLog(nTipoErro, cProduto)
+	
+	local cCnpjCli 		:= ""
+	local cMsg     		:= ""
+	
+	default  cProduto 	:= ""
+	
+	if nTipoErro == ERROR_CLIENTE
+		
+		cCnpjCli    	:= getCnpjCustomer()
+		cMsg     		:= "Cliente não localizado no Protheus - CNPJ: "+alltrim(cCnpjCli)+"."
+		
+	elseIf nTipoErro == INVOICE_HAS_IMPORT
+		
+		cMsg     := "Shippment: "+alltrim(getShipping())+" e Sales Order: "+alltrim(getSalesOrder())+" já utilizados no Protheus."
+		
+	elseIf nTipoErro == ERROR_INCLU_INVOICE
+		
+		cMsg     := "Falha ao incluir o pedido de vendas"+oUtils:getErroAuto()
+		
+	elseIf nTipoErro == SALDO_PODER3
+	
+		cMsg     := "Falha ao incluir o pedido de vendas. Não possui saldo suficiente em poder de terceiro para o produto " + allTrim(cProduto)
+		
+	elseIf nTipoErro == GERA_RETORNO_EFET
+	
+		cMsg     := "Falha ao gerar nota de retorno efetivo"
+				
+	endIf
+	
+	setFileLog(cFilePath,"fail",cMsg)
+	
+return
+
+/**
+* Define os Logs de acordo com os tipos de arquivos
+*/
+static function setFileLog(cFile,cLogType,cLogText,cTag,cValue)
+	
+	local cInterface := "Invoice Request"
+	
+	oLog:start(APP_DLX,DHL_IMPORTACAO,cFile)
+	
+	if !(Empty(cTag))
+		cLogText += CRLF+CRLF+"Tag: "+cTag
+	endIf
+	
+	if !(Empty(cValue))
+		cLogText += CRLF+CRLF+"Valor: "+cValue
+	endIf
+	
+	if (cLogType == "fail")
+		oLog:fail(cInterface, cLogText)
+	elseIf (cLogType == "warn")
+		oLog:warn(cInterface, cLogText)
+	endIf
+	
+return
+
+/*
+** Valida se Inv. Req. pode ser importada.
+*/
+static function validOrder()
+	
+	local oSql 			:= IpSqlObject():newIpSqlObject()
+	local cShipping   	:= getShipping()
+	local cSalesOrd   	:= getSalesOrder()
+	local lOk			:= .t.
+	
+	oSql:newTable("SC5", "C5_NUM", " %SC5.XFILIAL% AND C5_ZZSHIP = '" + upper(cShipping) + "' AND C5_ZZORDEX = '" + upper(cSalesOrd) + "' ")
+	
+	if oSql:hasRecords()
+		DisarmTransaction()
+		geraLog(INVOICE_HAS_IMPORT)
+		lOk := .f.
+	endif
+	
+	oSql:close()
+	
+return (lOk)
+
+/**
+* Coleta o Document Type
+**/
+static function getDocType()
+return oXml:_INV_REQ:_BODY:_FILEHEADER:_DOCUMENT_TYPE:TEXT
+
+/**
+* Coleta o Customer CNPJ
+**/
+static function getCnpjCustomer()
+return oXml:_INV_REQ:_BODY:_FILEHEADER:_CUSTOMER_CNPJ:TEXT
+
+/**
+* Coleta o Shipping Number
+**/
+static function getShipping()
+return oXml:_INV_REQ:_BODY:_FILEHEADER:_SHIPPING_NUMBER:TEXT
+
+/**
+* Coleta o Sales Order
+**/
+static function getSalesOrder()
+return oXml:_INV_REQ:_BODY:_FILEHEADER:_SALES_ORDER:TEXT

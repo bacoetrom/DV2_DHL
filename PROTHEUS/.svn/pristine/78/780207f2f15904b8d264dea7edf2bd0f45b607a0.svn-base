@@ -1,0 +1,85 @@
+#include "totvs.ch"
+#include "dhl.ch"
+
+
+/*/{Protheus.doc} SF1140I
+
+Ponto de Entrada localizado após a gravação da pré nota.
+
+@author Winston Dellano de Castro / Diego de Angelo
+@since 02/12/2014
+/*/
+user function SF1140I()
+
+	local cNota    := SF1->F1_DOC
+	local cSerie   := SF1->F1_SERIE
+	local cClieFor := SF1->F1_FORNECE
+	local cLoja    := SF1->F1_LOJA
+	
+	private oSql   := ipSqlObject():newIpSqlObject()
+
+	if 	(FWUnitBusiness() == DHL_BUSINESSUNIT_PKG) .OR. ;
+		(FWUnitBusiness() == DHL_BUSINESSUNIT_SPL) .or. ;
+		(FWUnitBusiness() == DHL_BUSINESSUNIT_REP) .or. ;
+		(FWUnitBusiness() == DHL_BUSINESSUNIT_DIS) .or. ;
+		(FWUnitBusiness() == DHL_BUSINESSUNIT_AGE) .or. ;
+		(FWUnitBusiness() == DHL_BUSINESSUNIT_MUL) .or. ;
+		(FWUnitBusiness() == DHL_BUSINESSUNIT_AGL) .or. ;
+		(FWUnitBusiness() == DHL_BUSINESSUNIT_AG2)
+		
+		//Elmo, em 21/07/2023: Tratamento Não processar ASN - INÍCIO
+		lContinua := .T.
+		if FWUnitBusiness() == DHL_BUSINESSUNIT_AGL // .and. alltrim(cFilAnt) == "024AGL002400"			
+			if SF1->F1_TIPO $ "B|D|"
+				cASN := AllTrim(Posicione("SA1",1,xFilial("SA1")+SF1->F1_FORNECE,"A1_ZZEVASN"))
+			else
+				cASN := AllTrim(Posicione("SA2",1,xFilial("SA2")+SF1->F1_FORNECE,"A2_ZZEVASN"))
+			endif
+			If !cASN $ "1N"
+				lContinua := .t.
+			Else
+				lContinua := .f.
+			Endif
+		Else
+			lContinua := .T.
+		Endif
+
+		if FunName() == "MATA140" .and. lContinua
+	//Elmo, em 21/07/2023: Tratamento Não processar ASN - FINAL
+
+		//if FunName() == "MATA140" //Elmo, em 21/07/2023: linha comentada
+			updateSF1(cNota,cSerie,cClieFor,cLoja)
+		endif
+	endif
+
+return
+
+/**
+* Atualiza o status da Nota Fiscal
+**/
+static function updateSF1(cNota,cSerie,cClieFor,cLoja)
+
+	local cWhere := ""
+	local lError := nil
+
+	cWhere := "F1_FILIAL  = '%SF1.FILIAL%' AND "
+	cWhere += "F1_DOC     = '"+cNota+"'    AND "
+	cWhere += "F1_SERIE   = '"+cSerie+"'   AND "
+	cWhere += "F1_FORNECE = '"+cClieFor+"' AND "
+	cWhere += "F1_LOJA    = '"+cLoja+"'"
+	
+	if FWUnitBusiness() == DHL_BUSINESSUNIT_SPL
+		lError := oSql:update("SF1","F1_ZZSTATU = '" + DHL_DOC_AGUARDANDO_CONFIRMACAO + "' ",cWhere)
+	elseif FWUnitBusiness() == DHL_BUSINESSUNIT_PKG .or. ;
+		   FWUnitBusiness() == DHL_BUSINESSUNIT_REP .or. ;
+		   FWUnitBusiness() == DHL_BUSINESSUNIT_DIS .or. ;
+		   FWUnitBusiness() == DHL_BUSINESSUNIT_AGE .or. ;
+		   FWUnitBusiness() == DHL_BUSINESSUNIT_MUL .or. ;
+		   FWUnitBusiness() == DHL_BUSINESSUNIT_AGL .or. ;
+		   FWUnitBusiness() == DHL_BUSINESSUNIT_AG2
+		   		   
+		lError := oSql:update("SF1","F1_ZZSTATU = '" + DHL_DOC_PENDENTE_ACAO + "' ",cWhere)
+	endif
+	
+
+return

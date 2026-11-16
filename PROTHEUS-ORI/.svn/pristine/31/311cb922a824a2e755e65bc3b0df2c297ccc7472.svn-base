@@ -1,0 +1,24 @@
+#include "totvs.ch"
+#include "dhl.ch"
+
+
+/*/{Protheus.doc} MT103EXC
+
+Valida a exclusao do documento de entrada
+	
+@author Emerson Holanda 21/09/2022
+
+/*/
+User function MT103EXC()
+
+	Local lRet := .T.
+	If FWUnitBusiness() == DHL_BUSINESSUNIT_DIS
+		If SF1->F1_FORMUL == 'S' .And. SF1->F1_FIMP == 'T'
+			ApMsgStop("Não é permitido excluir notas de formulario proprio com o Status de transmitida!")
+			lRet := .F.
+		EndIf
+	EndIf
+
+return lRet
+
+

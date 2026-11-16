@@ -1,0 +1,293 @@
+#include "rwmake.ch"
+#include "Topconn.ch"
+#INCLUDE "PROTHEUS.CH"
+
+#define X1_HELP		41
+
+User Function DFATR083()
+
+/*
+ÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜ
+±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±
+±±ÉÍÍÍÍÍÍÍÍÍÍÑÍÍÍÍÍÍÍÍÍÍËÍÍÍÍÍÍÑÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍËÍÍÍÍÍÍÑÍÍÍÍÍÍÍÍÍÍÍÍÍ»±±
+±±ºPrograma  ³DFATR083  ºAutor ³Emerson Costa Holandaº Data ³  06/11/25  º±±
+±±ÌÍÍÍÍÍÍÍÍÍÍØÍÍÍÍÍÍÍÍÍÍÊÍÍÍÍÍÍÏÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÊÍÍÍÍÍÍÏÍÍÍÍÍÍÍÍÍÍÍÍÍ¹±±
+±±ºDesc.     ³Relatorio Pedidos sem faturamento                			 º±±
+±±         										                         º±±
+±±ÌÍÍÍÍÍÍÍÍÍÍØÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍ¹±±
+±±ºUso       ³ DHL 2025                                                  º±±
+±±ÈÍÍÍÍÍÍÍÍÍÍÏÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍ¼±±
+±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±
+ßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßß
+*/
+
+Local aArea := GetArea()
+Private cAliasDoc // tabela temporaria de documentos
+Private oReport
+
+//CriaPerg()
+
+//ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+//³Interface de impressao -- Excel                                         ³
+//ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+oReport:= ReportDef()
+oReport:PrintDialog()
+
+RestArea(aArea)
+GFEDelTab(cAliasDoc)
+
+Return NIL
+
+//--------------------------------------------------------------------------------------------------------
+/*/ {Protheus.doc}  ReportDef
+A funcao estatica ReportDef devera ser criada para todos os relatorios que poderao ser agendados pelo usuario.
+@return oReport Objeto do Relatorio.
+/*/
+//--------------------------------------------------------------------------------------------------------
+
+Static Function ReportDef()
+Local oReport, oSection
+
+//+------------------------------------------------------------------------+
+//| "Criacao do componente de impressao                                      | "
+//| "                                                                        | "
+//| "TReport():New                                                           | "
+//| "ExpC1 : Nome do relatorio                                               | "
+//| "ExpC2 : Titulo                                                          | "
+//| "ExpC3 : Pergunte                                                        | "
+//| "ExpB4 : Bloco de codigo que sera executado na confirmacao da impressao  | "
+//| "ExpC5 : Descricao                                                       | "
+//| "                                                                        | "
+//+------------------------------------------------------------------------+
+
+oReport := TReport():New("DFATR083 - Pedidos sem faturamento","Pedidos sem faturamento","DFATR083", {|oReport| ReportPrint(oReport)},"Emite relatório com os pedidos que estão sem faturamento"/*Descricao do relatório*/)
+oReport:SetLandscape(.T.)   //Define a oriadmientação de página do relatório como paisagem  ou retrato. .F.=Retrato; .T.=Paisagem
+oReport:SetTotalInLine(.T.) //Define se os totalizadores serão impressos em linha ou coluna
+//oReport:HideParamPage() //Oculta página de parametros
+If !Empty(oReport:uParam)
+	Pergunte(oReport:uParam,.F.)
+EndIf
+oSection := TRSection():New(oReport,"Pedidos sem faturamento",{"(cAliasDoc)","SC5","SC6","SC9"	},{"Pedidos sem faturamento"}/*{Array com as ordens do relatório}*/,/*Campos do SX3*/,/*Campos do SIX*/)
+oSection:SetTotalInLine(.T.)  //Define se os totalizadores serão impressos em linha ou coluna. .F.=Coluna; .T.=Linha
+
+//+------------------------------------------------------------------------+
+//|Criacao da celulas da secao do relatorio                                |
+//|                                                                        |
+//|TRCell():New                                                            |
+//|ExpO1 : Objeto TSection que a secao pertence                            |
+//|ExpC2 : Nome da celula do relatório. O SX3 será consultado              |
+//|ExpC3 : Nome da tabela de referencia da celula                          |
+//|ExpC4 : Titulo da celula                                                |
+//|        Default : X3Titulo()                                            |
+//|ExpC5 : Picture                                                         |
+//|        Default : X3_PICTURE                                            |
+//|ExpC6 : Tamanho                                                         |
+//|        Default : X3_TAMANHO                                            |
+//|ExpL7 : Informe se o tamanho esta em pixel                              |
+//|        Default : False                                                 |
+//|ExpB8 : Bloco de código para impressao.                                 |
+//|        Default : ExpC2                                                 |
+//|                                                                        |
+//+------------------------------------------------------------------------+
+//	GetSx3Inf @return aRetorno Array {cTitulo,cCbox,cPicture}
+//TRCell():New(oSection,/*X3_CAMPO*/,/*Tabela*/,/*Titulo*/,/*Picture*/,/*Tamanho*/,/*lPixel*/,/*{|| code-block de impressao }*/)
+TRCell():New(oSection,"(cAliasDoc)->C5_FILIAL","(cAliasDoc)"   ,"Filial"             ,GetSx3Inf("C5_FILIAL")[3],/*Tamanho*/,/*lPixel*/,/*{|| code-block de impressao }*/)
+TRCell():New(oSection,"(cAliasDoc)->C5_NUM","(cAliasDoc)"      ,"Pedido"             ,GetSx3Inf("C5_NUM")[3],/*Tamanho*/,/*lPixel*/,/*{|| code-block de impressao }*/)
+TRCell():New(oSection,"(cAliasDoc)->C5_CLIENTE","(cAliasDoc)"  ,"Cliente"            ,GetSx3Inf("C5_CLIENTE")[3],/*Tamanho*/,/*lPixel*/,/*{|| code-block de impressao }*/)
+TRCell():New(oSection,"(cAliasDoc)->C5_LOJACLI","(cAliasDoc)"  ,"Loja"               ,GetSx3Inf("C5_LOJACLI")[3],/*Tamanho*/,/*lPixel*/,/*{|| code-block de impressao }*/)
+TRCell():New(oSection,"(cAliasDoc)->C5_ZZORDEX","(cAliasDoc)"  ,"Ped Ven DLX"        ,GetSx3Inf("C5_ZZORDEX")[3],/*Tamanho*/,/*lPixel*/,/*{|| code-block de impressao }*/)
+TRCell():New(oSection,"(cAliasDoc)->C5_ZZSHIP","(cAliasDoc)"   ,"Ship."              ,GetSx3Inf("C5_ZZSHIP")[3],/*Tamanho*/,/*lPixel*/,/*{|| code-block de impressao }*/)
+TRCell():New(oSection,"(cAliasDoc)->C5_EMISSAO","(cAliasDoc)"  ,"Emissão Pedido"     ,GetSx3Inf("C5_EMISSAO")[3],/*Tamanho*/,/*lPixel*/,/*{|| code-block de impressao }*/)
+
+Return oReport
+/*/ {Protheus.doc}  ReportPrint
+A funcao estatica ReportDef devera ser criada para todos os relatorios que poderao ser agendados pelo usuario.
+@param oReport Objeto do relatório
+/*/
+
+Static Function ReportPrint(oReport)
+Local oSection  := oReport:Section(1)
+oSection:Init()
+oSection:SetHeaderSection(.T.)
+
+CarregaDados()
+
+While !(cAliasDoc)->(Eof())
+	oSection:PrintLine()
+	(cAliasDoc)->(dbSkip())
+EndDo
+oSection:Finish()
+Return Nil
+
+/*/ {Protheus.doc}  CriaTabTemp
+A funcao estatica CriaTabTemp Cria a struct dos dados do relatório e cria as tabelas temporárias, privadas em GFER051()
+@return {aStruDoc} Array com Struct dos campos
+/*/
+
+Static Function CriaTabTemp()
+Local  aStruDoc
+
+aStruDoc 	:= {;
+{"C5_FILIAL"	,"C",TamSX3("C5_FILIAL" )[1],0},;
+{"C5_NUM"	    ,"C",TamSX3("C5_NUM" )[1],0},;
+{"C5_CLIENTE"	,"C",TamSX3("C5_CLIENTE" )[1],0},;
+{"C5_LOJACLI" 	,"C",TamSX3("C5_LOJACLI" )[1],0},;
+{"C5_ZZORDEX"   ,"C",TamSX3("C5_ZZORDEX" )[1],0},;
+{"C5_ZZSHIP"   	,"C",TamSX3("C5_ZZSHIP" )[1],0},;
+{"C5_EMISSAO"	,"D",TamSX3("C5_EMISSAO")[1],TamSX3("C5_EMISSAO" )[2]};
+}
+
+
+cAliasDoc :=  GFECriaTab({aStruDoc,{"C5_FILIAL+C5_NUM"}})
+(cAliasDoc)->(dbSetOrder(1))
+
+Return {aStruDoc}
+
+
+/*/{Protheus.doc} CarregaDados()
+@description
+A função estática CarregaDados alimenta as tabelas temporárias(cAliasDoc)  para uso no relatório
+@example
+CarregaDados()
+/*/
+
+Static Function CarregaDados()
+Local lFatPar := .F.
+
+CriaTabTemp()
+
+CQUERY := " SELECT C5_FILIAL,C5_NUM,C5_CLIENTE,C5_LOJACLI,C5_ZZORDEX,C5_ZZSHIP,C5_EMISSAO" 
+CQUERY += " FROM "      +RetSqlName ('SC5')+" SC5 "
+CQUERY += " WHERE SC5.D_E_L_E_T_<> '*' "
+//CQuery += " AND     SC5.C5_FILIAL    >= '"+ MV_PAR01+"' AND SC5.C5_FILIAL      <= '" + MV_PAR02+ "' "
+CQuery += " AND     SC5.C5_FILIAL    >= '"+ cFilAnt+"' AND SC5.C5_FILIAL      <= '" + cFilAnt+ "' "
+CQuery += " AND     SC5.C5_NOTA = ' ' "
+CQuery += " ORDER BY C5_FILIAL,C5_EMISSAO,C5_NUM "
+
+IF SELECT("TD2")<> 0
+	TD2->(DBCLOSEAREA())
+ENDIF
+
+TCQUERY CQUERY NEW ALIAS "TD2"
+
+TD2->(DBGOTOP())
+oReport:SetMeter(TD2->(RecCount()))
+If !TD2->(EOF())
+	While !TD2->(EOF())
+		If oReport:Cancel()
+			Exit
+		EndIf
+		lFatPar := .F.
+		CQUERY := " SELECT C6_FILIAL,C6_NUM,C6_NOTA" 
+		CQUERY += " FROM "      +RetSqlName ('SC6')+" SC6 "
+		CQUERY += " WHERE SC6.D_E_L_E_T_<> '*' "
+		CQuery += " AND     SC6.C6_FILIAL    >= '"+ TD2->C5_FILIAL+"' AND SC6.C6_FILIAL      <= '" + TD2->C5_FILIAL+ "' "
+		CQuery += " AND     SC6.C6_NUM       >= '"+ TD2->C5_NUM+"'    AND SC6.C6_NUM         <= '" + TD2->C5_NUM+ "' "
+		CQuery += " GROUP BY C6_FILIAL,C6_NUM,C6_NOTA "
+
+		IF SELECT("TD3")<> 0
+			TD3->(DBCLOSEAREA())
+		ENDIF
+
+		TCQUERY CQUERY NEW ALIAS "TD3"
+
+		TD3->(DBGOTOP())
+		If !TD3->(EOF())
+			While !TD3->(EOF())
+					If TD3->C6_NOTA <> ' '
+						lFatPar := .T.
+					EndIf
+				TD3->(Dbskip())
+			End
+		EndIf	
+		If !lFatPar //Senão for faturamento parcial
+			RecLock((cAliasDoc),.T.)
+
+				(cAliasDoc)->C5_FILIAL	  		:= TD2->C5_FILIAL
+				(cAliasDoc)->C5_NUM  	  		:= TD2->C5_NUM
+				(cAliasDoc)->C5_CLIENTE	  		:= TD2->C5_CLIENTE  
+				(cAliasDoc)->C5_LOJACLI		    := TD2->C5_LOJACLI
+				(cAliasDoc)->C5_ZZORDEX		  	:= TD2->C5_ZZORDEX
+				(cAliasDoc)->C5_ZZSHIP	  		:= TD2->C5_ZZSHIP
+				(cAliasDoc)->C5_EMISSAO		    := STOD(TD2->C5_EMISSAO)
+
+			MsUnlock((cAliasDoc))
+		EndIf
+		
+		oReport:IncMeter()
+		
+		TD2->(Dbskip())
+	End
+EndIf
+
+(cAliasDoc)->(dbGoTop())
+
+Return Nil
+
+Static Function GetSx3Inf(cCampo,aRetorno)
+Local nCont := 1
+Local aArea := GetArea("SX3")
+Default aRetorno := {"","","",""}
+For nCont := 1 to 4-Len(aRetorno)
+	aAdd(aRetorno,"")
+Next
+dbSelectArea("SX3")
+dbSetOrder(2)
+If dbSeek( cCampo )
+	aRetorno[1] := X3Titulo()
+	aRetorno[2] := X3Cbox()
+	aRetorno[3] := X3Picture()
+	aRetorno[4] := X3DESCRIC()
+EndIf
+RestArea(aArea)
+Return aRetorno
+
+Static Function  CriaPerg()
+
+	local cPerg		:= "DFATR083"
+	local cValid	:= ""
+	//local cF3		:= ""
+	local cPicture	:= ""
+	local cDef01	:= ""
+	local cDef02	:= ""
+	local cDef03	:= ""
+	local cDef04	:= ""
+	local cDef05	:= ""
+	local i			:= 0
+	local j			:= 0
+	local nTamSX1	:= 0
+	local aRegs		:= {}
+	local aAreaSX1 	:= SX1->(GetArea())
+	local oObj
+	
+	oObj := FWSX1Util():New()	
+	oObj:AddGroup(cPerg)
+    oObj:SearchGroup()
+    nTamSX1 := len(oObj:aGrupo[1][1])
+	cPerg := PadR(cPerg,nTamSX1)
+	
+	aAdd(aRegs,{cPerg/*X1_GRUPO*/, "01"/*X1_ORDEM*/, "Filial de ?"/*X1_PERGUNT*/,""/*X1_PERSPA*/,""/*X1_PERENG*/,"MV_CH1"/*X1_VARIAVL*/, "C"/*X1_TIPO*/,TamSX3('C5_FILIAL')[01]/*X1_TAMANHO*/,0/*X1_DECIMAL*/,1/*X1_PRESEL*/, "G"/*X1_GSC*/, cValid/*X1_VALID*/, "MV_PAR01"/*X1_VAR01*/, cDef01/*X1_DEF01*/, ""/*X1_DEFSPA1*/,""/*X1_DEFENG1*/,""/*X1_CNT01*/,""/*X1_VAR02*/,cDef02/*X1_DEF02*/,""/*X1_DEFSPA2*/,""/*X1_DEFENG2*/,""/*X1_CNT02*/,""/*X1_VAR03*/,cDef03/*X1_DEF03*/,""/*X1_DEFSPA3*/,""/*X1_DEFENG3*/,""/*X1_CNT03*/,""/*X1_VAR04*/,cDef04/*X1_DEF04*/,""/*X1_DEFSPA4*/,""/*X1_DEFENG4*/,""/*X1_CNT04*/,""/*X1_VAR05*/,cDef05/*X1_DEF05*/,""/*X1_DEFSPA5*/,""/*X1_DEFENG5*/,""/*X1_CNT05*/,"SM0"/*X1_F3*/, ""/*X1_PYME*/, ""/*X1_GRPSXG*/, "Informe a filial inicial, para filtrar, caso queira todos os pedidos deixar esse campo em branco"/*X1_HELP*/, cPicture/*X1_PICTURE*/,""/*X1_IDFIL*/})
+	aAdd(aRegs,{cPerg/*X1_GRUPO*/, "02"/*X1_ORDEM*/, "Filial até?"/*X1_PERGUNT*/,""/*X1_PERSPA*/,""/*X1_PERENG*/,"MV_CH2"/*X1_VARIAVL*/, "C"/*X1_TIPO*/,TamSX3('C5_FILIAL')[01]/*X1_TAMANHO*/,0/*X1_DECIMAL*/,1/*X1_PRESEL*/, "G"/*X1_GSC*/, cValid/*X1_VALID*/, "MV_PAR02"/*X1_VAR01*/, cDef01/*X1_DEF01*/, ""/*X1_DEFSPA1*/,""/*X1_DEFENG1*/,""/*X1_CNT01*/,""/*X1_VAR02*/,cDef02/*X1_DEF02*/,""/*X1_DEFSPA2*/,""/*X1_DEFENG2*/,""/*X1_CNT02*/,""/*X1_VAR03*/,cDef03/*X1_DEF03*/,""/*X1_DEFSPA3*/,""/*X1_DEFENG3*/,""/*X1_CNT03*/,""/*X1_VAR04*/,cDef04/*X1_DEF04*/,""/*X1_DEFSPA4*/,""/*X1_DEFENG4*/,""/*X1_CNT04*/,""/*X1_VAR05*/,cDef05/*X1_DEF05*/,""/*X1_DEFSPA5*/,""/*X1_DEFENG5*/,""/*X1_CNT05*/,"SM0"/*X1_F3*/, ""/*X1_PYME*/, ""/*X1_GRPSXG*/, "Informe o filial final, para filtrar, caso queira todos os pedidos preencher esse campo com ZZZZZZZZZZZZZZZ"/*X1_HELP*/, cPicture/*X1_PICTURE*/,""/*X1_IDFIL*/})
+	
+	for i := 1 to Len(aRegs)
+		if !SX1->(dbSeek(cPerg+aRegs[i,2]))
+			SX1->(RecLock("SX1", .T.))
+			for j := 1 to SX1->(FCount())
+				if j <= Len(aRegs[i])
+					if j <> X1_HELP
+						SX1->(FieldPut(j, aRegs[i,j]))
+					else
+						if !empty(aRegs[i,j])
+							SX1->(FieldPut(j, "P."+AllTrim(cPerg)+AllTrim(aRegs[i,2])+"."))
+							PutHelp("P."+AllTrim(cPerg)+AllTrim(aRegs[i,2])+".", {aRegs[i,j]}, {aRegs[i,j]}, {aRegs[i,j]}, .T. )
+						endif
+					endif
+				endIf
+			next j
+			SX1->(MsUnlock("SX1"))
+		endif
+	next i
+	
+	RestArea(aAreaSX1)
+
+Return

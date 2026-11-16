@@ -1,0 +1,27 @@
+#Include 'Protheus.ch'
+#Include 'dhl.ch'
+
+
+/*/{Protheus.doc} MT100LOK
+
+Validação de linhda para inclusão/alteração NF de entrada.
+	
+@author Thiago Meschiatti
+@since 03/11/2014
+
+@return lógico Se linha é valida ou não.
+/*/
+User Function MT100LOK()
+	local lRet	:= .t.	
+	local cID	:= GdFieldGet("D1_ZZID", n)
+	
+	FWLogMsg("INFO", , "BusinessObject", funName(), "", "01", "ENTROU NO P.E. MT100LOK", 0, 0, {})
+			
+	if FWUnitBusiness() == DHL_BUSINESSUNIT_SPL
+		lRet	:= u_DHLValidID("DHL_VLD_DUPLIC_LINE", "D1_ZZID")
+		if lRet
+			lRet	:= u_DHLValidID("DHL_EXIST_ID", "D1_ZZID")
+		endif
+	endif
+
+Return (lRet)

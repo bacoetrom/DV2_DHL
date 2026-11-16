@@ -1,0 +1,3092 @@
+#INCLUDE "RWMAKE.CH"
+#INCLUDE "XMLXFUN.CH"
+#INCLUDE "MSOBJECT.CH"
+#INCLUDE "PROTHEUS.ch"
+#INCLUDE "FONT.CH"
+#INCLUDE "COLORS.CH"
+#INCLUDE "TOPCONN.CH"
+#INCLUDE "dhl.ch" //Emerson Holanda 15/02/2021
+
+#define DATA_RPO	4
+#define LFORCES3 .T. 
+
+#define IMPORTADOR_DE_XML_CODE		"0000009D65"
+
+/*
+ÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜ
+±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±
+±±ÉÍÍÍÍÍÍÍÍÍÍÑÍÍÍÍÍÍÍÍÍÍËÍÍÍÍÍÍÍÑÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍËÍÍÍÍÍÍÑÍÍÍÍÍÍÍÍÍÍÍÍÍ»±±
+±±ºPrograma  ³TIMPNFE    ºAutor  ³Daniel .A. Braga    º Data ³  20/04/2010º±±
+±±ÌÍÍÍÍÍÍÍÍÍÍØÍÍÍÍÍÍÍÍÍÍÊÍÍÍÍÍÍÍÏÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÊÍÍÍÍÍÍÏÍÍÍÍÍÍÍÍÍÍÍÍÍ¹±±
+±±ºDesc.     ³ Classe de importação de NFE	1.0							  º±±
+±±º          ³                                                            º±±
+±±ÌÍÍÍÍÍÍÍÍÍÍØÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍ¹±±
+±±ºUso       ³ AP                                                         º±±
+±±ÈÍÍÍÍÍÍÍÍÍÍÏÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍ¼±±
+±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±
+ßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßß
+*/
+User Function __TImpNfe;Return
+	
+Class TImpNfe
+	
+	Data CNPJ		as String
+	Data RAZAO		as String
+	Data Dlg        as Object
+	Data GetFil     as Object
+	Data Filex 		as String
+	Data Titulo 	as String
+	Data Titulo2 	as String
+	Data Extensao 	as String
+	Data Extensao2 	as String
+	Data Nfe		as Object
+	Data Emitente  	as Object
+	Data Ident      as Object
+	Data Det        as Object
+	Data Dest       as Object
+	Data InfAdic    as Object
+	Data Cobr    	as Object
+	Data Total    	as Object
+	Data ChvNfe     as Object
+	Data lLicense	as Boolean
+	Data cPedCom	as String
+	Data cProd		as String
+	Data cUmFor     as String
+	Data cFor		as String
+	Data cLojFor	as String
+	Data cCli		as String
+	Data cLojCli	as String
+	Data cPasta		as String
+	Data cTipoNF	as String
+	Data cVersaoNF	as String
+	Data aArquivos
+	data cPerg 		as string
+	data lAuto
+	Data lSuccess 	as Boolean
+	Data aCab		//Thiago Meschiatti - FSW TOTVS IP Campinas - 29/10/2015
+	Data aItens		//Thiago Meschiatti - FSW TOTVS IP Campinas - 29/10/2015
+	Data lModeSimula //Thiago Meschiatti - FSW TOTVS IP Campinas - 29/10/2015
+	
+	method new(cDirOri, cArqXML, lModeSimula) CONSTRUCTOR
+	method execute()
+	method chkFile()
+	method loadObject()
+	method chkNFELayout()
+	method chkCTELayOut()
+	method loadInfo()
+	method view2(aCF,aitens,aTotal,aDup)
+	method ConvDate(cData)
+	method putNfe(aCF)
+	method changeOP()
+	method license()
+	method VerSB1()
+	method getItemPC(cNumPC, cProduto)
+	method getLocalItemPC(cNumPC, cItem, cProduto)
+	method showLog(aLog, cNumNFE, cSerNfe)
+	method VerSC7(cNum,cItem,cProd)
+	method FillCodPro(oMSNewGe1,aHeaderIt)
+	method GetPedidos(cCodFor,cLojFor,oMSNewGe1)
+	method ClearPC(oMSNewGe1)
+	method getDataRpo(cFunc)
+	method isProdutLote(cCodProd)
+	
+	method setEmitente(oEmitente)
+	method getEmitente()
+	
+	method ChkForCli(cCnpj,lFor)
+	
+	method chkPergs()
+	
+	method setIdent(oIdent)
+	method getIdent()
+	
+	method setDet(oDet)
+	method getDet()
+	
+	method setCNPJ(cCnpj)
+	method getCNPJ()
+	
+	method setProd(cCnpj)
+	method getProd()
+	
+	method setUmFor(cUm)
+	method getUmFor()
+	
+	method setRazao(cRazao)
+	method getRazao()
+	
+	method setTitulo(cTitulo)
+	method getTitulo()
+	
+	method setExtensao(cExtensao)
+	method getExtensao()
+	
+	method setDlg(oDlg)
+	method getDlg()
+	
+	method setFile(cFilex)
+	method getFile()
+	
+	method setNfe(oNfe)
+	method getNfe()
+	
+	method setDest(oDest)
+	method getDest()
+	
+	method setInfAdic(oInfAdic)
+	method getInfAdic()
+	
+	method setCobr(oCobr)
+	method getCobr()
+	
+	method setTotal(oTotal)
+	method getTotal()
+	
+	method setlLicens(lLicense)
+	method getlLicens()
+	
+	method setChvNfe(oChvNfe)
+	method getChvNfe()
+	
+	method setPedCom(cPedCom)
+	Method getPedCom()
+	
+	method setCodFor(cFor)
+	method getCodFor()
+	
+	method setLojFor(cLojFor)
+	method getLojFor()
+	
+	method setRazFor(cRazFor)
+	method getRazFor()
+	
+	method setCodCli(cCli)
+	method getCodCli()
+	
+	method setLojCli(cLojCli)
+	method getLojCli()
+	
+	method setRazCli(cRazCli)
+	method getRazCli()
+	
+	method setTipoNf(cTipoNF)
+	method getTipoNf()
+	
+	method setVersaoNf(cVersaoNF)
+	method getVersaoNf()
+	
+	method setSuccess(lSuccess)
+	method getSuccess()
+	
+	method setCab(aCab) //Thiago Meschiatti - FSW TOTVS IP Campinas - 29/10/2015
+	method getCab() //Thiago Meschiatti - FSW TOTVS IP Campinas - 03/11/2015
+	
+	method setItens(aItens) //Thiago Meschiatti - FSW TOTVS IP Campinas - 29/10/2015
+	method getItens() //Thiago Meschiatti - FSW TOTVS IP Campinas - 03/11/2015
+	
+	method setModeSimula(lModeSimula) //Thiago Meschiatti - FSW TOTVS IP Campinas - 29/10/2015
+	method getModeSimula()
+	
+EndClass
+
+method new(cDirOri, cArqXML, lModeSimula) Class TImpNfe
+	
+	Local nPosFil							:= 0
+	Local oIPLicense						:= nil
+	Local nSequenceArtifact					:= 0
+	Local cCodeArtifact						:= IMPORTADOR_DE_XML_CODE
+	Local cExtensao							:= ""
+	Local cNameArtifact						:= ""
+	Local lOnlyTestCompany					:= .f.
+	Local lNoCheckLicenseInTestCompany		:= .t.
+	Local cMsg								:= ""
+	Local cMsgError							:= ""
+	Local lForceLicenseFile					:= .f.
+	Local lRet								:= .f.	
+	
+	Local	bExecute	:=	{|| ::Execute()}
+	
+	private oImpNFeAux	:= NIL
+	private cFiltArq	:= "*.xml"
+	
+	DEFAULT cArqXML 	:= ""
+	default lModeSimula := .f. //Thiago Meschiatti - FSW TOTVS IP Campinas - 29/10/2015
+	
+	if type("aLogAuto") == "U"
+		aLogAuto := {}
+	endif
+	
+	::lAuto			:= GetRemoteType() == -1 //isBlind()	
+	
+	//Define os dados do Licenciamento internamente na classe IpLicense, buscando o licenciamento do cliente internamente ou em arquivo xml fornecido
+	If ExistBlock("IPLicense",,LFORCES3)
+		oIPLicense 	:= IPLicense():newIPLicense()
+		oIPLicense:setLimitCheck(0)
+		If oIPLicense:setInternalLicense( nSequenceArtifact , cCodeArtifact , cNameArtifact, lOnlyTestCompany, lNoCheckLicenseInTestCompany)
+			If oIPLicense:checkLicense(@cMsgError,lForceLicenseFile)
+				lRet := .T.
+				If !( oIPLicense:isAlreadyChecked() )
+					cMsg := "Uso Autorizado para o Artefato '" + oIPLicense:getCodeArtifact() + " - " + oIPLicense:getNameArtifact() + "' - CNPJ: " + oIPLicense:getCNPJCompany()
+				Endif
+			Else
+				cMsg := "Uso Não Autorizado para o Artefato '" + oIPLicense:getCodeArtifact() + " - " + oIPLicense:getNameArtifact() + "' - CNPJ: " + oIPLicense:getCNPJCompany() + " - Motivo: " + cMsgError
+			Endif
+		Else
+			cMsg := "Não Localizado o Artefato a ser Licenciado."
+		Endif
+	Else
+		cMsg := "Objeto de Licenciamento da TOTVS IP não encontrado."
+	Endif
+	
+	If !lRet
+		::setSuccess(.f.)
+		cMsg += " A conexão será encerrada."
+		If IsBlind() .Or. ::lAuto
+			aadd(aLogAuto, cMsg)
+		Else
+			MsgStop(cMsg,"TOTVS IP")
+			u_IPLicenseView(oIPLicense)
+		Endif
+		return
+	Else
+		If !Empty(cMsg)
+			aadd(aLogAuto, cMsg)
+		Endif
+	Endif
+	
+	::setCab({})					//Thiago Meschiatti - FSW TOTVS IP Campinas - 29/10/2015
+	::setItens({})					//Thiago Meschiatti - FSW TOTVS IP Campinas - 29/10/2015
+	::setModeSimula(lModeSimula)  //Thiago Meschiatti - FSW TOTVS IP Campinas - 29/10/2015
+	
+	::Filex 		:= Space(100)
+	::Titulo 		:= "Selecione o arquivo"
+	::Titulo2 		:= "Selecione uma pasta"
+	::Extensao 		:= "Arquivos XML | *.xml"
+	::Extensao2 	:= "Pasta com arquivos XML | *.xml"
+	::cPedCom		:= Space(TamSx3("C7_NUM")[1])
+	::cPerg			:= "TIMPNFE"
+	::setSuccess(.f.)
+	::chkPergs()
+	
+	// If abaixo corresponde a chamada do importador XML atraves da rotina de Gestão de XML
+	// Nesse caso o controle de licença é feito pelo Gestão de XML
+	If !Empty(cArqXML)
+		::Filex := cDirOri + cArqXML
+		Processa(bExecute,"Importando Documento ...")
+	Else
+		cExtensao			:= ::Extensao
+		
+		// Ponto de entrada para que seja possível informar um filtro para o nome do arquivo.
+		// Caso seja utilizado, o botão "Por: Diretório", será desabilitado
+		if existBlock("IPExtensao",,LFORCES3)
+			cExtensao := execBlock("IPExtensao", .f., .f., cExtensao)
+			if !empty(cExtensao) .and. valType(cExtensao) == "C" .and. cExtensao != ::Extensao
+				::Extensao		:= cExtensao
+				
+				nPosFil		:= At("| ", cExtensao)
+				If nPosFil > 0
+					cFiltArq	:= SubStr( cExtensao , nPosFil + 2 , Len(cExtensao) )
+				EndIf
+			endIf
+		endIf
+		
+		SetKey(VK_F12, {|| Pergunte(::cPerg, .T.) })
+		
+		@ 200,001 TO 455,335 DIALOG ::Dlg TITLE "Importacao - NFe"
+		//@ 003,003 TO 125,168
+		
+		@ 010,015 SAY "Esta rotina ira Gerar Pre-Notas de Entrada a partir de um" PIXEL OF ::Dlg
+		@ 020,015 SAY "Arquivo ou Diretório de Nota Fiscal Eletronica selecionado." PIXEL OF ::Dlg
+		
+		@ 040,015 SAY "Arquivo/Diretório XML da NFe" PIXEL OF ::Dlg
+		@ 050,015 MSGET oGetFile VAR ::Filex SIZE 140,006 PIXEL OF ::Dlg
+		
+		@ 063,015 BUTTON "Por: Arquivo" 	SIZE 068,010						ACTION {|| ::Filex := cGetFile(::Extensao, ::Titulo,,  cDirOri,.t.,GETF_LOCALHARD + GETF_LOCALFLOPPY + GETF_NETWORKDRIVE )} PIXEL OF ::Dlg
+		@ 063,085 BUTTON "Por: Diretório"	SIZE 068,010						ACTION {|| ::Filex := cGetFile(::Extensao2,::Titulo2,1,cDirOri,.f.,GETF_RETDIRECTORY+ GETF_LOCALHARD+GETF_NETWORKDRIVE,.f.,.f.)} PIXEL OF ::Dlg
+		@ 110,080 BUTTON "Importar"			SIZE 035,012						ACTION Processa(bExecute, "Importando Documento ...")  PIXEL OF ::Dlg
+		@ 110,120 BUTTON "Sair"				SIZE 035,012						ACTION Close(::Dlg) PIXEL OF ::Dlg
+		
+		ACTIVATE DIALOG ::Dlg CENTERED
+		
+		SetKey(VK_F12, {||})
+		
+	Endif
+	
+	//Libera memoria apos o uso
+	oImpNFeAux	:= Nil
+	cFiltArq	:= Nil
+	
+return self
+//ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+//³ Executa a importação		                                            ³
+//ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+method execute() Class TImpNfe
+	Local aCF				:= {}
+	Local aChkLayout		:= {}
+	Local aLoadInfo			:= {}
+	Local aArquivos			:= {}
+	local nContador			:= 1
+	local j					:= 0
+	local lFolder			:= .F.
+	
+	Private sPasta			:= ""
+	Private sNomeArquivo	:= ""
+	Private cFornece		:= ""
+	Private cLoja			:= ""
+	Private cUF				:= ""
+	Private lFornece		:= .T.
+	
+	oImpNFeAux := self
+	
+	// verifica se o caminho selecionado é um folder ou um arquivo
+	if SUBSTR(::getFile(),len(::getFile()),1) == '\'
+		
+		//Filtra os arquivos do diretório
+		aArquivos	:= Directory( ::getFile() + cFiltArq ) // cFiltArq := "*.xml"
+		
+		nContador 	:= Len(aArquivos)
+		sPasta   	:= ::getFile()
+		lFolder		:= .T.
+	endif
+	
+	//Tratativa para quando não for localizado nenhum arquivo no diretório
+	If nContador == 0
+		if ::lAuto
+			FWLogMsg("WARN", , "BusinessObject", funName(), "", "01", "Não foram localizados arquivos [" + cFiltArq + "] no diretório [" + ::getFile() + "]", 0, 0, {})
+			aadd(aLogAuto, "A - Não foram localizados arquivos [" + cFiltArq + "] no diretório [" + ::getFile() + "]")
+		Else
+			Help("",1,"IMPXML","","A - Não foram localizados arquivos [" + cFiltArq + "] no diretório [" + ::getFile() + "]",4,1)
+		EndIf
+		Return
+	EndIf
+	
+	for j := 1 to nContador
+		If sPasta != ""
+			::setFile(sPasta+aArquivos[j][1])
+		endif
+		// sNomeArquivo Recebe o nome do arquivo para ser informado no alerta
+		sNomeArquivo := SUBSTR(::getFile(),(1+RAT("\",::getFile())),(len(::getFile()) - RAT(::getFile(),"\") ))
+		If !::chkFile()
+			if ::lAuto
+				FWLogMsg("WARN", , "BusinessObject", funName(), "", "01", "Arquivo: "+ sNomeArquivo+" nao encontrado", 0, 0, {})
+				aadd(aLogAuto, "A - Arquivo: "+ sNomeArquivo+" nao encontrado")
+			else
+				Help("",1,"IMPXML","","Arquivo: "+ sNomeArquivo+" nao encontrado",4,1)
+			endif
+			Return
+		else
+			::loadObject()
+			aChkLayout := ::chkNFeLayout()
+			If !aChkLayOut[2]
+				aChkLayOut:= ::ChkCTELayOut()
+			Endif
+			if !achkLayout[1]
+				if ::lAuto
+					FWLogMsg("WARN", , "BusinessObject", funName(), "", "01", "Arquivo XML("+ sNomeArquivo +") não foi carregado!!", 0, 0, {})
+					aadd(aLogAuto, "A - Arquivo XML("+ sNomeArquivo +") não foi carregado!!")
+				else
+					MsgBox("Arquivo XML("+ sNomeArquivo +") não foi carregado!!","","ALERT")
+				endif
+				Return()
+			elseif !achkLayout[2] //RONI SILVA 14/10/2021     !achkLayout[2]
+
+				if ::lAuto
+					FWLogMsg("WARN", , "BusinessObject", funName(), "", "01", "O Arquivo XML("+ sNomeArquivo +") possui NFe/CTe invalido!!", 0, 0, {})
+					aadd(aLogAuto, "A - O Arquivo XML("+ sNomeArquivo +") possui NFe/CTe invalido!!")
+				else
+					MsgBox("O Arquivo XML("+ sNomeArquivo +") possui NFe/CTe invalido!!","","ALERT")
+				endif
+				Return()
+			else
+				aLoadInfo :=  ::loadInfo()
+				if len(aloadInfo[2]) > 0
+					
+					aCF := ::view2(aloadInfo[1],aloadInfo[2],aloadInfo[3],aloadInfo[4])
+					IF aCF[1,1,1]=="E"
+						Return()
+					else
+						lLogImp := .f.
+						::putNfe(aCF)
+					EndIf
+					if !::lAuto
+						if lFolder
+							::setFile(sPasta)
+						endIf
+					endIf
+				else
+					if ::lAuto
+						FWLogMsg("ERROR", , "BusinessObject", funName(), "", "01", "Erro de importação do  arquivo!!", 0, 0, {})
+						aadd(aLogAuto, "E - Erro de importação do  arquivo!!")
+					else
+						MsgBox("Não foi possível visualizar a nota!!","","ALERT")
+					endif
+					
+					if !::lAuto
+						if lFolder
+							::setFile(sPasta)
+						endIf
+					endIf
+					
+					Return()
+				endif
+			endif
+		
+			//Libera memoria apos o uso
+			::NFe := Nil
+			if FWIsInCallStack("u_ExecImpXML")
+				DelClassIntf()
+			endIf
+			
+		endif
+	next j
+	
+	//Libera memoria apos o uso
+	sPasta			:= Nil
+	sNomeArquivo	:= Nil
+	cFornece		:= Nil
+	cLoja			:= Nil
+	cUF				:= Nil
+	lFornece		:= Nil
+	
+return self
+
+//ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+//³ Consiste o Arquivo		                                            ³
+//ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+method chkFile() Class TImpNfe
+	
+	Local cFile := ::getFile()
+	Local lRet := .T.
+	
+	If !File(cFile)
+		lRet := .F.
+	EndIf
+	
+return lRet
+
+//ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+//³ Criacao do Objeto oNFe                                              ³
+//ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+method loadObject() Class TImpNfe
+	Local cFile 	:= ::getFile()
+	Local cError 	:= ""
+	Local cWarning 	:= ""
+	
+	If ":" $ cFile
+		
+		cTemp := cFile
+		
+		Do While "\" $ cTemp
+			cTemp := Substr(cTemp,2)
+		Enddo
+		
+		If !lIsDir("\XMLNFE")
+			MontaDir("\XMLNFE")
+		Endif
+		
+		cArqDest    :=	"\XMLNFE\" + cTemp
+		
+		__CopyFile( cFile , cArqDest )
+		
+		if	File( cArqDest )
+			//Copy File &( cFile ) to &( cArqDest )
+			cFile := cArqDest
+		endif
+		
+	EndIf
+	
+	::NFe	:= XmlParserFile(cFile,"_",@cError,@cWarning)   //RONI SILVA 14/10/2021
+
+//RONI SILVA TESTE 	MsgBox("Falha ao gerar Objeto XML : " +cError+" / "+cWarning,"","ALERT")
+	
+return self
+
+
+//ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+//³ Verifica Layout  do XML para NFE                                    ³
+//ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+method chkNFELayout() Class TImpNfe
+	Local oNfe 		:= ::getNfe()
+	Local aRet		:= {}
+	local cVersao	:= ""
+	Private oNF2    	:=  oNfe
+	Private oDet2   	:=  Nil
+	Private oEmit2		:=  Nil
+	Private oCobr2		:=  Nil
+	
+	aadd(aRet,.F.)
+	aadd(aRet,.F.)
+	If ValType(oNfe) <> Nil
+		
+		aRet[1] := .T.
+		Begin Sequence
+			
+			if ExistBlock("IPNFEVLXML",,LFORCES3)
+				if !u_IpNfeVlXml(oNfe)
+					break
+				endIf
+			endIf
+			
+			If type("oNF2:_NFePROC:_Nfe:_InfNfe:_Emit") == "O"
+				cVersao			:= oNfe:_NFeProc:_Nfe:_InfNfe:_VERSAO:TEXT
+				::ChvNfe        := oNFe:_NFePROC:_Nfe:_InfNfe:_ID
+				::Emitente  	:= oNFe:_NFePROC:_Nfe:_InfNfe:_Emit
+				oEmit2			:= ::Emitente
+				::Total         := oNFe:_NFePROC:_Nfe:_InfNfe:_Total
+				::Dest	        := oNFe:_NFePROC:_Nfe:_InfNfe:_Dest
+				::InfAdic       := IIF(type("oNF2:_NFePROC:_Nfe:_InfNfe:_InfAdic")=="O",oNFe:_NFePROC:_Nfe:_InfNfe:_InfAdic,NIL)
+				::Ident     	:= oNFe:_NFePROC:_Nfe:_InfNfe:_IDE
+				::Cobr     		:= IIF(type("oNF2:_NFePROC:_Nfe:_InfNfe:_Cobr")=="O",oNFe:_NFePROC:_Nfe:_InfNfe:_Cobr,NIL)
+				if ::Cobr !=nil
+					oCobr2 := ::Cobr
+					If Type("oCobr2:_DUP")<>"U"
+						::Cobr := IIF( TYPE("oCobr2:_DUP") == "A",::Cobr:_DUP,{::Cobr:_DUP})
+					Else
+						::Cobr := Nil
+					EndIf
+				endif
+				::Det       	:= oNFe:_NFePROC:_Nfe:_InfNfe:_Det
+				oDet2			:= ::Det
+				::Det			:= IIF( TYPE("ODET2") == "A",::Det,{::Det})
+				::CNPJ 			:= ::Emitente:_CNPJ:Text
+				If Type("oEmit2:_XNOME") == "O"
+					::RAZAO	:= ::Emitente:_XNOME:Text
+					aRet[2] := .T.
+				Else
+					::RAZAO := ::Emitente:_NOME:Text
+					aRet[2] := .T.
+				EndIF
+			elseIf type("oNF2:_InfNfe:_Emit") == "O"
+				cVersao			:= oNfe:_InfNfe:_VERSAO:TEXT
+				::ChvNfe        := oNFe:_InfNfe:_ID
+				::Emitente  	:= oNFe:_InfNfe:_Emit
+				::Total         := oNFe:_InfNfe:_Total
+				oEmit2			:= ::Emitente
+				::Dest	        := oNFe:_InfNfe:_Dest
+				::InfAdic       := IIF(type("oNF2:_InfNfe:_InfAdic")=="O",oNFe:_InfNfe:_InfAdic,NIL)
+				::Cobr     		:= IIF(type("oNF2:_InfNfe:_Cobr")=="O",oNFe:_InfNfe:_Cobr,NIL)
+				if ::Cobr !=nil
+					oCobr2 := ::Cobr
+					If Type("oCobr2:_DUP")<>"U"
+						::Cobr := IIF( TYPE("oCobr2:_DUP") == "A",::Cobr,{::Cobr})
+					Else
+						::Cobr := Nil
+					EndIf
+				endif
+				::Ident     	:= oNFe:_InfNfe:_IDE
+				::Det       	:= oNFe:_InfNfe:_Det
+				oDet2			:= ::Det
+				::Det			:= IIF( TYPE("ODET") == "A",::Det,{::Det})
+				::CNPJ 			:= ::Emitente:_CNPJ:Text
+				If type("oEmit2:_XNOME") == "O"
+					cRAZAO 		:= oEmitente:_XNOME:Text
+					aRet[2] 	:= .T.
+				Else
+					cRAZAO 		:= oEmitente:_NOME:Text
+					aRet[2]		:= .T.
+				EndIF
+			elseif type("oNF2:_ENVINFE:_Nfe:_InfNfe:_Emit") == "O"
+				cVersao			:= oNFe:_ENVINFE:_Nfe:_InfNfe:_VERSAO:TEXT
+				::ChvNfe        := oNFe:_ENVINFE:_Nfe:_InfNfe:_ID
+				::Emitente  	:= oNFe:_ENVINFE:_Nfe:_InfNfe:_Emit
+				oEmit2			:= ::Emitente
+				::Total         := oNFe:_ENVINFE:_Nfe:_InfNfe:_Total
+				::Dest	        := oNFe:_ENVINFE:_Nfe:_InfNfe:_Dest
+				::InfAdic       := IIF(type("oNF2:_ENVINFE:_Nfe:_InfNfe:_InfAdic")=="O",oNFe:_ENVINFE:_Nfe:_InfNfe:_InfAdic,NIL)
+				::Ident     	:= oNFe:_ENVINFE:_Nfe:_InfNfe:_IDE
+				::Cobr     		:= IIF(type("oNF2:_ENVINFE:_Nfe:_InfNfe:_Cobr")=="O",oNFe:_ENVINFE:_Nfe:_InfNfe:_Cobr,NIL)
+				if ::Cobr !=nil
+					oCobr2 := ::Cobr
+					If Type("oCobr2:_DUP")<>"U"
+						::Cobr := IIF( TYPE("oCobr2:_DUP") == "A",::Cobr:_DUP,{::Cobr:_DUP})
+					Else
+						::Cobr := Nil
+					EndIf
+				endif
+				::Det       	:= oNFe:_ENVINFE:_Nfe:_InfNfe:_Det
+				oDet2			:= ::Det
+				::Det			:= IIF( TYPE("ODET2") == "A",::Det,{::Det})
+				::CNPJ 			:= ::Emitente:_CNPJ:Text
+				If Type("oEmit2:_XNOME") == "O"
+					::RAZAO	:= ::Emitente:_XNOME:Text
+					aRet[2] := .T.
+				Else
+					::RAZAO := ::Emitente:_NOME:Text
+					aRet[2] := .T.
+				EndIF
+			ElseIf type("oNF2:_Nfe:_InfNfe:_Emit") == "O"
+				cVersao			:= oNfe:_NFE:_InfNfe:_VERSAO:TEXT
+				::ChvNfe        := oNFe:_Nfe:_InfNfe:_ID
+				::Emitente  	:= oNFe:_Nfe:_InfNfe:_Emit
+				oEmit2			:= ::Emitente
+				::Total         := oNFe:_Nfe:_InfNfe:_Total
+				::Dest	        := oNFe:_Nfe:_InfNfe:_Dest
+				::InfAdic       := IIF(type("oNF2:_Nfe:_InfNfe:_InfAdic")=="O",oNFe:_Nfe:_InfNfe:_InfAdic,NIL)
+				::Ident     	:= oNFe:_Nfe:_InfNfe:_IDE
+				::Cobr     		:= IIF(type("oNF2:_Nfe:_InfNfe:_Cobr")=="O",oNFe:_Nfe:_InfNfe:_Cobr,NIL)
+				if ::Cobr !=nil
+					oCobr2 := ::Cobr
+					If Type("oCobr2:_DUP")<>"U"
+						::Cobr := IIF( TYPE("oCobr2:_DUP") == "A",::Cobr:_DUP,{::Cobr:_DUP})
+					Else
+						::Cobr := Nil
+					EndIf
+				endif
+				::Det       	:= oNFe:_Nfe:_InfNfe:_Det
+				oDet2			:= ::Det
+				::Det			:= IIF( TYPE("ODET2") == "A",::Det,{::Det})
+				::CNPJ 			:= ::Emitente:_CNPJ:Text
+				If Type("oEmit2:_XNOME") == "O"
+					::RAZAO	:= ::Emitente:_XNOME:Text
+					aRet[2] := .T.
+				Else
+					::RAZAO := ::Emitente:_NOME:Text
+					aRet[2] := .T.
+				EndIF
+			EndIF
+			::setVersaoNf(cVersao)
+		End Sequence
+	endif
+	
+	oNF2    :=  Nil
+	oDet2   :=  Nil
+	oEmit2  :=  Nil
+	oCobr2  :=  Nil
+	
+return aRet
+
+//ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+//³ Verifica Layout  do XML para CTE                                    ³
+//ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+method chkCTELayout() Class TImpNfe
+	Local oNfe 		:= ::getNfe()
+	Local aRet		:= {}
+	Private oNF2    	:=  oNfe
+	Private oEmit2		:=  Nil
+	
+	aadd(aRet,.F.)
+	aadd(aRet,.F.)
+	
+	If ValType(oNfe) <> Nil
+		
+		aRet[1] := .T.
+		Begin Sequence
+			
+			if ExistBlock("IPCTEVLXML",,LFORCES3)
+				if !u_IPCTEVLXML(oNfe)
+					break
+				endIf
+			endIf
+			
+			If type("oNF2:_CTEPROC:_CTE:_InfCTE:_Emit") == "O"
+				
+				::ChvNfe        := oNFe:_CTEPROC:_CTE:_InfCTE:_ID
+				::Emitente  	:= oNFe:_CTEPROC:_CTE:_InfCTE:_Emit
+				oEmit2			:= ::Emitente
+				::Total         := oNFe:_CTEPROC:_CTE:_InfCTE:_vPrest:_vTPrest
+				::Dest	        := oNFe:_CTEPROC:_CTE:_InfCTE:_Dest
+				::InfAdic       := IIF(type("oNF2:_CTEPROC:_CTE:_InfCTE:_InfAdic")=="O",oNFe:_CTEPROC:_CTE:_InfCTE:_InfAdic,NIL)
+				::Ident     	:= oNFe:_CTEPROC:_CTE:_InfCTE:_IDE
+				::CNPJ 			:= ::Emitente:_CNPJ:Text
+				::SetDet(Nil)
+				If Type("oEmit2:_XNOME") == "O"
+					::RAZAO	:= ::Emitente:_XNOME:Text
+					aRet[2] := .T.
+				Else
+					::RAZAO := ::Emitente:_NOME:Text
+					aRet[2] := .T.
+				EndIF
+			Endif
+			
+		End Sequence
+	endif
+	
+	//Libera memoria apos o uso
+	oNF2    :=  Nil
+	oEmit2  :=  Nil
+	
+return aRet
+
+//ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+//	Carrega informações na nota                                         ³
+//ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+method loadInfo() Class TImpNfe
+	Local cCF  		:= ""
+	Local aCF		:= {}
+	Local oDet 		:= ::getDet()
+	Local oEmitente := ::getEmitente()
+	Local oTotal    := ::getTotal()
+	Local oCobr	    := ::getCobr()
+	Local cProdDesc := ""
+	Local cCFOP     := ""
+	Local nQuant    := 0
+	Local nTotal    := 0
+	Local nVlrUnit  := 0
+	Local cProduto  := 0
+	Local aItem     := {}
+	Local aTotal    := {}
+	Local aDup		:= {}
+	Local aAux      := {}
+	Local cProdSB1	:= ""
+	Local cNCM		:= ""
+	Local cLoteCTL	:= CriaVar("D1_LOTECTL")
+	Local nDescItem := CriaVar("D1_DESC")
+	Local nFretItem := CriaVar("D1_VALFRE")
+	Local cPedCom   := ""
+	Local cItPedCom := ""
+	Local cMsg      := ""
+	Local xDup      := ""
+	Local xVenc     := ""
+	Local cCnpjAux  := ""
+	Local cCFOPBen	:= GetNewPar("ZZ_CFOPBEN", "")
+	Local cCFOPDev	:= GetNewPar("ZZ_CFOPDEV", "")
+	Local nI		:= 0
+	Local aDados	:= {}
+	Local nQtdItem	:= 1
+	Local cDataLtFab:= ""
+	Local cDataLtVal:= ""
+	Local cUm		:= ""
+	Local lIPNfeTagProd := ExistBlock("IPNFETAGPROD",,LFORCES3)
+	Local lIPNfeProduto := ExistBlock("IPNFEPRODUTO",,LFORCES3)
+	Local lIPNfeLote:= ExistBlock("IPNFELOTE",,LFORCES3) 
+	Local lIPNfeRasSku := ExistBlock("IPNFERASSKU",,LFORCES3)
+	Local lIPAddIte	:= ExistBlock("IPADDITE",,LFORCES3)
+	Local lCNPJValido := .t.
+	Local cCpoDtFabr:= AllTrim(GetNewPar("ZZ_CPODTFA", ""))
+	Local lIPNfeSetSB1 := ExistBlock("IPNFESETSB1",,LFORCES3) // PE usado para manipular informações do produto
+		
+	private oDest   := ::GetDest()
+	Private oXml	:= ::getNfe()
+	Private oEmit3 	:= oEmitente
+	Private oDetAux:= Nil
+	//Private lFornece:= .T.
+	Private lTeste  := GetNewPar("MV_ZZXMLT", .T.) //AMBIENTE DE TESTES
+	
+	If Upper(Type("oXml:_CTEPROC")) == "O"
+		cCnpjAux :=	 IIf(Type("oXml:_CTEPROC:_CTE:_INFCTE:_REM:_CNPJ") == "O", oXml:_CTEPROC:_CTE:_INFCTE:_REM:_CNPJ:TEXT , oXml:_CTEPROC:_CTE:_INFCTE:_REM:_CPF:TEXT )
+		cCnpjAux +=	 "|" + IIf(Type("oXml:_CTEPROC:_CTE:_INFCTE:_DEST:_CNPJ") == "O", oXml:_CTEPROC:_CTE:_INFCTE:_DEST:_CNPJ:TEXT, oXml:_CTEPROC:_CTE:_INFCTE:_DEST:_CPF:TEXT)
+	Else
+		if Upper(Type("oDest:_CNPJ")) == "O"
+			cCnpjAux := oDest:_CNPJ:TEXT
+		endIf
+	EndIf
+	
+	//Ponto de Entrada para troca de CNPJ de destinatário da NFe
+	//Julio Lisboa - FSW TOTVS IP Campinas - 19/08/2016
+	If ExistBlock("IPDESTNFE",,LFORCES3)
+		cCnpjAux	:= ExecBlock("IPDESTNFE",.F.,.F., { cCnpjAux } )
+	EndIf
+	
+	//Validação para não permitir importar arquivos que não sejam do CNPJ da filial corrente
+	//Em caso de CTe a validação deve ser feita no remetente e no destinatário
+	If !(AllTrim(SM0->M0_CGC) $ AllTrim(cCnpjAux)) .AND. !lTeste
+		lCNPJValido := .f.
+		/*
+		Ponto de entrada para validações adicionais do CNPJ do destinatário conforme necessidade.
+		*/
+		If ExistBlock("IPVLDCNPJ",,LFORCES3)
+			lCNPJValido	:= ExecBlock("IPVLDCNPJ",.F.,.F., { cCnpjAux } )
+			If ValType(lCNPJValido) != "L"
+				lCNPJValido := .f.
+			EndIf
+		EndIf
+		
+		If !lCNPJValido
+			if ::lAuto
+				FWLogMsg("WARN", , "BusinessObject", funName(), "", "01", "O CNPJ " + cCnpjAux + " é diferente do CNPJ da filial corrente: " + SM0->M0_CGC, 0, 0, {})
+				aadd(aLogAuto, "A - O CNPJ " + transform(cCnpjAux,PesqPict("SA1","A1_CGC") ) + " é diferente do CNPJ da filial corrente: " + transform(SM0->M0_CGC,PesqPict("SA1","A1_CGC") ))
+			else
+				cMsg := "O CNPJ " + transform(cCnpjAux,PesqPict("SA1","A1_CGC") )
+				cMsg += " é diferente do CNPJ da filial corrente: " + transform(SM0->M0_CGC,PesqPict("SA1","A1_CGC") )
+				MsgBox(cMsg,"","ALERT")
+			endif
+			Return ({"","","",""})
+		EndIf
+		
+	EndIf
+	
+	if ::lAuto
+		aadd(aLogAuto, "I - CNPJ Emissor: " + transform(::GetCNPJ(),PesqPict("SA1","A1_CGC") ))
+	endif
+	
+	SA2->(dbSetOrder(3))
+	If SA2->(dbSeek(xFilial("SA2")+::getCNPJ()))
+		aAux := AClone(::ChkForCli(::getCNPJ(),.T.))
+		If Len(aAux) > 0
+			cFornece := aAux[1]
+			cLoja	  := aAux[2]
+			cUf      := aAux[3]
+		EndIf
+		
+		If Empty(cFornece) .And. Empty(cLoja)
+			cFornece := SA2->A2_COD
+			cLoja	  := SA2->A2_LOJA
+			cUf      := SA2->A2_EST
+			::setRazao(AllTrim(SA2->A2_NOME))
+		EndIf
+		
+		::setCodFor(cFornece)
+		::setLojFor(cLoja)
+		
+		aadd(aCF,"F=Fornecedor")
+		lFornece := .T.
+	EndIf
+	SA1->(dbSetOrder(3))
+	If SA1->(dbSeek(xFilial("SA1")+::getCNPJ()))
+		cFornece := ""
+		cLoja    := ""
+		aAux := AClone(::ChkForCli(::getCNPJ(),.F.))
+		If Len(aAux) > 0
+			cFornece := aAux[1]
+			cLoja	  := aAux[2]
+			cUf      := aAux[3]
+		EndIf
+		
+		If Empty(cFornece) .And. Empty(cLoja)
+			cFornece := SA1->A1_COD
+			cLoja	  := SA1->A1_LOJA
+			cUf      := SA1->A1_EST
+			::setRazao(AllTrim(SA1->A1_NOME))
+		EndIf
+		
+		::setCodCli(cFornece)
+		::setLojCli(cLoja)
+		
+		if ::lAuto
+			if empty(aCF)
+				cCFOP := oDet[1]:_Prod:_CFOP:Text
+				if (cCFOP $ cCFOPBen) .or. (cCFOP $ cCFOPDev)
+					if (cCFOP $ cCFOPBen)
+						::setTipoNf("B")
+					else
+						::setTipoNf("D")
+					endif
+				endif
+			endif
+		endif
+		
+		aadd(aCF,"C=Cliente")
+		lFornece := .F.
+	EndIf
+	
+	If Len(aCF) == 0
+		if ::lAuto
+			FWLogMsg("WARN", , "BusinessObject", funName(), "", "01", "Nao existe Fornecedor/Cliente para o CNPJ: "+transform(::GetCNPJ(),PesqPict("SA1","A1_CGC") ), 0, 0, {})
+			aadd(aLogAuto, "A - Nao existe Fornecedor/Cliente para o CNPJ: " + transform(::GetCNPJ(),PesqPict("SA1","A1_CGC") ))
+		else
+			MsgBox("Nao existe Fornecedor/Cliente para o CNPJ:"+AllTrim(::getCNPJ()),"","ALERT")
+		endif
+		Return ({"","","",""})
+	ElseIf Len(aCF) == 2
+		/*****************************************************************
+		**** Valida Fornecedor e Cliente cadastrado com o mesmo CNPJ *****
+		*****************************************************************/
+		aCF := {}
+		if ::lAuto
+			cCFOP := oDet[1]:_Prod:_CFOP:Text
+			
+			if (cCFOP $ cCFOPBen) .or. (cCFOP $ cCFOPDev)
+				lFornece := .F.
+				aadd(aCF,"C=Cliente")
+				
+				cFornece := ::getCodCli()
+				cLoja	 := ::getLojCli()
+				::setRazao(AllTrim(Posicione("SA1",1,xFilial("SA1") + cFornece + cLoja,"A1_NOME")))
+				if (cCFOP $ cCFOPBen)
+					::setTipoNf("B")
+				else
+					::setTipoNf("D")
+				endif
+			else
+				lFornece := .T.
+				aadd(aCF,"F=Fornecedor")
+				
+				cFornece := ::getCodFor()
+				cLoja	 := ::getLojFor()
+				::setRazao(AllTrim(Posicione("SA2",1,xFilial("SA2") + cFornece + cLoja,"A2_NOME")))
+				::setTipoNf("N")
+			endif
+		else
+			If MsgYesNo("Existe Fornecedor e Cliente Cadastrado para o CNPJ:"+AllTrim(::getCNPJ())+". Para importar considerando nota de fornecedor clique em SIM, caso deseje considerar nota de cliente clique em NAO") //Thiago
+				lFornece := .T.
+				aadd(aCF,"F=Fornecedor")
+				
+				cFornece := ::getCodFor()
+				cLoja	 := ::getLojFor()
+				::setRazao(AllTrim(Posicione("SA2",1,xFilial("SA2") + cFornece + cLoja,"A2_NOME")))
+			Else
+				lFornece := .F.
+				aadd(aCF,"C=Cliente")
+				
+				cFornece := ::getCodCli()
+				cLoja	 := ::getLojCli()
+				::setRazao(AllTrim(Posicione("SA1",1,xFilial("SA1") + cFornece + cLoja,"A1_NOME")))
+			Endif
+		endif
+	EndIf
+	
+	/*****************************************************************
+	**** Se CTE executa codigo abaixo - Carlos Abreu - 05/08  ********
+	*****************************************************************/
+	If Valtype(oDet)=="U"
+		cProduto  := GetMV("ZZ_CTEPROD")
+		
+		if !SB1->( dbseek(xfilial("SB1")+cProduto) )
+			MSGALERT("Produto "+cProduto+ " não existe!")
+			Return ({"","","",""})
+		Endif
+		
+		cProdDesc := SB1->B1_DESC
+		cUm       := Transform(SB1->B1_UM,PesqPict("SB1","B1_UM"))
+		nQuant    := 1
+		nVlrUnit  := Val(oTotal:Text)
+		nTotal    := nVlrUnit
+		
+		/*
+		Ponto de entrada para tratar amarração do codigo de produto/serviço por fornecedor.
+		*/
+		IF ExistBlock("IPCTEPRODUTO",,LFORCES3)
+			aParam := {cProduto,cProdDesc}
+			aParam := ExecBlock("IPCTEPRODUTO",.F.,.F.,aParam)
+			If ( Len(aParam) >= 2 )
+				cProdSB1	:= aParam[1]
+				cProdDesc	:= aParam[2]
+				cProduto    := cProdSB1
+			EndIf
+		Endif
+		
+		aAdd(aDados,	StrZero(1,TamSX3("D1_ITEM")[1]) )
+		aAdd(aDados,	cProduto )
+		aAdd(aDados,	cProduto )
+		aAdd(aDados,	cProdDesc )
+		aAdd(aDados,	PADR(cUM,TamSx3("B1_UM")[1]) )
+		aAdd(aDados,	nQuant )
+		aAdd(aDados,	nVlrUnit )
+		aAdd(aDados,	nTotal )
+		aAdd(aDados,	cCFOP )
+		aAdd(aDados,	Space(TamSx3("D1_PEDIDO")[1]) )
+		aAdd(aDados,	Space(TamSx3("D1_ITEMPC")[1]) )
+		aAdd(aDados,	cNCM )
+		aAdd(aDados,	cLoteCTL )
+		
+		If lIPAddIte
+			aDados	:= ExecBlock( "IPADDITE" , .F. , .F. , { "CTE" , aDados , oDetAux , oDet } )
+		EndIf
+		
+		//Incrementa a Linha de Deletado
+		aAdd(aDados,	.F. )
+		aAdd(aItem, 	aDados)
+		aDados	:= {}
+		
+		/*****************************************************************
+		**** Se NFE executa codigo abaixo - Carlos Abreu - 05/08  ********
+		*****************************************************************/
+	Else
+		
+		For nI:=1 to Len(oDet)		
+			
+			cProduto := upper(alltrim(oDet[nI]:_Prod:_cProd:Text))
+			cProdSB1 := ::VerSB1(cFornece,cLoja,@cProduto,@cUm)			
+			
+			if lIPNfeSetSB1
+				aParam := {cFornece,cLoja,cProduto,oDet[nI],cProdSB1,cUm}
+				aParam := ExecBlock("IPNFESETSB1",.F.,.F.,aParam)
+				if ( Len(aParam) >= 2 )
+					cProdSB1 := aParam[1]
+					cUm		 := aParam[2]
+				endIf
+			endIf
+
+			if self:isProdutLote(cProdSB1)
+				nQtdRastro := getQtdRastro(oDet, nI)
+			else
+				nQtdRastro := 0
+			endif	
+				
+			if nQtdRastro > 0
+				for nJ := 1 to nQtdRastro
+					lRazao		 := .F.
+					// Consiste o Produto
+					
+					cProduto := upper(alltrim(oDet[nI]:_Prod:_cProd:Text)) // PADR(oDet[nI]:_Prod:_cProd:Text,TamSX3("B1_COD")[1])
+					
+					// PE para personalizar de qual TAG será obtido o código do produto incluído por Renato Castro em 26/02/13
+					IF lIPNfeTagProd
+						xRetPe := u_IPNFETAGPROD(oDet[nI],cFornece,cLoja)
+						if (ValType(xRetPe) == "C")
+							cProduto := xRetPe
+						endIf
+					EndIf
+					
+					If fTypeVar("oEmit3:_XNOME") == "O"
+						cProdDesc 	:= PADR(oDet[nI]:_Prod:_xProd:Text,35)
+					Else
+						cProdDesc 	:= PADR(oDet[nI]:_Prod:_Prod:Text,35)
+					EndIf
+					
+					cCFOP 		:= oDet[nI]:_Prod:_CFOP:Text
+					nTotal		:= Val(oDet[nI]:_Prod:_vProd:Text)
+					cNCM		:= oDet[nI]:_Prod:_NCM:Text
+					
+					::chkPergs()
+					
+					if MV_PAR02 == 1 // Tags de Comercialização
+						cUM			:= Transform(oDet[nI]:_Prod:_uCom:Text, PesqPict("SB1", "B1_UM"))
+						nQuant		:= Val(oDet[nI]:_Prod:_qCom:Text)
+						nVlrUnit    := Val(oDet[nI]:_Prod:_vUnCom:Text)
+					elseIf MV_PAR02 == 2 // Tags de Tributação
+						cUM			:= Transform(oDet[nI]:_Prod:_uTrib:Text, PesqPict("SB1", "B1_UM"))
+						nQuant		:= Val(oDet[nI]:_Prod:_qTrib:Text)
+						nVlrUnit    := Val(oDet[nI]:_Prod:_vUnTrib:Text)
+					endIf
+					
+					oDetAux := oDet[nI]:_Prod
+					If fTypeVar("oDetAux:_VDESC") == "O"
+						nDescItem   := Val(oDet[nI]:_Prod:_vDesc:Text)
+					EndIf
+					If fTypeVar("oDetAux:_VFRETE") == "O"
+						nFretItem   := Val(oDet[nI]:_Prod:_vFrete:Text)
+					EndIf
+					
+					::setProd(cProduto)
+					cProdSB1 := ::VerSB1(cFornece,cLoja,@cProduto,@cUm)
+					cProduto := ::getProd()
+					
+					//Procura Pedido de compra - Yves 01-10-2013
+					If fTypeVar("oDetAux:_xPed") == "O" .And. fTypeVar("oDetAux:_nItemPed") == "O"
+						cPedCom   := oDet[nI]:_Prod:_xPed:Text
+						cItPedCom := STRZERO(Val(oDet[nI]:_Prod:_nItemPed:Text),TamSx3("D1_ITEMPC")[1])
+						//Se não encontrar o item do pedido de compra, atribui vazio
+						If !::VerSC7(cPedCom,cItPedCom,cProdSB1)
+							cPedCom   := Space(TamSx3("D1_PEDIDO")[1])
+							cItPedCom := Space(TamSx3("D1_ITEMPC")[1])
+						EndIf
+					Else
+						cPedCom   := Space(TamSx3("D1_PEDIDO")[1])
+						cItPedCom := Space(TamSx3("D1_ITEMPC")[1])
+					EndIf
+					
+					//Verifica se considera a unidade de medida existente no cadastro Produto x Fornecedor
+					If GetNewPar("ZZ_UMFOR",.F.) .And. lFornece
+						cUm := IIF(!Empty(::getUmFor()),::getUmFor(),cUm)
+					EndIf
+					
+					// Chamada do ponto de entrada IPNFEPRODUTO
+					// Executado para cada item do XML, permitindo que seja alimentado o campo de
+					// Codigo do produto Protheus e sua descrição.
+					// Implementação feita dia 15/08/2012 - FSW IP Campinas
+					IF lIPNfeProduto
+						aParam := {cProduto,cProdDesc,cUm, cProdSB1}
+						aParam := ExecBlock("IPNFEPRODUTO",.F.,.F.,aParam)
+						
+						If ( Len(aParam) >= 2 )
+							cProdSB1	:= aParam[1]
+							cProdDesc	:= aParam[2]
+							If len(aParam) >= 3 .and. Valtype(aParam[3]) != "U"
+								cUm			:= aParam[3]
+							EndIf
+						EndIf
+					Endif
+					
+					// Chamada do ponto de entrada IPNFELOTE
+					// Executado para cada item do XML, permitindo que seja alimentado o campo Lote
+					// Implementação feita dia 31/07/2013 - FSW IP Campinas
+					If lIPNfeLote
+						cLoteCTL := ExecBlock("IPNFELOTE",.F.,.F.,{oEmitente,oDet[nI], nJ})
+						If Empty(cLoteCTL)
+							cLoteCTL := CriaVar("D1_LOTECTL")
+						EndIf
+					EndIf
+					
+					If fTypeVar("oDetAux:_RASTRO") == "O"
+						nQuant := val(oDetAux:_RASTRO:_QLOTE:text)
+						cDataLtFab	:= formatDate(oDetAux:_RASTRO:_DFAB:text)
+						cDataLtVal  := formatDate(oDetAux:_RASTRO:_DVAL:text)
+					ElseIf fTypeVar("oDetAux:_RASTRO") == "A"
+						nQuant := val(oDetAux:_RASTRO[nJ]:_QLOTE:text)
+						cDataLtFab := formatDate(oDetAux:_RASTRO[nJ]:_DFAB:text)
+						cDataLtVal := formatDate(oDetAux:_RASTRO[nJ]:_DVAL:text)
+					EndIf
+					
+					// Chamada do ponto de entrada IPNFERASSKU
+					// Executado para cada item do XML, permitindo que seja atribuida a quantidade, data de fabricação e data de validade de cada lote do SKU
+					// Implementação feita dia 11/09/2018 - FSW IP Campinas
+					If lIPNfeRasSku
+						aParam := ExecBlock("IPNFERASSKU",.F.,.F.,{oDet[nI], nJ})
+						If ( Len(aParam) >= 3 )
+							nQuant 		:= aParam[1]
+							cDataLtFab	:= aParam[2]
+							cDataLtVal	:= aParam[3]
+						EndIf
+					EndIf
+					
+					nTotal 		:= nQuant * nVlrUnit
+					aAdd(aDados,	StrZero(nQtdItem,TamSX3("D1_ITEM")[1]) )
+					aAdd(aDados,	cProduto )
+					aAdd(aDados,	cProdSB1 )
+					aAdd(aDados,	cProdDesc )
+					aAdd(aDados,	PADR(cUM,TamSx3("B1_UM")[1]) )
+					aAdd(aDados,	nQuant )
+					aAdd(aDados,	nVlrUnit )
+					aAdd(aDados,	nTotal )
+					aAdd(aDados,	cCFOP )
+					aAdd(aDados,	cPedCom )
+					aAdd(aDados,	cItPedCom )
+					aAdd(aDados,	cNCM )
+					aAdd(aDados,	cLoteCTL )
+					aAdd(aDados, 	CriaVar("D1_DTVALID", .F.) )
+					If !Empty(cCpoDtFabr)
+						aAdd(aDados, 	CriaVar(cCpoDtFabr, .F.) )
+					Else
+						aAdd(aDados, 	cTod("  /  /  ") )
+					EndIf
+					
+					nQtdItem ++
+					
+					If lIPAddIte
+						aDados	:= ExecBlock( "IPADDITE" , .F. , .F. , { "NFE" , aDados , oDetAux , oDet[nI] } )
+					EndIf
+					
+					//TRATAMENTO DA DATA DE VALIDADE E DATA DE FABRICAÇÃO QUANDO O XML POSSUI RASTRO
+					if self:isProdutLote(cProdSB1)
+						appendDtRastro(aDados, cDataLtVal, cDataLtFab)
+					endIf
+					
+					aAdd(aDados,	nDescItem )
+					aAdd(aDados,	nFretItem )
+					
+					//Incrementa a Linha de Deletado
+					aAdd(aDados,	.F. )
+					aAdd(aItem, 	aDados)
+					aDados	:= {}
+					
+					//AADD(aItem,{StrZero(nI,TamSX3("D1_ITEM")[1]),cProduto,cProdSB1,cProdDesc,PADR(cUM,TamSx3("B1_UM")[1]),nQuant,nVlrUnit/*Round(nTotal/nQuant,4)*/,nTotal,cCFOP,cPedCom,cItPedCom,cNCM,cLoteCTL,nDescItem,nFretItem,.F.})
+					
+				next nJ
+			else
+				lRazao:= .F.
+				// Consiste o Produto
+				
+				cProduto := upper(alltrim(oDet[nI]:_Prod:_cProd:Text)) // PADR(oDet[nI]:_Prod:_cProd:Text,TamSX3("B1_COD")[1])
+				
+				// PE para personalizar de qual TAG será obtido o código do produto incluído por Renato Castro em 26/02/13
+				IF lIPNfeTagProd
+					xRetPe := u_IPNFETAGPROD(oDet[nI],cFornece,cLoja)
+					if (ValType(xRetPe) == "C")
+						cProduto := xRetPe
+					endIf
+				EndIf
+				
+				If fTypeVar("oEmit3:_XNOME") == "O"
+					cProdDesc 	:= PADR(oDet[nI]:_Prod:_xProd:Text,35)
+				Else
+					cProdDesc 	:= PADR(oDet[nI]:_Prod:_Prod:Text,35)
+				EndIf
+				
+				cCFOP 		:= oDet[nI]:_Prod:_CFOP:Text
+				nTotal		:= Val(oDet[nI]:_Prod:_vProd:Text)
+				cNCM		:= oDet[nI]:_Prod:_NCM:Text
+				
+				::chkPergs()
+				
+				if MV_PAR02 == 1 // Tags de Comercialização
+					cUM			:= Transform(oDet[nI]:_Prod:_uCom:Text, PesqPict("SB1", "B1_UM"))
+					nQuant		:= Val(oDet[nI]:_Prod:_qCom:Text)
+					nVlrUnit    := Val(oDet[nI]:_Prod:_vUnCom:Text)
+				elseIf MV_PAR02 == 2 // Tags de Tributação
+					cUM			:= Transform(oDet[nI]:_Prod:_uTrib:Text, PesqPict("SB1", "B1_UM"))
+					nQuant		:= Val(oDet[nI]:_Prod:_qTrib:Text)
+					nVlrUnit    := Val(oDet[nI]:_Prod:_vUnTrib:Text)
+				endIf
+				
+				oDetAux := oDet[nI]:_Prod
+				If fTypeVar("oDetAux:_VDESC") == "O"
+					nDescItem   := Val(oDet[nI]:_Prod:_vDesc:Text)
+				EndIf
+				If fTypeVar("oDetAux:_VFRETE") == "O"
+					nFretItem   := Val(oDet[nI]:_Prod:_vFrete:Text)
+				EndIf
+				
+				::setProd(cProduto)
+				cProdSB1 := ::VerSB1(cFornece,cLoja,@cProduto,@cUm)
+				cProduto := ::getProd()
+				
+				//Procura Pedido de compra - Yves 01-10-2013
+				If fTypeVar("oDetAux:_xPed") == "O" .And. fTypeVar("oDetAux:_nItemPed") == "O"
+					cPedCom   := oDet[nI]:_Prod:_xPed:Text
+					cItPedCom := STRZERO(Val(oDet[nI]:_Prod:_nItemPed:Text),TamSx3("D1_ITEMPC")[1])
+					//Se não encontrar o item do pedido de compra, atribui vazio
+					If !::VerSC7(cPedCom,cItPedCom,cProdSB1)
+						cPedCom   := Space(TamSx3("D1_PEDIDO")[1])
+						cItPedCom := Space(TamSx3("D1_ITEMPC")[1])
+					EndIf
+				Else
+					cPedCom   := Space(TamSx3("D1_PEDIDO")[1])
+					cItPedCom := Space(TamSx3("D1_ITEMPC")[1])
+				EndIf
+				
+				//Verifica se considera a unidade de medida existente no cadastro Produto x Fornecedor
+				If GetNewPar("ZZ_UMFOR",.F.) .And. lFornece
+					cUm := IIF(!Empty(::getUmFor()),::getUmFor(),cUm)
+				EndIf
+				
+				// Chamada do ponto de entrada IPNFEPRODUTO
+				// Executado para cada item do XML, permitindo que seja alimentado o campo de
+				// Codigo do produto Protheus e sua descrição.
+				// Implementação feita dia 15/08/2012 - FSW IP Campinas
+				IF lIPNfeProduto
+					aParam := {cProduto,cProdDesc,cUm, cProdSB1}
+					aParam := ExecBlock("IPNFEPRODUTO",.F.,.F.,aParam)
+					
+					If ( Len(aParam) >= 2 )
+						cProdSB1	:= aParam[1]
+						cProdDesc	:= aParam[2]
+						If len(aParam) >= 3 .and. Valtype(aParam[3]) != "U"
+							cUm			:= aParam[3]
+						EndIf
+					EndIf
+				Endif
+				
+				// Chamada do ponto de entrada IPNFELOTE
+				// Executado para cada item do XML, permitindo que seja alimentado o campo Lote
+				// Implementação feita dia 31/07/2013 - FSW IP Campinas
+				If lIPNfeLote
+					cLoteCTL := ExecBlock("IPNFELOTE",.F.,.F.,{oEmitente,oDet[nI], nil })
+					If Empty(cLoteCTL)
+						cLoteCTL := CriaVar("D1_LOTECTL")
+					EndIf
+				EndIf
+				
+				aAdd(aDados,	StrZero(nI,TamSX3("D1_ITEM")[1]) )
+				aAdd(aDados,	cProduto )
+				aAdd(aDados,	cProdSB1 )
+				aAdd(aDados,	cProdDesc )
+				aAdd(aDados,	PADR(cUM,TamSx3("B1_UM")[1]) )
+				aAdd(aDados,	nQuant )
+				aAdd(aDados,	nVlrUnit )
+				aAdd(aDados,	nTotal )
+				aAdd(aDados,	cCFOP )
+				aAdd(aDados,	cPedCom )
+				aAdd(aDados,	cItPedCom )
+				aAdd(aDados,	cNCM )
+				aAdd(aDados,	cLoteCTL )
+				aAdd(aDados, 	CriaVar("D1_DTVALID", .F.) )
+				If !Empty(cCpoDtFabr)
+					aAdd(aDados, 	CriaVar(cCpoDtFabr, .F.) )
+				Else
+					aAdd(aDados, 	cTod("  /  /  ") )
+				EndIf
+				
+				If lIPAddIte
+					aDados	:= ExecBlock( "IPADDITE" , .F. , .F. , { "NFE" , aDados , oDetAux , oDet[nI] } )
+				EndIf
+				
+				aAdd(aDados,	nDescItem )
+				aAdd(aDados,	nFretItem )
+				
+				//Incrementa a Linha de Deletado
+				aAdd(aDados,	.F. )
+				aAdd(aItem, 	aDados)
+				aDados	:= {}
+				
+				//AADD(aItem,{StrZero(nI,TamSX3("D1_ITEM")[1]),cProduto,cProdSB1,cProdDesc,PADR(cUM,TamSx3("B1_UM")[1]),nQuant,nVlrUnit/*Round(nTotal/nQuant,4)*/,nTotal,cCFOP,cPedCom,cItPedCom,cNCM,cLoteCTL,nDescItem,nFretItem,.F.})
+				
+			endIf
+			
+		Next nI
+	Endif
+	// Pega a Informação de Total
+	If oTotal:RealName=="vTPrest"//CTE
+		aadd(aTotal,oTotal:Text)
+	Else  //NFE
+		aadd(aTotal,{oTotal:_ICMSTOT:_VBC:text,;
+			oTotal:_ICMSTOT:_VBCST:text,;
+			oTotal:_ICMSTOT:_VCOFINS:text,;
+			oTotal:_ICMSTOT:_VDESC:text,;
+			oTotal:_ICMSTOT:_VFRETE:text,;
+			oTotal:_ICMSTOT:_VICMS:text,;
+			IIF(Type('oTotal:_ICMSTOT:_VII:text') == "U","",oTotal:_ICMSTOT:_VII:text),;
+			oTotal:_ICMSTOT:_VIPI:text,;
+			oTotal:_ICMSTOT:_VNF:text,;
+			oTotal:_ICMSTOT:_VOUTRO:text,;
+			oTotal:_ICMSTOT:_VPIS:text,;
+			oTotal:_ICMSTOT:_VPROD:text,;
+			oTotal:_ICMSTOT:_VSEG:text,;
+			oTotal:_ICMSTOT:_VST:text,;
+			IIF(Type('oTotal:_IBSCBSTOT:_GCBS:_VCBS') == "U","",oTotal:_IBSCBSTOT:_GCBS:_VCBS:text),;
+			IIF(Type('oTotal:_IBSCBSTOT:_GIBS:_GIBSMUN') == "U","",oTotal:_IBSCBSTOT:_GIBS:_GIBSMUN:_VIBSMUN:text),;
+			IIF(Type('oTotal:_IBSCBSTOT:_GIBS:_VIBSUF') == "U","",oTotal:_IBSCBSTOT:_GIBS:_GIBSUF:_VIBSUF:text),;
+			IIF(Type('oTotal:_IBSCBSTOT:_GIBS:_VIBS') == "U","",oTotal:_IBSCBSTOT:_GIBS:_VIBS:text) })
+	Endif
+	//MODIFICADO AQUI GUSTAVO - VERIFICAR
+	
+	// Pega Informações das Duplicatas
+	if oCobr != Nil
+		ni:=0
+		for ni:= 1 to len(oCobr)
+			oAux := oCobr[ni]
+			xDup      := IIF( fTypeVar("oAux:_NDUP") == "O",oCobr[ni]:_NDUP:Text,"")
+			xVenc     := IIF( fTypeVar("oAux:_DVENC") == "O",::ConvDate(oCobr[ni]:_DVENC:Text),"")
+			
+			//aadd(aDup,{::ConvDate(oCobr[ni]:_DVENC:Text),oCobr[ni]:_NDUP:Text,oCobr[ni]:_VDUP:Text })
+			aadd(aDup,{xVenc,xDup,oCobr[ni]:_VDUP:Text })
+		next ni
+	else
+		aadd(aDup,{"","",""})
+	endif
+	
+	//Libera memoria apos o uso
+	oDest   := Nil
+	oXml	:= Nil
+	oEmit3 	:= Nil
+	oDetAux	:= Nil
+	lTeste  := Nil
+		
+return({aCF,aItem,aTotal,aDup})
+
+
+//ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+//³ Grava a Nota fiscal
+//ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+method putNfe(aCF) Class TImpNfe
+	
+	Local 	cNumNFE  		:= ""
+	Local 	cSerNfe  		:= ""
+	Local 	dEmissao 		:= Nil
+	Local 	oDet	   		:= ::getDet()
+	Local 	oIdent   		:= ::getIdent()
+	Local 	oChvNFE  		:= ::getChvNfe()
+	Local   oTotal			:= ::getTotal()
+	Local	oInfAdNf		:= ::getInfAdic()  //Thiago Meschiatti 10/10/2014
+	Local 	cProduto 		:= ""
+	Local 	aItens   		:= {}
+	Local 	lExiste  		:= .F.
+	Local 	nOldModulo		:= 5
+	Local 	aDet			:= aCf[2]
+	Local 	cNumPC        	:= ""
+	Local   cItemPc			:= ""
+	Local 	cPriUm			:= ""
+	Local 	cSegUm			:= ""
+	Local 	nPriQtd		:= 0
+	Local 	nPriVlr		:= 0
+	Local 	aLog		:= {}
+	Local 	cTipoLog 	:= GetNewPar("ZZ_INFTLOG","1") 		// 1-Via Mensagem, 2-Via Relatorio
+	Local 	cEspecie 	:= GetNewPar("MV_ZZESPEC","SPED") 	// Espécie do documento de entrada //Incluído por Renato Castro em 26/02/13
+	Local 	cValUM		:= GetNewPar("MV_ZZVALUM","S") 		// Valida unidade de medida
+	Local   cLoteCTL	:= ""
+	Local	cRotErro	:= ""
+	Local   aAux        := {} // Yves - 01/08/2013 - Array auxiliar para tratamento dos pontos de entrada IPNFECAB e IDNFEITEM
+	Local 	nCount		:= 0
+	Local	nI			:= 0
+	Local 	cLocal		:= ""
+	Local nIAux			:= 0
+	Local aDetAglutin	:= {}
+	Local lIPNfeGrv		:= ExistBlock("IPNFEGRV", .F.,LFORCES3)
+	Local lIPNfeVldItem	:= ExistBlock("IPNFEVLDITEM", .F.,LFORCES3)
+	Local lIPNfeItem	:= ExistBlock("IPNFEITEM", .F.,LFORCES3)
+	Local lIPNfe1aUM	:= ExistBlock("IPNFE1AUM", .F.,LFORCES3)
+	Local cFolderLog	:= GetNewPar("ZZ_INFLDIR","\logxmlnfe\")
+	Local cCpoDtFabr	:= AllTrim(GetNewPar("ZZ_CPODTFA", ""))
+	
+	Private	oDetAux		:= ::getDet()
+	Private aInfNFe		:= aCF	// Criado variavel do tipo private com todas as informacoes da NFe para ser utilizada no PE IPNFEFIM executado depois da inclusao da pre nota.
+	Private oIdent5     := oIdent
+	Private oNfe		:= ::getNfe()
+	
+	/*
+	If Type("oNfe:_NFEPROC:_NFE:_INFNFE:_VERSAO") != "U"
+		cVersaoNf := oNfe:_NFEPROC:_NFE:_INFNFE:_VERSAO:TEXT
+		::setVersaoNf(cVersaoNf)
+	else Type("oNfe:_NFE:_INFNFE:_VERSAO:TEXT") != "U"
+		
+	EndIf
+	*/
+	
+	If ExistBlock("IPNFEESP",,LFORCES3) // P.E para definir a espécie do documento
+		cEspecie := ExecBlock("IPNFEESP",.F.,.F.,cEspecie)
+	EndIf
+	
+	if ::lAuto
+		aadd(aLogAuto, "I - Iniciando inclusão Dados Protheus... ")
+	endif
+	
+	IF aCF[1,1,2]=="F"
+		SA2->(dbSetOrder(3))
+		IF SA2->(dbSeek(xFilial("SA2")+::getCNPJ()))
+			If Empty(cFornece)
+				cFornece 	:= SA2->A2_COD
+				cLoja	 	:= SA2->A2_LOJA
+				cUF		 	:= SA2->A2_EST
+			EndIf                                                                                                 
+		ELSE
+			if ::lAuto
+				FWLogMsg("WARN", , "BusinessObject", funName(), "", "01", "FORNECEDOR NAO ENCONTRADO - CNPJ: "+ ::getCNPJ(), 0, 0, {})
+				aadd(aLogAuto, "A - FORNECEDOR NAO ENCONTRADO - CNPJ: "+ ::getCNPJ())
+			else
+				If cTipoLog == "1"
+					ALERT("FORNECEDOR NAO ENCONTRADO")
+					RETURN()
+				Else
+					aadd(aLog, "FORNECEDOR NAO ENCONTRADO")
+				EndIf
+			endif
+		ENDIF
+	Else
+		SA1->(dbSetOrder(3))
+		IF SA1->(dbSeek(xFilial("SA1")+::getCNPJ()))
+			If Empty(cFornece)
+				cFornece 	:= SA1->A1_COD
+				cLoja	 	:= SA1->A1_LOJA
+				cUF		 	:= SA1->A1_EST
+			EndIf
+		ELSE
+			if ::lAuto
+				FWLogMsg("WARN", , "BusinessObject", funName(), "", "01", "CLIENTE NAO ENCONTRADO - CNPJ: "+ ::getCNPJ(), 0, 0, {})
+				aadd(aLogAuto, "A - CLIENTE NAO ENCONTRADO - CNPJ: "+ ::getCNPJ())
+			else
+				If cTipoLog == "1"
+					ALERT("CLIENTE NAO ENCONTRADO")
+					RETURN()
+				Else
+					aadd(aLog, "CLIENTE NAO ENCONTRADO")
+				EndIf
+			endif
+		ENDIF
+	EndIf
+	
+	//Tratameto da data de emissão para versão 2 e 3, como default versão 2.
+	If Type("oIdent5:_nNF")=="O"   //NFE
+		cNumNFE 	:= StrZero(Val(oIdent:_nNf:Text),TamSX3("F1_DOC")[1])
+		If Substr(::getVersaoNf(),1,1) == '3' .OR. Substr(::getVersaoNf(),1,1) == '4'
+			dEmissao    := CtoD(self :ConvDate(oIdent:_dHEmi:Text))
+		ElseIf Substr(::getVersaoNf(),1,1) == '2'
+			dEmissao    := CtoD(::ConvDate(oIdent:_dEmi:Text))
+		Else
+			dEmissao    := CtoD(::ConvDate(oIdent:_dEmi:Text))
+		EndIf
+	Else                                //CTE
+		cNumNFE 	:= StrZero(Val(oIdent:_nCT:Text),TamSX3("F1_DOC")[1])
+		dEmissao    := CtoD(::ConvDate(oIdent:_dHEmi:Text))
+		cEspecie    := "CTE"
+	Endif
+	cSerNFE 	:= PADR(oIdent:_Serie:Text,TamSX3("F1_SERIE")[1])
+	
+	if ::lAuto
+		aadd(aLogAuto, "I - Nota Fiscal : " + cNumNFE + "/" + cSerNfe )
+		aadd(aLogAuto, "I - Data Emissão: " + dtoc(dEmissao) )
+	endif
+	
+	SF1->(dbSetOrder(1))
+	If SF1->(dbSeek(xFilial("SF1")+cNumNFE+cSerNFE+cFornece+cLoja))
+		if ::lAuto
+			aadd(aLogAuto, "A - Documento "+Alltrim(cNumNFE)+"/"+Alltrim(cSerNFE)+" ja existente para o Fornecedor "+Alltrim(cFornece)+"/"+Alltrim(cLoja))
+		else
+			MsgBox("Documento "+Alltrim(cNumNFE)+"/"+Alltrim(cSerNFE)+" ja existente para o Fornecedor "+Alltrim(cFornece)+"/"+Alltrim(cLoja),"","ALERT")
+		endif
+		Return
+	EndIf
+	
+	if ::lAuto .and. !empty(::getTipoNf())
+		aCF[1,1,1] := ::getTipoNf()
+	endif
+	
+	IF aCF[1,1,2] == "F"
+		SA2->(dbSetOrder(1))
+		SA2->(dbSeek(xFilial("SA2")+cFornece+cLoja))
+	Else
+		SA1->(dbSetOrder(1))
+		SA1->(dbSeek(xFilial("SA1")+cFornece+cLoja))
+	EndIf
+	
+	aCab 		:= {	{"F1_DOC"		,cNumNFE				,NIL},;
+		{"F1_SERIE"		,cSerNFE				,NIL},;
+		{"F1_FORNECE"	,cFornece   			,NIL},;
+		{"F1_LOJA"	    ,cLoja		 			,NIL},;
+		{"F1_EMISSAO"	,dEmissao				,NIL},;
+		{"F1_EST"		,cUF					,NIL},;
+		{"F1_TIPO"		,aCF[1,1,1]				,NIL},;
+		{"F1_DTDIGIT"	,dDataBase				,Nil},;
+		{"F1_ESPECIE"	,cEspecie				,NIL},; //Alterado por Renato Castro em 26/02/2013
+		{"F1_CHVNFE"	,SubStr(oChvNFE:TEXT,4)	,NIL},;
+		{"F1_RECBMTO"	,dDataBase				,Nil}}
+	
+	// Yves - 01/08/2013 - PE para complementar informações no array de cabeçalho na geração da pré-nota via execauto
+	IF ExistBlock("IPNFECAB", .F., LFORCES3)
+		aAux := {}
+		aAux := ExecBlock("IPNFECAB", .F., .T.,{oIdent,oDet,oTotal})
+		For nCount := 1 To Len(aAux)
+			AADD(aCab,aAux[nCount])
+		Next nCount
+	EndIf
+	
+	// Coleta os Dados dos Itens do Documento
+	
+	aglutDet(aDet, aDetAglutin)
+	
+	For nI:=1 to Len(aDet)
+		
+		// Consiste o Produto
+		cXMLUm 		:= PADR(aDet[nI,5],TamSX3("B1_UM")[1])
+		cProduto 	:= PADR(aDet[nI,3],TamSX3("B1_COD")[1])
+		lPriUm 		:=.T.
+		If cValUM == 'S'
+			lPriUm :=.F.
+		Endif
+		
+		dbSelectArea("SB1")
+		SB1->(dbSetOrder(1))
+		If !SB1->(dbSeek(xFilial("SB1")+cProduto))
+			// Chamada do ponto de entrada IPNFEGRV
+			// Executado para cada item que seja gerado a Nota fiscal de entrada ( Pré Nota ).
+			// Rotina que permitira que seja manuseado qualquer dado antes da rotina automatica.
+			// Implementação feita dia 15/08/2012 - FSW IP Campinas
+			IF lIPNfeGrv
+				aParam := {aDet,nI}
+				ExecBlock("IPNFEGRV",.F.,.F.,aParam)
+			Endif
+		Endif
+		
+		
+		If Empty(cProduto)
+			if ::lAuto
+				aadd(aLogAuto, "A - Para o Produto Fornecedor " + AllTrim(aDet[nI,2])+"-"+AllTrim(aDet[nI,4]) + " NÃO foi informado o Produto Protheus")
+				return
+			else
+				If cTipoLog == "1"
+					MsgBox("Para o Produto Fornecedor " + AllTrim(aDet[nI,2])+"-"+AllTrim(aDet[nI,4]) + " NÃO foi informado o Produto Protheus","ALERT")
+					Return
+				Else
+					aadd(aLog, "Para o Produto Fornecedor " + AllTrim(aDet[nI,2])+"-"+AllTrim(aDet[nI,4]) + " NÃO foi informado o Produto Protheus")
+				EndIf
+			endif
+		EndIf
+		
+		dbSelectArea("SB1")
+		SB1->(dbSetOrder(1))
+		if SB1->(dbSeek(xFilial("SB1")+cProduto))
+			if ::lAuto
+				aadd(aLogAuto, "I - Produto Fornecedor: " + AllTrim(aDet[nI,2])+"-"+AllTrim(aDet[nI,4]) + " ====  Produto Protheus: " + alltrim(cProduto) + " - " + alltrim(SB1->B1_DESC))
+			endif
+			if SB1->B1_UM == Upper(cXMLUM)
+				lPriUm 	:= .T.
+			elseif SB1->B1_SEGUM == Upper(cXMLUM)
+				lPriUm  := .F. //Ajuste Niemeyer - 06/10/2016 - Não estava gerando a Pré-Nota com Dados da Segunda Unidade de Medida convertida
+				cPriUm  := SB1->B1_UM
+				cSegUm 	:= SB1->B1_SEGUM
+				nPriQtd := iif(SB1->B1_TIPCONV == "M", aDet[ni,6] * SB1->B1_CONV,aDet[ni,6] / SB1->B1_CONV) 
+				nPriVlr	:= iif(SB1->B1_TIPCONV == "M", aDet[ni,7] / SB1->B1_CONV,aDet[ni,7] * SB1->B1_CONV)
+				
+				/*
+				Ponto de entrada para tratar o valor das variáveis nPriQtd e nPriVlr conforme necessidade.
+				*/
+				IF lIPNfe1aUM
+					aParam := {nPriQtd,nPriVlr,aDet[nI]}
+					aParam := ExecBlock("IPNFE1AUM",.F.,.F.,aParam)
+					If (ValType(aParam) == "A" .and. Len(aParam) >= 2 )
+						nPriQtd	:= aParam[1]
+						nPriVlr	:= aParam[2]
+					EndIf
+				Endif
+				
+				if SB1->B1_CONV == 0
+					if ::lAuto
+						aAdd(aLogAuto,"A - Produto com Fator de Conversão zerado :" + AllTrim(cProduto) + " Protheus:" + AllTrim(SB1->B1_UM) + "/" + AllTrim(SB1->B1_SEGUM) + " - XML:" + Upper(cXMLUM) )
+						return
+					else
+						if cTipoLog == "1"
+							MsgBox("Produto com Fator de Conversão zerado :" + AllTrim(cProduto) + CRLF + "Protheus:" + AllTrim(SB1->B1_UM) + "/" + AllTrim(SB1->B1_SEGUM) + " - XML:" + Upper(cXMLUM)  ,"","Alert")
+							return
+						else
+							aAdd(aLog,"Produto com Fator de Conversão zerado :" + AllTrim(cProduto) + " Protheus:" + AllTrim(SB1->B1_UM) + "/" + AllTrim(SB1->B1_SEGUM) + " - XML:" + Upper(cXMLUM) )
+						endif
+					endif
+				endif
+				
+			elseif cValUM == 'S' // se valida unidade de medida
+				if ::lAuto
+					aadd(aLogAuto, "A - Produto não consta unidade de medida válida :"+AllTrim(cProduto)+" Protheus:"+AllTrim(SB1->B1_UM)+"/"+AllTrim(SB1->B1_SEGUM)+" - XML:"+Upper(cXMLUM) )
+					Return
+				else
+					If cTipoLog == "1"
+						MsgBox("Produto não consta unidade de medida válida :"+AllTrim(cProduto)+CRLF+"Protheus:"+AllTrim(SB1->B1_UM)+"/"+AllTrim(SB1->B1_SEGUM)+" - XML:"+Upper(cXMLUM)  ,"","ALERT")
+						Return
+					Else
+						aadd(aLog, "Produto não consta unidade de medida válida :"+AllTrim(cProduto)+" Protheus:"+AllTrim(SB1->B1_UM)+"/"+AllTrim(SB1->B1_SEGUM)+" - XML:"+Upper(cXMLUM) )
+					EndIf
+				endif
+			endif
+		endIf
+		
+		if lPriUm
+			cUM			:= Transform(aDet[nI,5],PesqPict("SB1","B1_UM"))
+			nQuant		:= aDet[ni,6]
+			nVlrUnit    := aDet[ni,7]
+			nTotal		:= aDet[ni,8]
+			
+		else
+			cUM			:= Transform(cPriUm,PesqPict("SB1","B1_UM"))
+			nQuant		:= nPriQtd
+			nVlrUnit    := nPriVlr					//aDet[ni,7]
+			nTotal		:= Round(nPriQtd * nPriVlr,2)
+			
+			c2UM		:= aDet[nI,5]
+			n2Quant		:= aDet[ni,6]
+		endif
+		
+		cLoteCTL := aDet[ni,13]
+		
+		aItem 		:= {}
+		
+		AADD(aItem,{"D1_ITEM" ,StrZero(nI,TamSX3("D1_ITEM")[1])	,Nil})
+		AADD(aItem,{"D1_COD"  ,cProduto							,Nil})
+		
+		cNumPC := ""
+		cItemPc:= ""
+		If aCF[1,1,2]=="F" .AND. ( !Empty(::getPedCom()) .OR. !Empty(aDet[nI,10]) )
+			cNumPC := IF( !Empty(aDet[nI,10]), aDet[nI,10], ::getPedCom())
+			cItemPc:= IF(!Empty(aDet[nI,11]), aDet[nI,11], ::getItemPC(cNumPC, cProduto))			
+			AADD(aItem,{"D1_PEDIDO",cNumPC ,Nil})
+			AADD(aItem,{"D1_ITEMPC",cItemPc,Nil})
+			//Incluído por Carlos Niemeyer - 22/12/2016
+			//--Início
+			cLocal := ::getLocalItemPC(cNumPC, cItemPc, cProduto)
+			If !Empty(cLocal)
+				AADD(aItem,{"D1_LOCAL",cLocal,Nil})
+			Endif
+			//--Término
+		EndIf
+		
+
+		// INICIO - Se 2a UM, alimenta os campos D1_SEGUM e D1_QTSEGUM, caso contrário alimenta os campos D1_UM e D1_QUANT	
+		/*
+		AADD(aItem,{"D1_QUANT",nQuant							,Nil})
+		
+		//Ajuste Niemeyer - 06/10/2016 - Tratar o Erro de cValUM = 'N" de Produtos com 2UM, falhando a conversão da UM
+		If cValUM == 'S' .Or. !lPriUm
+			AADD(aItem,{"D1_UM"   ,Upper(cUM)   					,Nil})
+		Endif
+		*/
+
+		// Nova regra para tratamento da 1a UM ou da 2a UM
+		if lPriUm 
+			AADD(aItem,{"D1_QUANT",nQuant						,Nil})
+			AADD(aItem,{"D1_UM"   ,Upper(cUM)   				,Nil})
+		else
+			AADD(aItem,{"D1_SEGUM",c2UM							,Nil})
+			AADD(aItem,{"D1_QTSEGUM",n2Quant					,Nil})
+		endif
+		// FIM - Se 2a UM, alimenta os campos D1_SEGUM e D1_QTSEGUM, caso contrário alimenta os campos D1_UM e D1_QUANT
+
+		
+		//Ajuste Niemeyer - 24/08/2016 - Tratar o Erro na Geração de 2º Unidade de Medida - A140VZ, mesmo com tudo preenchido
+		AADD(aItem,{"D1_VUNIT",nVlrUnit							,Nil})
+		AADD(aItem,{"D1_TOTAL",nTotal							,Nil})		
+		
+		If !Empty(cLoteCTL) .And. SB1->B1_RASTRO = "L"
+				AADD(aItem,{"D1_LOTECTL",cLoteCTL					,Nil})
+			if (FWUnitBusiness() <> DHL_BUSINESSUNIT_DIS) .and. (FWUnitBusiness() <> DHL_BUSINESSUNIT_MUL) //Emerson Holanda 15/02/2021 - Tratamento para não preencher as datas do lote no array, pois o mesmo sera preenchido no ponto de entrada IPNFEITEM 
+				AADD(aItem,{"D1_DTVALID",cTod("  /  /  ")			,Nil})
+				If !Empty(cCpoDtFabr)
+					AADD(aItem,{cCpoDtFabr,cTod("  /  /  ")			,Nil})
+				EndIf
+			endIf
+		Else
+			AADD(aItem,{"D1_LOTECTL",Space(10)					,Nil})
+			AADD(aItem,{"D1_DTVALID",cTod("  /  /  ")			,Nil})
+			If !Empty(cCpoDtFabr)
+				AADD(aItem,{cCpoDtFabr,cTod("  /  /  ")			,Nil})
+			EndIf
+		EndIf
+		
+		// Ectore Cecato - 21/02/2014 - PE para validar as informações do item do XML x Pedido de Compra
+		If lIPNfeVldItem
+			aParam := {cNumNFE, cSerNFE, cFornece, cLoja, cNumPC, If(!Empty(aDet[nI,11]), aDet[nI,11], ::getItemPC(cNumPC, cProduto)), ;
+				nQuant, nVlrUnit, nTotal}
+			ExecBlock("IPNFEVLDITEM", .F., .T., aParam)
+		EndIf
+		
+		// Yves - 01/08/2013 - PE para complementar informações no array de itens na geração da pré-nota via execauto
+		IF lIPNfeItem
+			if fTypeVar("oDetAux") <> "U"
+				If	SB1->B1_RASTRO = "L"
+
+					_cForn := " " 
+					if type("ONFE:_NFEPROC:_NFE:_INFNFE:_EMIT:_XNOME") != "U"
+
+						_cForn := Upper(alltrim(ONFE:_NFEPROC:_NFE:_INFNFE:_EMIT:_XNOME:Text))
+
+					Endif
+		 
+		 			//iVan Oliveira - FSW TOTVS IP Campinas 04/07/2021 - Lote Leroy
+					If .T. // FWUnitBusiness() == DHL_BUSINESSUNIT_AGL .and. "LEROY" $ _cForn
+
+						If FWUnitBusiness() == DHL_BUSINESSUNIT_AGL .and. cFilAnt == AGL_LOTE_005
+							nIAux   := getIndDet(aDetAglutin, cProduto)
+							oDetAux := oDet[nIAux]
+						Else
+							oDetAux := oDet[nI]
+						EndIf
+					Else
+
+						nIAux   := getIndDet(aDetAglutin, cProduto)
+						oDetAux := oDet[nIAux]
+
+					Endif
+
+				Else
+					oDetAux := oDet[nI]
+				EndIf
+			else
+				oDetAux := nil
+			endif
+			aAux := {}
+			aAux := ExecBlock("IPNFEITEM", .F., .T.,{aDet[nI], oDetAux}) //Thiago Meschiatti
+			For nCount := 1 To Len(aAux)
+				AADD(aItem,aAux[nCount])
+			Next nCount
+		EndIf
+		
+		If	SB1->B1_RASTRO = "L"
+			if !getDtValFabrRastro(aItem, aDet[nI])
+				return
+			endIf
+		EndIf
+		
+		AADD(aItens,aItem)
+		
+	Next nI
+	
+	
+	// Apresenta as diveregencias encontradas caso foi informado no parametro ZZ_LOGIPNF
+	// para apresentar as divergencia via relatorio.
+	if (cTipoLog == "2" .AND. Len(aLog) > 0) .and. !(::lAuto)
+		::showLog(aLog, cNumNFE, cSerNfe)
+		Return
+	endif
+	
+	// Thiago Meschiatti - 31/10/2014 - PE para realização de alterações no array de item da rotina automatica
+	IF ExistBlock("IPNFEALTITEM", .F., LFORCES3)
+		FWLogMsg("INFO", , "BusinessObject", funName(), "", "01", "Entrou PE IPNFEALTITEM!!", 0, 0, {})
+		aItens := ExecBlock("IPNFEALTITEM", .F., .T.,{aItens,oInfAdNf})
+	endif
+	
+	//Ajuste Niemeyer - 29/07/2016
+	//Retirado devido a alterar o Valor Unitário conforme o Pedido de Compra, independente do Valor do XML - Precisar usar a Ordem Específica
+	//aItens := FWVetByDic( aItens , "SD1" , .T. )
+	
+	lMsErroAuto := .F.
+	
+	::setCab(aCab)		//Thiago Meschiatti - FSW TOTVS IP Campinas - 29/10/2015
+	::setItens(aItens)	//Thiago Meschiatti - FSW TOTVS IP Campinas - 29/10/2015
+	
+	nModulo  := 2
+	if (::getModeSimula()) //Thiago Meschiatti - FSW TOTVS IP Campinas - 29/10/2015
+		if ::lAuto
+			FWLogMsg("INFO", , "BusinessObject", funName(), "", "01", "Processo de Simulaçao Finalizado! Nenhum movimento foi realizado.", 0, 0, {})
+			aadd(aLogAuto, "I - Processo de Simulaçao Finalizado! Nenhum movimento foi realizado." )
+		else
+			MsgBox("Processo de Simulaçao Finalizado! Nenhum movimento foi realizado.","","INFO")
+		endif
+	else
+		
+		if ::lAuto
+			FWLogMsg("INFO", , "BusinessObject", funName(), "", "01", "Gerando Pre-Nota ["+Alltrim(cNumNFE)+"/"+Alltrim(cSerNFE)+"] Fornecedor/Cliente ["+Alltrim(cFornece)+"/"+Alltrim(cLoja)+"]", 0, 0, {})
+			MSExecAuto( { |x,y,z | MATA140(x,y,z) } , aCab , aItens , 3 )
+		else
+			MsgRun("Gerando Pre-Nota ["+Alltrim(cNumNFE)+"/"+Alltrim(cSerNFE)+"] Fornecedor/Cliente ["+Alltrim(cFornece)+"/"+Alltrim(cLoja)+"]",,{|| MSExecAuto( { |x,y,z | MATA140(x,y,z) } , aCab , aItens , 3 ) })
+		endif
+		
+		If lMsErroAuto
+			if ::lAuto
+				cRotErro := Mostraerro(cFolderLog)
+				FWLogMsg("ERROR", , "BusinessObject", funName(), "", "01", cRotErro, 0, 0, {})
+				aadd(aLogAuto, "E - " + cRotErro)
+			else
+				Mostraerro()
+			endif
+			DisarmTransaction()
+		Else
+			::setSuccess(.t.)
+			if ::lAuto
+				aadd(aLogAuto, "I - Documento "+Alltrim(cNumNFE)+"/"+Alltrim(cSerNFE)+" Importado com sucesso " )
+			else
+				MsgBox("Documento "+Alltrim(cNumNFE)+"/"+Alltrim(cSerNFE)+" Importado com sucesso ","","INFO")
+				conout("** TIMPNFE : DOCUMENTO IMPORTADO COM SUCESSO")
+			endif
+			
+			// Chamada do ponto de entrada IPNFEFIM
+			// Executado depois da geracao da pre nota de entrada.
+			conout("** TIMPNFE : ANTES ENTRAR PE IPNFEFIM")
+			IF ExistBlock("IPNFEFIM", .F., LFORCES3)	// Este terceiro parâmetro (.T.), força a Verificação e posteriormente execução inclusive no Série 3 - Waldir Baldin - 07/12/2012.
+				conout("** TIMPNFE : ENTROU EXISTBLOCK")
+				ExecBlock("IPNFEFIM", .F., .T.,{oInfAdNf}) //Thiago Meschiatti
+			EndIf
+		EndIf
+	endif
+	nModulo := nOldModulo
+	
+	conout("** TIMPNFE : FINALIZANDO A CLASSE TImpNfe")
+	
+	//Libera memoria apos o uso
+	oDetAux	:= Nil
+	aInfNFe	:= Nil
+	oIdent5 := Nil
+	oNfe	:= Nil
+		
+return self
+
+//ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+//³ Converte data			                                           ³
+//ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+method ConvDate(cData) Class TImpNfe
+	
+	Local cRet  := ""
+	Local dData	:= CtoD("  /  /  ")
+	
+	cData  := StrTran(cData,"-","")
+	dData  := Stod(cData)
+	cRet   := PadR(StrZero(Day(dData),2)+ "/" + StrZero(Month(dData),2)+ "/" + StrZero(Year(dData),4),15)
+	
+Return cRet
+
+//ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+//³ Getters e setters da classe                                         ³
+//ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+method setCNPJ(cCnpj) Class TImpNfe
+	::CNPJ := cCnpj
+return self
+
+method getCNPJ() Class TImpNfe
+return ::CNPJ
+
+method setProd(cProd) Class TImpNfe
+	::cProd := cProd
+return self
+
+method getProd() Class TImpNfe
+return ::cProd
+
+method setUmFor(cUm) Class TImpNfe
+	::cUmFor := cUm
+return Self
+
+method getUmFor() Class TImpNfe
+return ::cUmFor
+
+
+method setRazao(cRazao) Class TImpNfe
+	::Razao := cRazao
+	
+method getRazao() Class TImpNfe
+return ::Razao
+
+
+method setTitulo(cTitulo) Class TImpNfe
+	::Titulo := cTitulo
+return self
+
+method getTitulo() Class TImpNfe
+return ::Titulo
+
+method setExtensao(cExtensao) Class TImpNfe
+	::Extensao := cExtensao
+return self
+
+method getExtensao() Class TImpNfe
+return ::Extensao
+
+method setDlg(oDlg) Class TImpNfe
+	::Dlg := oDlg
+	
+method getDlg() Class TImpNfe
+return ::Dlg
+
+method setFile(cFilex) Class TImpNfe
+	::Filex := cFilex
+return self
+
+method getFile() Class TImpNfe
+return alltrim(::Filex)
+
+method setNfe(oNfe) Class TImpNfe
+	::Nfe := oNfe
+return self
+
+method getNfe() Class TImpNfe
+return ::Nfe
+
+method setEmitente(oEmitente) Class TImpNfe
+	::Emitente := oEmitente
+return Self
+
+method getEmitente() Class TImpNfe
+return ::Emitente
+
+method setIdent(oIdent) Class TImpNfe
+	::Ident := oIdent
+return self
+
+method getIdent() Class TImpNfe
+return ::Ident
+
+method setDet(oDet) Class TImpNfe
+	::Det := oDet
+return self
+
+method getDet() Class TImpNfe
+return ::Det
+
+method setDest(oDest) Class TImpNfe
+	::Dest := oDest
+return self
+
+method getDest() Class TImpNfe
+return ::Dest
+
+method setInfAdic(oInfAdic) Class TImpNfe
+	::InfAdic := oInfAdic
+return self
+
+method getInfAdic() Class TImpNfe
+return ::InfAdic
+
+method setCobr(oCobr) Class TImpNfe
+	::Cobr := oCobr
+return self
+
+method getCobr() Class TImpNfe
+return ::Cobr
+
+method setTotal(oTotal) Class TImpNfe
+	::Total := oTotal
+return self
+
+method getTotal() Class TImpNfe
+return ::total
+
+method setlLicens(lLicense) Class TImpNfe
+	::lLicense := lLicense
+return self
+
+method getlLicens() Class TImpNfe
+return ::lLicense
+
+method setChvNfe(oChvNfe) Class TImpNfe
+	::ChvNfe := oChvNfe
+return self
+
+method getChvNfe() Class TImpNfe
+return ::ChvNfe
+
+method setPedCom(cPedCom) Class TImpNfe
+	::cPedCom := cPedCom
+return self
+
+method getPedCom() Class TImpNfe
+return ::cPedCom
+
+method setCodFor(cFor) Class TImpNfe
+	::cFor := cFor
+Return Self
+
+method getCodFor() Class TImpNfe
+Return ::cFor
+
+method setLojFor(cLojFor) Class TImpNfe
+	::cLojFor := cLojFor
+Return Self
+
+method getLojFor() Class TImpNfe
+Return ::cLojFor
+
+method setCodCli(cCli) Class TImpNfe
+	::cCli := cCli
+Return Self
+
+method getCodCli() Class TImpNfe
+Return ::cCli
+
+method setLojCli(cLojCli) Class TImpNfe
+	::cLojCli := cLojCli
+Return Self
+
+method getLojCli() Class TImpNfe
+Return ::cLojCli
+
+method setTipoNf(cTipoNf) Class TImpNfe
+	::cTipoNF := cTipoNf
+Return Self
+
+method getTipoNf() Class TImpNfe
+Return ::cTipoNF
+
+method setVersaoNf(cVersaoNf) Class TImpNfe
+	::cVersaoNF := cVersaoNf
+Return Self
+
+method getVersaoNf() Class TImpNfe
+Return ::cVersaoNF
+
+method setSuccess(lSuccess) Class TImpNfe
+	::lSuccess := lSuccess
+Return Self
+
+method getSuccess() Class TImpNfe
+Return ::lSuccess
+
+method setCab(aCab) Class TImpNfe //Thiago Meschiatti - FSW TOTVS IP Campinas - 29/10/2015
+	::aCab	:= aClone(aCab)
+Return Self
+
+method getCab() Class TImpNfe //Thiago Meschiatti - FSW TOTVS IP Campinas - 29/10/2015
+Return ::aCab
+
+method setItens(aItens) Class TImpNfe //Thiago Meschiatti - FSW TOTVS IP Campinas - 29/10/2015
+	::aItens := aClone(aItens)
+Return Self
+
+method getItens() Class TImpNfe //Thiago Meschiatti - FSW TOTVS IP Campinas - 29/10/2015
+Return ::aItens
+
+method setModeSimula(lModeSimula) Class TImpNfe //Thiago Meschiatti - FSW TOTVS IP Campinas - 29/10/2015
+	::lModeSimula := lModeSimula
+Return Self
+
+method getModeSimula() Class TImpNfe //Thiago Meschiatti - FSW TOTVS IP Campinas - 29/10/2015
+Return ::lModeSimula
+
+/*ÄÄÄÄÄÄÄÄÄÄÄÄÄÁÄÄÄÄÄÄÄÄÁÄÄÄÄÄÄÁÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ±±
+±± Visualiza a nota a ser importada					                       ±±
+Ù±±ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÁÄÄÄÄÄÄÄÄÁÄÄÄÄÄÄÁÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ*/
+method view2(aCF,aitens,aTotal,aDup) Class TImpNfe
+	Local oNF2    	:=  nil
+	
+	Local oEmit 	:= ::GetEmitente()
+	Local oIdent	:= ::GetIdent()
+	Local oDest 	:= ::GetDest()
+	Local oInfAdic  := ::GetInfAdic()
+	Local oCobr  	:= ::GetCobr()
+	Local cMsg		:= "Informação não disponível"
+	Local oButton1
+	Local oButton2
+	Local oDestCNPJ
+	Local cDestCNPJ := ""//IIf(Type("oDest:_CNPJ") == "O", transform(oDest:_CNPJ:Text,PesqPict("SA1","A1_CGC")), transform(oDest:_CPF:Text,"@R 999.999.999-99" ))
+	Local oDestRazao
+	Local cDestRazao := ""
+	Local oEmiCNPJ
+	Local cEmiCNPJ := transform(::GetCNPJ(),PesqPict("SA1","A1_CGC") )
+	Local oEmiRazao
+	Local cEmiRazao := ::GetRazao()
+	Local oFolder1
+	Local oInfoAdic
+	Local cInfoAdic := ""
+	Local oInfoFisco
+	Local cInfoFisco :=  ""
+	Local oNFEmissao
+	Local cNFEmissao
+	Local oNFNatOper
+	Local cNFNatOper := AllTrim(oIdent:_NATOP:Text)
+	Local oNFNum
+	Local cNFNum
+	Local oNFSaida
+	Local cNFSaida := ""
+	Local oNFSer
+	Local cNFSer := AllTrim(oIdent:_Serie:Text)
+	Local oNFTipo
+	Local nNFTipo := "N"
+	Local oPedCom
+	Local oRodPainel
+	Local oSay1
+	Local oSay10
+	Local oSay11
+	Local oSay12
+	Local oSay13
+	Local oSay14
+	Local oSay15
+	Local oSay2
+	Local oSay3
+	Local oSay4
+	Local oSay5
+	Local oSay6
+	Local oSay7
+	Local oSay8
+	Local oSay9
+	Local oTipo
+	Local nTipo   := "F"
+	Local aVetor  := {}
+	Local aVetor2 := {}
+	Local aVetor3 := {}
+	Local aRet 	  := {}
+	Local aColsIt := {}
+	Local aHeaderIt := {}
+	Local oMSNewGe1 := nil
+	Local aButtons := {}
+	Local cCpoDtFabr:= AllTrim(GetNewPar("ZZ_CPODTFA", ""))
+	Static oDlg
+	
+	/*
+	Essas variáveis foram declaradas para fazer a validação usando o type
+	*/
+	Private oNfe		:= ::getNfe()
+	Private oEmit4 		:= oEmit
+	Private oIdent4		:= oIdent
+	Private oDest4 		:= oDest
+	Private oInfAdic4 	:= oInfAdic
+	Private oCobr4  	:= oCobr
+	Private bVldCodProtheus := {|| vldCodProtheus(@oMSNewGe1, aHeaderIt) }
+	Private bFillPro        := {|| ::FillCodPro(@oMSNewGe1,aHeaderIt)}
+	Private oDestAux := oDest
+	Private aCamposEdit := {"CodProt","un","lote","VldLote"} //Julio Lisboa - FSW TOTVS IP Campinas - 03/10/2016
+	Private oFont16n := TFont():New("Arial",9,12,.T.,.F.,5,.T.,5,.T.,.F.)
+	
+	/****************************************************************************/
+	If !Empty(cCpoDtFabr)
+		aAdd(aCamposEdit,"FabLote")
+	EndIf
+	
+	oNF2	:=  oNfe
+	
+	/*
+	If Type("oNfe:_NFEPROC:_NFE:_INFNFE:_VERSAO") != "U"
+		cVersaoNf := oNfe:_NFEPROC:_NFE:_INFNFE:_VERSAO:TEXT
+		::setVersaoNf(cVersaoNf)
+	EndIf
+	*/
+	cDestCNPJ   := IIf(Type("oDestAux:_CNPJ") == "O", transform(oDest:_CNPJ:Text,PesqPict("SA1","A1_CGC")), IIf(Type("oDestAux:_CPF") == "O", transform(oDest:_CPF:Text,"@R 999.999.999-99"),""))
+	cDestRazao 	:= IIF(Type("oDest4:_XNOME") == "O",oDest:_xNome:Text,oDest:_Nome:Text)
+	
+	//Thiago Meschiatti 10/08/15
+	if Upper(Type("oNfe:_CTEPROC")) != "O"
+		If Substr(::getVersaoNf(),1,1) == '3' .OR. Substr(::getVersaoNf(),1,1) == '4'
+			cNFSaida 	:= IIF(Type("oIdent4:_dhSaiEnt") == "O",::ConvDate(oIdent:_dhSaiEnt:Text),"")
+		else
+			cNFSaida 	:= IIF(Type("oIdent4:_DSaiEnt") == "O",::ConvDate(oIdent:_DSaiEnt:Text),"")
+		endif
+	endIf
+	
+	If Type("oIdent4:_DEmi")=="O"
+		cNFEmissao := ::ConvDate(oIdent:_DEmi:Text)
+	Else
+		cNfEmissao := ::ConvDate(oIdent:_DHEMI:Text)
+	Endif
+	cNFNum := StrZero(Val(If(Type("oIdent4:_nNF")=="O",oIdent:_nNF:Text,oIdent:_nCT:Text)),TamSx3("F2_DOC")[1])
+	If OINFADIC != Nil
+		if Type("oInfAdic4:_InfadFisco")=="O"
+			cInfoFisco := oInfAdic:_InfAdFisco:Text
+		else
+			cInfoFisco := cMsg
+		endif
+		
+		IF Type("oInfAdic4:_InfCpl")=="O"
+			cInfoAdic := oInfAdic:_InfCpl:Text
+		else
+			cInfoAdic := cMsg
+		endif
+	else
+		cInfoFisco := cMsg
+		cInfoAdic := cMsg
+	endif
+	
+	if !::lAuto
+		DEFINE MSDIALOG oDlg TITLE "Visualiza Nota Fiscal Eletrônica" FROM 000, 000  TO 600, 900 COLORS 0, 16777215 PIXEL STYLE DS_MODALFRAME
+		SetKey(VK_F6, {|| ::GetPedidos(cFornece,cLoja,oMSNewGe1) })
+		SetKey(VK_F7, {|| ::ClearPC(@oMSNewGe1)})
+		
+		@ 006, 277 SAY oSay4 PROMPT "Data Saída:" SIZE 034, 007 OF oDlg COLORS 0, 16777215 PIXEL
+		@ 034, 001 FOLDER oFolder1 SIZE 451, 235 OF oDlg ITEMS "Emitente","Destinatário","Titulos","Informações Adicionais" COLORS 0, 16777215 PIXEL
+		aColsIt := aClone(aItens)
+		
+		/*1*/Aadd(aHeaderIt, {"Item","Item","@!",TamSx3("D2_ITEM")[1],nil,nil,"û","C",nil,nil,nil,nil})
+		/*2*/Aadd(aHeaderIt, {"Cod. Produto","CodProd","@!",TamSx3("A5_CODPRF")[1],nil,nil,"û","C",nil,nil,nil,nil})
+		/*3*/Aadd(aHeaderIt, {"Cod. Protheus","CodProt","@!",TamSx3("D2_COD")[1],nil,"Eval(bVldCodProtheus)","û","C","SB1",nil,nil,nil})
+		/*4*/Aadd(aHeaderIt, {"Descriçao","Descr","@!",TamSx3("B1_DESC")[1],nil,nil,"û","C",nil,nil,nil,nil})
+		/*5*/Aadd(aHeaderIt, {"Unidade","un","@!",TamSx3("D2_UM")[1],nil,nil,"û","C","SAH",nil,nil,nil})
+		/*6*/Aadd(aHeaderIt, {"Quantidade","qtde",PesqPict("SD2","D2_QUANT"),TamSx3("D2_QUANT")[1],2,nil,"û","N",nil,nil,nil,nil})
+		/*7*/Aadd(aHeaderIt, {"Valor Unitário","vlr",PesqPict("SD2","D2_PRCVEN"),TamSx3("D2_PRCVEN")[1],2,nil,"û","N",nil,nil,nil,nil})
+		/*8*/Aadd(aHeaderIt, {"Total","vlr",PesqPict("SD2","D2_TOTAL"),TamSx3("D2_TOTAL")[1],2,nil,"û","N",nil,nil,nil,nil})
+		/*9*/Aadd(aHeaderIt, {"CFOP","cfop","@9",TamSx3("D2_CF")[1],nil,nil,"û","C",nil,nil,nil,nil})
+		/*10*/Aadd(aHeaderIt, {"Ped. Compra","NumPc","@999999",TamSx3("D1_PEDIDO")[1],nil,"Eval(bFillPro)","û","C",/*"SC7"*/,nil,nil,nil})
+		/*11*/Aadd(aHeaderIt, {"Item P.C.","ItemPc","@9999",TamSx3("D1_ITEMPC")[1],nil,"Eval(bFillPro)","û","C",nil,nil,nil,nil})
+		/*12*/Aadd(aHeaderIt, {"NCM","ncm","@9",TamSx3("B1_POSIPI")[1],nil,nil,"û","C",nil,nil,nil,nil})
+		/*13*/Aadd(aHeaderIt, {"Lote","lote","@!",TamSx3("D1_LOTECTL")[1],nil,nil,"û","C",nil,nil,nil,nil})
+		/*14*/Aadd(aHeaderIt, {"Vld. Lote","VldLote","",TamSx3("D1_DTVALID")[1],nil,nil,"û","D",nil,nil,nil,nil})
+		If !Empty(cCpoDtFabr)
+			/*15*/Aadd(aHeaderIt, {"Fab. Lote","FabLote","",TamSx3(cCpoDtFabr)[1],nil,nil,"û","D",nil,nil,nil,nil})
+		EndIf
+		
+		//Ponto de entrada para incluir cabeçalho
+		If ExistBlock("IPADDCAB",,LFORCES3)
+			aHeaderIt	:= ExecBlock( "IPADDCAB" , .F. , .F. , aHeaderIt )
+		EndIf
+		
+		oMSNewGe1 := MsNewGetDados():New( 043, 001, 152,447,GD_UPDATE, "AllwaysTrue", "AllwaysTrue", "", aCamposEdit ,, 999, "AllwaysTrue", "", "AllwaysTrue", oFolder1:aDialogs[1], aHeaderIt,@aColsIt)
+		//Comentado para que o Pedido de compra e o Item não possam ser preenchidos. Apenas via <F6>
+		//oMSNewGe1 := MsNewGetDados():New( 043, 000, 152,443,GD_UPDATE, "AllwaysTrue", "AllwaysTrue", "", {"CodProt","un","NumPc","ItemPc","lote"}/*aAlterFields*/,, 999, "AllwaysTrue", "", "AllwaysTrue", oFolder1:aDialogs[1], aHeaderIt,@aColsIt)
+		
+		If Len(aTotal[1])==18 //NFE //Alterado Aqui Gustavo
+			oWBro2       := TWBrowse():New(165, 001, 447, 50,,{"Base ","Base ST","Cofins","Desc.","Frete","ICMS","II","IPI","Vlr. Nota","Outros","PIS","Vlr. Produtos","Seguro","ST","CBS","IBS Municipal","IBS Estadual","IBS Total"},{25,60,60,60,60,60,60},oFolder1:aDialogs[1],,,,,{||},,,,,,,.F.,,.T.,,.F.,,,)
+			aVetor2 := aClone(aTotal)
+		Else  //CTE
+			oWBro2       := TWBrowse():New(165, 001, 447, 50,,{"Base ","Base ST","Cofins","Desc.","Frete","ICMS","II","IPI","Vlr. Nota","Outros","PIS","Vlr. Produtos","Seguro","ST","CBS","IBS Municipal","IBS Estadual","IBS Total"},{25,60,60,60,60,60,60},oFolder1:aDialogs[1],,,,,{||},,,,,,,.F.,,.T.,,.F.,,,)
+			aVetor2      := {{aTotal[1],"","","","","","","","","","","","","",""}}
+		Endif
+		oWBro2:SetArray(aVetor2)
+		oWBro2:bLine := {||{aVetor2[oWBro2:nAt,01],aVetor2[oWBro2:nAt,02],aVetor2[oWBro2:nAt,03],aVetor2[oWBro2:nAt,04],aVetor2[oWBro2:nAt,05],aVetor2[oWBro2:nAt,06],aVetor2[oWBro2:nAt,07],;
+			aVetor2[oWBro2:nAt,08],aVetor2[oWBro2:nAt,09],aVetor2[oWBro2:nAt,10],aVetor2[oWBro2:nAt,11],aVetor2[oWBro2:nAt,12],aVetor2[oWBro2:nAt,13],aVetor2[oWBro2:nAt,14],aVetor2[oWBro2:nAt,15],aVetor2[oWBro2:nAt,16],aVetor2[oWBro2:nAt,17],aVetor2[oWBro2:nAt,18]}}
+		
+		@ 154, 001 SAY oSay14 PROMPT "Total:" SIZE 025, 007 OF oFolder1:aDialogs[1] COLORS 0, 16777215 PIXEL
+		@ 005, 001 SAY oSay7 PROMPT "CNPJ:" SIZE 022, 007 OF oFolder1:aDialogs[1] COLORS 0, 16777215 PIXEL
+		@ 001, 037 MSGET oEmiCNPJ VAR cEmiCNPJ SIZE 123, 010  OF oFolder1:aDialogs[1] COLORS 0, 16777215 READONLY PIXEL
+		@ 017, 001 SAY oSay8 PROMPT "Razão Social:" SIZE 039, 007 OF oFolder1:aDialogs[1] COLORS 0, 16777215 PIXEL
+		@ 013, 037 MSGET oEmiRazao VAR cEmiRazao SIZE 177, 010 OF oFolder1:aDialogs[1] COLORS 0, 16777215 READONLY PIXEL
+		@ 009, 005 SAY oSay12 PROMPT "CNPJ/CPF:" SIZE 022, 007 OF oFolder1:aDialogs[2] COLORS 0, 16777215 PIXEL
+		@ 005, 041 MSGET oDestCNPJ VAR cDestCNPJ SIZE 123, 010 OF oFolder1:aDialogs[2] COLORS 0, 16777215  READONLY PIXEL
+		@ 017, 041 MSGET oDestRazao VAR cDestRazao SIZE 177, 010 OF oFolder1:aDialogs[2] COLORS 0, 16777215  READONLY PIXEL
+		@ 021, 005 SAY oSay13 PROMPT "Razão Social:" SIZE 034, 007 OF oFolder1:aDialogs[2] COLORS 0, 16777215 PIXEL
+		
+		// Adiciona Campos no Cabeçalho - 28/09/2016
+		If ExistBlock("IPCPOCAB",,LFORCES3)
+			ExecBlock("IPCPOCAB",.F.,.F., { @oFolder1 } )
+		EndIf
+	
+		oWBro3  := TWBrowse():New( 005, 003,447, 089,,{"Vencimento","Nr. Titulo","Valor"},{35,60,60,60,60,60,60},oFolder1:aDialogs[3],,,,,{||},,,,,,,.F.,,.T.,,.F.)	
+		aVetor3 := aClone(aDup)
+		oWBro3:lHScroll := .f.
+		oWBro3:SetArray(aVetor3)
+		oWBro3:bLine := {||{aVetor3[oWBro3:nAt,01],aVetor3[oWBro3:nAt,02],aVetor3[oWBro3:nAt,03]}}
+		
+		@ 013, 003 GET oInfoFisco VAR cInfoFisco OF oFolder1:aDialogs[4] MULTILINE SIZE 436, 067 COLORS 0, 16777215  READONLY HSCROLL PIXEL
+		@ 092, 003 GET oInfoAdic VAR cInfoAdic OF oFolder1:aDialogs[4] MULTILINE SIZE 435, 087 COLORS 0, 16777215  READONLY HSCROLL PIXEL
+		@ 003, 003 SAY oSay9 PROMPT "Informações Fisco:" SIZE 050, 007 OF oFolder1:aDialogs[4] COLORS 0, 16777215 PIXEL
+		@ 083, 003 SAY oSay10 PROMPT "Informações Adicionais:" SIZE 062, 007 OF oFolder1:aDialogs[4] COLORS 0, 16777215 PIXEL
+		@ 006, 011 SAY oSay1 PROMPT "Número:" SIZE 047, 007 OF oDlg COLORS 0, 16777215 PIXEL
+		@ 006, 124 SAY oSay2 PROMPT "Série:" SIZE 019, 007 OF oDlg COLORS 0, 16777215 PIXEL
+		@ 003, 043 MSGET oNFNum VAR cNFNum SIZE 076, 010 OF oDlg COLORS 0, 16777215 READONLY PIXEL
+		@ 003, 142 MSGET oNFSer VAR cNFSer SIZE 018, 010 OF oDlg COLORS 0, 16777215 READONLY PIXEL
+		@ 003, 211 MSGET oNFEmissao VAR cNFEmissao SIZE 060, 010 OF oDlg COLORS 0, 16777215 READONLY PIXEL
+		@ 005, 167 SAY oSay3 PROMPT "Data de Emissão:" SIZE 044, 007 OF oDlg COLORS 0, 16777215 PIXEL
+		@ 003, 309 MSGET oNFSaida VAR cNFSaida SIZE 060, 010 OF oDlg COLORS 0, 16777215 READONLY PIXEL
+		@ 020, 011 SAY oSay5 PROMPT "Natureza da Operação:" SIZE 058, 007 OF oDlg COLORS 0, 16777215 PIXEL
+		@ 017, 068 MSGET oNFNatOper VAR cNFNatOper SIZE 092, 010 OF oDlg COLORS 0, 16777215 READONLY PIXEL
+		@ 020, 167 SAY oSay6 PROMPT "Tipo da nota:" SIZE 035, 007 OF oDlg COLORS 0, 16777215 PIXEL
+		@ 017, 200 MSCOMBOBOX oNFTipo VAR nNFTipo ITEMS {"N=Nomal","B=Beneficiamento","D=Devolução"} SIZE 072, 010 OF oDlg COLORS 0, 16777215 PIXEL
+		@ 020, 280 SAY oSay11 PROMPT "Tipo:" SIZE 018, 007 OF oDlg COLORS 0, 16777215 PIXEL
+		@ 016, 293 MSCOMBOBOX oTipo VAR nTipo ITEMS aCF WHEN .F. SIZE 077, 010 OF oDlg COLORS 0, 16777215 PIXEL
+		@ 020, 376 SAY oSay15 PROMPT "Ped.Compra:" SIZE 030, 007 OF oDlg COLORS 0, 16777215 PIXEL	// Paulo Romualdo - 13/02/12
+		@ 017, 410 MSGET oPedCom VAR ::cPedCom SIZE 035, 010 OF oDlg COLORS 0, 16777215 PIXEL    	// Paulo Romualdo - 13/02/12
+		@ 252, 000 MSPANEL oRodPainel SIZE 450, 031 OF oDlg COLORS 0, 16777215 RAISED
+		@ 012, 406 BUTTON oButton1 PROMPT "Salvar" SIZE 037, 012 OF oRodPainel ACTION {|| iif(valSalvar(nNFTipo,nTipo,oMSNewGe1:aHeader,oMSNewGe1:aCols),(aadd(@aRet, {nNFTipo,nTipo}), oDlg:end()),.f.) } PIXEL
+		@ 012, 366 BUTTON oButton2 PROMPT "Cancelar" SIZE 037, 012 OF oRodPainel ACTION {|| aadd(@aRet, {"E","E"}), oDlg:end()} PIXEL
+		
+		//Data da útlima atualização para controlar as versões liberadas
+		@ 012, 011 SAY oSay1 PROMPT "Última atualização: "+::getDataRpo("TimpNfe.prw") SIZE 200, 007 FONT oFont16n OF oRodPainel COLORS 0, 16777215 PIXEL
+		
+		// Don't change the Align Order
+		oRodPainel:Align := CONTROL_ALIGN_BOTTOM
+		
+		ACTIVATE MSDIALOG oDlg CENTERED
+		SetKey(VK_F6, {||})
+		SetKey(VK_F7, {||})
+		/*Reinicializa as váriavies privadas*/
+		oEmit4 		:= nil
+		oIdent4		:= nil
+		oDest4 		:= nil
+		oInfAdic4 	:= nil
+		oCobr4  	:= nil
+		/************************************/
+	else
+		aadd(@aRet, {nNFTipo,nTipo})
+		aColsIt := aClone(aItens)
+		return {aRet, aColsIt}
+	endIf
+	
+	//Libera memoria apos o uso
+	oNfe		:= Nil
+	oEmit4 		:= Nil
+	oIdent4		:= Nil
+	oDest4 		:= Nil
+	oInfAdic4 	:= Nil
+	oCobr4  	:= Nil
+	bVldCodProtheus := Nil
+	bFillPro        := Nil
+	oDestAux 	:= Nil
+	aCamposEdit := Nil
+	oFont16n 	:= Nil
+	
+return {aRet,oMSNewGe1:aCols}
+
+
+/*/{Protheus.doc} valSalvar
+Ponto de Entrada para validações no botão Salvar
+
+@type		Function
+@author 	Julio Lisboa
+@since 		05/10/2016
+@return		lRet
+/*/
+Static Function valSalvar( cNFTipo , cTipo , aHeader , aCols )
+	
+	Local lRet		:= .F.
+	Local lTudoOk	:= ExistBlock("IPTudoOK",,LFORCES3)
+	
+	Default cNFTipo	:= ""
+	Default cTipo	:= ""
+	Default aHeader	:= {}
+	Default aCols	:= {}
+	
+	lRet	:= vldSalvar(cNFTipo,cTipo)
+	
+	If lRet
+		If lTudoOk
+			lRet		:= ExecBlock("IPTudoOK", .f., .f., { cNFTipo , cTipo , aHeader , aCols  } )
+		EndIf
+	EndIf
+	
+Return lRet
+
+/**
+* Validação do Código Protheus
+*
+* @author Victor Hugo
+* @since 23/09/2013
+*/
+static function vldCodProtheus(oGd, aHeader)
+	
+	local lOk	   			:= .T.
+	local cReadVar 			:= ReadVar()
+	local cProduto 			:= &cReadVar
+	local aAreaSB1 			:= SB1->(GetArea())
+	local lUpdDescProduto	:= GetNewPar("ZZ_XMLDPRD",.T.)
+	
+	if Empty(cProduto)
+		return .T.
+	endIf
+	
+	cProduto := PadR(cProduto, Len(SB1->B1_COD))
+	
+	SB1->(dbSetOrder(1))
+	if SB1->(dbSeek(xFilial("SB1")+cProduto))
+		//Alterado por Thiago Meschiatti - TOTVS IP - 30/09/2016 - INICIO
+		if ( MV_PAR03 == 2 )
+			If Empty(Alltrim(SB1->B1_SEGUM))
+				oGd:aCols[oGd:nAt, GdFieldPos("un", aHeader)] := SB1->B1_UM
+			Else
+				oGd:aCols[oGd:nAt, GdFieldPos("un", aHeader)] := SB1->B1_SEGUM
+			Endif
+		elseif ( MV_PAR03 == 3 )
+			oGd:aCols[oGd:nAt, GdFieldPos("un", aHeader)] := SB1->B1_UM
+		Endif
+		
+		//Alterado por Niemeyer - 22/12/2016
+		If lUpdDescProduto
+			oGd:aCols[oGd:nAt, GdFieldPos("Descr", aHeader)] := SB1->B1_DESC
+		Endif
+		oGd:oBrowse:refresh()
+		//Alterado por Thiago Meschiatti - TOTVS IP - 30/09/2016 - FIM
+	else
+		lOk := .F.
+		MsgBox("Produto não encontrado", "Atenção", "ALERT")
+	endIf
+	
+	RestArea(aAreaSB1)
+	
+return lOk
+
+method license() Class TImpNfe
+	::setlLicens(.F.)
+	
+	// SE EMPRESA TESTE
+	If AllTrim(SM0->M0_CODIGO)="99"
+		::setlLicens(.T.)
+	EndIf
+	
+	// SE CNPJ INCLUIDO
+	If SubStr(AllTrim(SM0->M0_CGC),1,8)$"10208861;09485332;12100162;12100162;12100162;11916190;05869791;07404801;07404801;10567241;07247209;00003485;00003533;00004197;00017235;00043532;00110160;00110410;00112870;00112871;00114410;00215370;00334600;00500073;00512015;00512026;00980206;20775003;21394473;50037463;51203932;51204023;51204024;51204031;51204214;55883094;43588045;06971283;46253225;03716531;30876130;03837320;07263994;12648020;55299440;13938567;14034069;55299440;06931598;15367585"
+		::setlLicens(.T.)
+	EndIf
+	
+return self
+
+method VerSB1(cFornece,cLoja,cProduto,cUm) Class TImpNfe
+	
+	Local cRet := Space(TamSx3("B1_COD")[1])
+	Local nAux := 0
+	Local cAux := 0
+	Local aAreaSB1 := SB1->(GetArea())
+	
+	cAux := cProduto
+	IF Len(cAux) > TamSX3("B1_COD")[1]
+		nAux := (TamSX3("B1_COD")[1]) * (-1)
+		cAux := substr(cProduto,nAux)
+	EndIf
+	
+	::chkPergs()
+	
+	if MV_PAR01 != 2 // Se considera Somente Amarração Produto x Fornecedor nao busca do SB1
+		cRet := Posicione("SB1",1,xFilial("SB1")+PADR(cAux,TamSX3("B1_COD")[1]),"B1_COD")
+	endIf
+	
+	If !Empty(cRet)
+		::setProd(PADR(cAux,TamSX3("B1_COD")[1]))
+	Else
+		IF !lFornece
+			//cProduto := cProduto+Space(TamSx3("A7_CODCLI")[1] - Len(cProduto))
+			cAux := cProduto
+			IF Len(cAux) > TamSX3("A7_CODCLI")[1]
+				nAux := (TamSX3("A7_CODCLI")[1]) * (-1)
+				cAux := substr(cProduto,nAux)
+			EndIf
+			cQry:= " SELECT SA7.A7_PRODUTO " + CRLF
+			cQry+= " FROM "+RetSqlName("SA7")+" SA7 " + CRLF
+			cQry+= " WHERE " + CRLF
+			cQry+= " SA7.A7_CODCLI = '"+PADR(cAux,TamSX3("A7_CODCLI")[1])+"' " + CRLF // 15
+			cQry+= " AND SA7.A7_CLIENTE = '"+cFornece+"' " + CRLF
+			cQry+= " AND SA7.A7_LOJA = '"+cLoja+"' " + CRLF
+			cQry+= " AND SA7.A7_FILIAL = '" + xFilial("SA7") + "' " + CRLF
+			cQry+= " AND SA7.D_E_L_E_T_ = '"+Space(1)+"'" + CRLF
+			TcQuery cQry Alias "QRY" New
+			
+			If QRY->(!EOF())
+				cRet     := QRY->A7_PRODUTO
+				::setProd(PADR(cAux,TamSX3("A7_CODCLI")[1]))
+			EndIf
+			
+			QRY->(dbCloseArea())
+		Else
+			//cProduto := cProduto+Space(TamSx3("A5_CODPRF")[1] - Len(cProduto))
+			cAux := cProduto
+			IF Len(cProduto) > TamSX3("A5_CODPRF")[1]
+				nAux := (TamSX3("A5_CODPRF")[1]) * (-1)
+				cAux := substr(cProduto,nAux)
+			EndIf
+			cQry:= " SELECT SA5.A5_PRODUTO,SA5.A5_UNID " + CRLF
+			cQry+= " FROM "+RetSqlName("SA5")+" SA5 " + CRLF
+			cQry+= " WHERE " + CRLF
+			cQry+= " SA5.A5_CODPRF = '"+PADR(cAux,TamSX3("A5_CODPRF")[1])+"' " + CRLF // 20
+			cQry+= " AND SA5.A5_FORNECE = '"+cFornece+"' " + CRLF
+			cQry+= " AND SA5.A5_LOJA = '"+cLoja+"' " + CRLF
+			cQry+= " AND SA5.A5_FILIAL = '" + xFilial("SA5") + "' " + CRLF
+			cQry+= " AND SA5.D_E_L_E_T_ = '"+Space(1)+"'" + CRLF
+			TcQuery cQry Alias "QRY" New
+			
+			If QRY->(!EOF())
+				cRet     := QRY->A5_PRODUTO
+				::setProd(PADR(cAux,TamSX3("A5_CODPRF")[1]))
+				::setUmFor(QRY->A5_UNID)
+			EndIf
+			
+			QRY->(dbCloseArea())
+		EndIf
+	Endif
+	
+	//Alterado por Thiago Meschiatti - TOTVS IP - 30/09/2016 - INICIO
+	// Achou o produto e deve considerar a UM do Cadastro
+	if !Empty(cRet) .and. MV_PAR03 == 2
+		cUm := Posicione("SB1",1,xFilial("SB1")+PADR(cRet, TamSX3("B1_COD")[1]),"B1_SEGUM")
+		if empty(cUm)
+			cUm := Posicione("SB1",1,xFilial("SB1")+PADR(cRet, TamSX3("B1_COD")[1]),"B1_UM")
+		endif
+	elseif !Empty(cRet) .and. MV_PAR03 == 3
+		cUm := Posicione("SB1",1,xFilial("SB1")+PADR(cRet, TamSX3("B1_COD")[1]),"B1_UM")
+	endIf
+	//Alterado por Thiago Meschiatti - TOTVS IP - 30/09/2016 - FIM
+	
+	RestArea(aAreaSB1)
+	
+Return(cRet)
+
+
+//ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+//³ Obtem numero do item quando na preenchido pelo usuario             ³
+//ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+method getItemPC(cNumPC, cProduto) Class TImpNfe
+	Local 	cItem		:= ""
+	Local 	cAliasSC7	:= GetNextAlias()
+	
+	BeginSql Alias cAliasSC7
+		SELECT C7_ITEM
+		FROM %Table:SC7% C7
+		WHERE
+		C7_FILENT	= %xFilial:SC7% AND
+		C7_NUM 		= %Exp:cNumPC% AND
+		C7_PRODUTO 	= %Exp:cProduto% AND
+		C7.%NotDel%
+	EndSql
+	
+	If (cAliasSC7)->(!Eof())
+		cItem := (cAliasSC7)->C7_ITEM
+	EndIf
+	
+	(cAliasSC7)->(dbCloseArea())
+	
+Return (cItem)
+
+//ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+//³ Obtem numero do item quando na preenchido pelo usuario             ³
+//ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+method getLocalItemPC(cNumPC, cItem, cProduto) Class TImpNfe
+	Local 	cLocal		:= ""
+	Local 	cAliasSC7	:= GetNextAlias()
+
+	BeginSql Alias cAliasSC7
+		SELECT C7_LOCAL
+		FROM %Table:SC7% C7
+		WHERE
+		C7_FILENT	= %xFilial:SC7% AND
+		C7_NUM 		= %Exp:cNumPC% AND
+		C7_ITEM		= %Exp:cItem% AND		
+		C7_PRODUTO 	= %Exp:cProduto% AND
+		C7.%NotDel%
+	EndSql
+
+	If (cAliasSC7)->(!Eof())
+		cLocal := (cAliasSC7)->C7_LOCAL
+	EndIf
+
+	(cAliasSC7)->(dbCloseArea())
+
+Return (cLocal)
+
+//ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+//³ Apresenta Log com as divergencias                                   ³
+//ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+method showLog(aLog, cNumNFE, cSerNfe) Class TImpNfe
+	
+	Local 	oLog
+	Local 	nCntLog		:= 1
+	Local 	cDirLog		:= GetNewPar("ZZ_INFLDIR","\LOGXMLNFE\")
+	local 	cArqLog		:= DTOS(dDataBase)+"_"+Subst(Time(),1,2) + Subst(Time(),4,2) + Subst(Time(),7,2)+"_"+AllTrim(cNumNFE)+"_"+AllTrim(cSerNfe)
+	
+	oLog := SCLogger():New(cDirLog,cArqLog )
+	oLog:StartProcess()
+	For nCntLog := 1 To Len(aLog)
+		oLog:WriteStr(aLog[nCntLog]+CRLF,.F.,.F.)
+	Next nCntLog
+	oLog:EndProcess()
+	
+	if !(::lAuto)
+		If MsgYesNo("Documento "+Alltrim(cNumNFE)+"/"+Alltrim(cSerNFE)+" NÃO foi Importado !" + CRLF +"Deseja visualizar divergências ?")
+			oLog:ViewRpt()
+		EndIf
+	endif
+	
+Return
+
+/*ÄÄÄÄÄÄÄÄÄÄÄÄÄÁÄÄÄÄÄÄÄÄÁÄÄÄÄÄÄÁÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ±±
+±± Verifica se existe mais de um fornecedor com mesmo CNPJ da NFe e, se existir, é   	±±
+±± exibida uma tela para selecionar o fornecedor desejado. Essa medida foi necessária 	±±
+±± devido a perda de referência no cadastro de Produto x Fornecedor(SA5).				±±
+Ù±±ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÁÄÄÄÄÄÄÄÄÁÄÄÄÄÄÄÁÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ*/
+method ChkForCli(cCnpj,lFor) class TImpNFe
+	Local aCampos    := {}
+	Local aArea      := SA2->(GetArea())
+	Local cCodForCli := ""
+	Local cLoja      := ""
+	Local cTitulo    := ""
+	Local cUf        := ""
+	Local cQuery     := ""
+	Local cAlias     := GetNextAlias()
+	Local oDlg		 := Nil
+	
+	If lFor
+		cQuery += "	SELECT " + CRLF
+		cQuery += "  	A2_COD, A2_LOJA, A2_NOME, A2_MSBLQL, A2_EST " + CRLF
+		cQuery += " FROM " + CRLF
+		cQuery += "  " + RetSqlTab("SA2") + CRLF
+		cQuery += " WHERE " + CRLF
+		cQuery += "  	1=1 " + CRLF		
+		cQuery += "  	AND " + RetSqlFil("SA2") + CRLF
+		cQuery += "   	AND A2_CGC = '" + cCnpj + "'" + CRLF
+		cQuery += "   	AND A2_MSBLQL <> '1' " + CRLF
+		cQuery += "  	AND " + RetSqlDel("SA2") + CRLF
+		
+		cTitulo := "Fornecedores com CNPJ: "  + Transform(cCnpj,"@R 99.999.999/9999-99")
+	Else
+		cQuery += " SELECT " + CRLF
+		cQuery += "  	A1_COD, A1_LOJA, A1_NOME, A1_MSBLQL, A1_EST " + CRLF
+		cQuery += " FROM " + CRLF
+		cQuery += "  " + RetSqlTab("SA1") + CRLF
+		cQuery += " WHERE " + CRLF
+		cQuery += "  	1=1 " + CRLF		
+		cQuery += "  	AND " + RetSqlFil("SA1") + CRLF
+		cQuery += "   	AND A1_CGC = '" + cCnpj + "'" + CRLF
+		cQuery += "   	AND A1_MSBLQL <> '1' " + CRLF
+		cQuery += "  	AND " + RetSqlDel("SA1") + CRLF		
+		
+		cTitulo := "Clientes com CNPJ: "  + Transform(cCnpj,"@R 99.999.999/9999-99")
+	EndIf
+	
+	TcQuery cQuery new Alias &cAlias
+	
+	DbSelectArea(cAlias)
+	
+	Count to nCount
+	(cAlias)->(DbGoTop())
+	If nCount > 1
+		While (cAlias)->(!EOF())
+			If lFor
+				AADD(aCampos,{(cAlias)->A2_COD,(cAlias)->A2_LOJA,(cAlias)->A2_NOME,;
+					IIF(AllTrim((cAlias)->A2_MSBLQL) == "1","Sim","Não"),(cAlias)->A2_EST})
+			Else
+				AADD(aCampos,{(cAlias)->A1_COD,(cAlias)->A1_LOJA,(cAlias)->A1_NOME,;
+					IIF(AllTrim((cAlias)->A1_MSBLQL) == "1","Sim","Não"),(cAlias)->A1_EST})
+			EndIf
+			(cAlias)->(DbSkip())
+		EndDo
+		if ::lAuto
+			cCodForCli := aCampos[1][1]
+			cLoja      := aCampos[1][2]
+			::setRazao(AllTrim(aCampos[1][3]))
+			cUf        := aCampos[1][5]
+		else
+			Aviso(cTitulo,"Existe mais de um " + IIF(lFor,"fornecedor","cliente") + " com o CNPJ: " + Transform(cCnpj,"@R 99.999.999/9999-99") + CRLF +;
+				"Por favor selecionar o fornecedor desejado na tela seguinte.",{"OK"},2 )
+			
+			DEFINE MSDIALOG oDlg FROM 0,0 TO 200,600 PIXEL TITLE cTitulo
+			oBrowse := TCBrowse():New(01,01, 300, 90,,,,oDlg,,,,,{||},,,,,,,,,.T.,,.F.,,,)
+			oBrowse:AddColumn(TCColumn():New("Código"		,{||IIF(Len(aCampos) > 0,aCampos[oBrowse:nAt][1],"" ) },"@!",,,"LEFT",,.F.,.F.,,,,,))
+			oBrowse:AddColumn(TCColumn():New("Loja"			,{||IIF(Len(aCampos) > 0,aCampos[oBrowse:nAt][2],"" ) },"@!",,,"LEFT",,.F.,.F.,,,,,))
+			oBrowse:AddColumn(TCColumn():New("R. Social"	,{||IIF(Len(aCampos) > 0,aCampos[oBrowse:nAt][3],"" ) },"@!",,,"LEFT",,.F.,.F.,,,,,))
+			oBrowse:AddColumn(TCColumn():New("Bloqueado"	,{||IIF(Len(aCampos) > 0,aCampos[oBrowse:nAt][4],"" ) },"",,,"LEFT",,.F.,.F.,,,,,))
+			// Seta o vetor a ser utilizado
+			oBrowse:SetArray(aCampos)
+			oBrowse:bLDblClick := {|| cCodForCli := aCampos[oBrowse:nAt][1],;
+				cLoja      := aCampos[oBrowse:nAt][2],;
+				::setRazao(AllTrim(aCampos[oBrowse:nAt][3])),;
+				cUf        := aCampos[oBrowse:nAt][5],;
+				oDlg:End()}
+			ACTIVATE MSDIALOG oDlg CENTERED
+		endif
+	Else
+		If (cAlias)->(!EOF())
+			If lFor
+				cCodForCli := (cAlias)->A2_COD
+				cLoja      := (cAlias)->A2_LOJA
+				cUf        := (cAlias)->A2_EST
+				::setRazao(AllTrim((cAlias)->A2_NOME))
+			Else
+				cCodForCli := (cAlias)->A1_COD
+				cLoja      := (cAlias)->A1_LOJA
+				cUf        := (cAlias)->A1_EST
+				::setRazao(AllTrim((cAlias)->A1_NOME))
+			EndIf
+			Return {cCodForCli,cLoja,cUf}
+		Else
+			// Se a query não retornar nenhum registro, retorna array vazio
+			Return {}
+		EndIf
+	EndIf
+	
+	RestArea(aArea)
+return {cCodForCli,cLoja,cUf}
+
+/******************************************************************************
++-----------------------------------------------------------------------------+
+| DATA:	01/10/2013					|   Módulo: Importador XML                 |
+|-----------------------------------------------------------------------------|
+|Rotina: VerSC7						| Analista: Yves Oliveira      		        |
+|-----------------------------------------------------------------------------|
+|Descrição: Verifica se existe item do pedido de compra                       |
++-----------------------------------------------------------------------------+
+******************************************************************************/
+method VerSC7(cNum,cItem,cProd) CLASS TIMPNFE
+	Local cQuery     := ""
+	Local cAlias     := GetNextAlias()
+	Local lRet 		:= .F.
+	
+	cQuery += "SELECT COUNT(*) CONTADOR"               + CRLF
+	cQuery += "  FROM " + RetSqlTab("SC7")             + CRLF
+	cQuery += " WHERE D_E_L_E_T_ = ' '"                + CRLF
+	cQuery += "   AND C7_FILIAL  = '" + xFilial("SC7") + "'"
+	cQuery += "   AND C7_NUM     = '" + cNum  + "'"    + CRLF
+	cQuery += "   AND C7_ITEM    = '" + cItem + "'"    + CRLF
+	cQuery += "	AND C7_PRODUTO = '" + cProd + "'"    + CRLF
+	cQuery += "	AND C7_QUJE < C7_QUANT " //apenas pedidos não atendidos totalmente
+	
+	TcQuery cQuery new Alias &cAlias
+	
+	DbSelectArea(cAlias)
+	(cAlias)->(DbGoTop())
+	If (cAlias)->CONTADOR == 1
+		lRet := .T.
+	EndIf
+	(cAlias)->(DbCloseArea())
+return lRet
+
+/******************************************************************************
++-----------------------------------------------------------------------------+
+| DATA:	11/10/2013					|   Módulo: Importador XML                 |
+|-----------------------------------------------------------------------------|
+|Rotina: FillCodPro  				| Analista: Yves Oliveira      		        |
+|-----------------------------------------------------------------------------|
+|Descrição: Preenche código do produto após selecionar o item do pedido.      |
++-----------------------------------------------------------------------------+
+******************************************************************************/
+METHOD FillCodPro(oMSNewGe1,aHeaderIt) CLASS TIMPNFE
+	Local aArea   := GetArea()
+	Local cCodPro := ""
+	
+	If Type("ItemPc") != "U" //quando digitado o número do item pedido
+		cCodPro := Posicione("SC7",1,xFilial("SC7") + GdFieldGet("NumPc",oMSNewGe1:nAt) + ItemPc,"C7_PRODUTO")
+	Elseif Type("NumPc") != "U" //quando digitado o número do pedido
+		cCodPro	:= Posicione("SC7",1,xFilial("SC7") + NumPc + GdFieldGet("ItemPc",oMSNewGe1:nAt),"C7_PRODUTO")
+	EndIf
+	// Sempre substitui o código do produto Protheus para não quebrar regra de negócio de produto do pedido de compra
+	// e futuramente dar baixa em item do pedido errado na classificação do documento de entrada.
+	//If Empty(GdFieldGet("CodProt",oMSNewGe1:nAt)) .And. !Empty(cCodPro)
+	GdFieldPut("CodProt",cCodPro,oMSNewGe1:nAt)
+	//EndIf
+	RestArea(aArea)
+RETURN .T.
+
+/******************************************************************************
++-----------------------------------------------------------------------------+
+| DATA:	11/10/2013					|   Módulo: Importador XML                |
+|-----------------------------------------------------------------------------|
+|Rotina: GetPedidos  				| Analista: Yves Oliveira      		      |
+|-----------------------------------------------------------------------------|
+|Descrição: Preenche código do produto após selecionar o item do pedido.      |
++-----------------------------------------------------------------------------+
+******************************************************************************/
+METHOD GetPedidos(cCodFor,cLojFor,oMSNewGe1) CLASS TIMPNFE
+	Local aArea   := GetArea()
+	Local cQuery   := ""
+	Local cAlias   := GetNextAlias()
+	Local aPedidos := {}
+	Local cTitulo  := "Selecionar Pedido de Compra <F6>"
+	Local nCont    := 0
+	Local cPedidos := ""
+	Local aPedAux := {}
+	Local nPosPed  := 0
+	Local cCodPro  := GdFieldGet("CodProt",oMSNewGe1:nAt,.F.,oMSNewGe1:aHeader,oMSNewGe1:aCols)
+	Local lToler   := FindFunction("MA103CkAIC") .And. MA103CkAIC(cCodFor,cLojFor,cCodPro)
+	Local nI	   := 0
+	// Desativando hotkey para não abrir mais de uma janela
+	SetKey(VK_F6, {||})
+	SetKey(VK_F7, {||})
+	
+	//Verificando os pedidos e itens já preenchidos
+	For nCont := 1 To Len(oMSNewGe1:aCols)
+		If !Empty(oMSNewGe1:aCols[nCont][10]) .And. !Empty(oMSNewGe1:aCols[nCont][11])
+			nPosPed := aScan(aPedAux,{|X|X[1] == oMSNewGe1:aCols[nCont][10] .and. X[2] == oMSNewGe1:aCols[nCont][11]})
+			If nPosPed == 0
+				aAdd(aPedAux,{oMSNewGe1:aCols[nCont][10],oMSNewGe1:aCols[nCont][11],oMSNewGe1:aCols[nCont][6]})
+			Else
+				aPedAux[nPosPed,3] += oMSNewGe1:aCols[nCont][6]
+			EndIf
+		EndIf
+	Next nCont
+	
+	cQuery := "SELECT C7_NUM,C7_ITEM,C7_PRODUTO,C7_DESCRI, C7_UM,C7_SEGUM,C7_QUANT "
+	cQuery += " FROM "+RetSqlName("SC7") + " SC7 "
+	cQuery += " WHERE "
+	// INÍCIO MATHEUS ABRÃO 20/09/2016
+	// ALTERADO FILTRO ABAIXO PARA CONSULTA NA FILIAL DE ENTREGA PARA A BUSCA DOS PEDIDOS
+	// OCORRER IGUAL AO PADRÃO (INCLUSÃO DE PRÉ NOTA)
+	//cQuery += "C7_FILIAL = '"+xFilial("SC7")+"' AND "
+	cQuery += " C7_FILENT = '" + (xFilial("SC7")) + "' AND "
+	// FIM MATHEUS ABRÃO 20/09/2016
+	cQuery += " C7_FORNECE = '"+cCodFor+"' AND "
+	cQuery += " C7_LOJA = '"+cLojFor+"' AND "
+	//ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+	//³ Filtra os Pedidos Bloqueados e Previstos.                ³
+	//ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+	cQuery += "C7_TPOP <> 'P' AND "
+	If SuperGetMV("MV_RESTNFE") == "S"
+		cQuery += "C7_CONAPRO <> 'B' AND "
+	EndIf
+	If !lToler
+		cQuery += " SC7.C7_ENCER='"+Space(Len(SC7->C7_ENCER))+"' AND "
+	EndIf
+	//Se o produto estiver preenchido, filtra os pedidos do produto em questão
+	If !Empty(cCodPro)
+		cQuery += " SC7.C7_PRODUTO = '" + cCodPro + "' AND "
+	EndIf
+	cQuery += " SC7.C7_RESIDUO='"+Space(TamSx3("C7_RESIDUO")[1])+"' AND "
+	cQuery += " SC7.D_E_L_E_T_ = ' ' "
+	cQuery += " ORDER BY C7_NUM,C7_ITEM"
+	cQuery := ChangeQuery(cQuery)
+	
+	TcQuery cQuery new Alias &cAlias
+	
+//	MemoWrite("TOTVSIPImportadorXMLGetPedidos1", cQuery)	//	Para depuração de cod.
+	
+	DbSelectArea(cAlias)
+	(cAlias)->(DbGoTop())
+	
+	While (cAlias)->(!EOF())
+		nPosPed := aScan(aPedAux,{|X|X[1] == (cAlias)->C7_NUM .and. X[2] == (cAlias)->C7_ITEM})
+		If (	Empty(aPedAux)) .or.;
+				(!Empty(aPedAux) .and. nPosPed > 0 .and. (cAlias)->C7_QUANT > aPedAux[nPosPed,3]) .or.;
+				(!Empty(aPedAux) .and. nPosPed == 0)
+			AADD(aPedidos,{(cAlias)->C7_NUM,(cAlias)->C7_ITEM,(cAlias)->C7_PRODUTO,(cAlias)->C7_DESCRI,;
+				(cAlias)->C7_UM,(cAlias)->C7_SEGUM,(cAlias)->C7_QUANT})
+		EndIf
+		(cAlias)->(DbSkip())
+	EndDo
+	
+	oDlgPed := Nil
+	if !Empty(aPedidos)
+		DEFINE MSDIALOG oDlgPed FROM 0,0 TO 200,600 PIXEL TITLE cTitulo
+		oBrowse := TCBrowse():New(01,01, 300, 90,,,,oDlgPed,,,,,{||},,,,,,,,,.T.,,.F.,,,)
+		oBrowse:AddColumn(TCColumn():New("Número PC"  ,{||IIF(Len(aPedidos) > 0,aPedidos[oBrowse:nAt][1],"" ) },"@!",,,"LEFT",,.F.,.F.,,,,,))
+		oBrowse:AddColumn(TCColumn():New("Item"	 	  ,{||IIF(Len(aPedidos) > 0,aPedidos[oBrowse:nAt][2],"" ) },"@!",,,"LEFT",,.F.,.F.,,,,,))
+		oBrowse:AddColumn(TCColumn():New("Produto"    ,{||IIF(Len(aPedidos) > 0,aPedidos[oBrowse:nAt][3],"" ) },"@!",,,"LEFT",,.F.,.F.,,,,,))
+		oBrowse:AddColumn(TCColumn():New("Descrição"  ,{||IIF(Len(aPedidos) > 0,aPedidos[oBrowse:nAt][4],"" ) },"@!",,,"LEFT",,.F.,.F.,,,,,))
+		oBrowse:AddColumn(TCColumn():New("Unidade"	  ,{||IIF(Len(aPedidos) > 0,aPedidos[oBrowse:nAt][5],"" ) },"@!",,,"LEFT",,.F.,.F.,,,,,))
+		oBrowse:AddColumn(TCColumn():New("Segunda UM" ,{||IIF(Len(aPedidos) > 0,aPedidos[oBrowse:nAt][6],"" ) },"@!",,,"LEFT",,.F.,.F.,,,,,))
+		oBrowse:AddColumn(TCColumn():New("Quantidade" ,{||IIF(Len(aPedidos) > 0,aPedidos[oBrowse:nAt][7],"" ) },PesqPict("SC7","C7_QUANT"),,,"LEFT",,.F.,.F.,,,,,))
+		// Seta o vetor a ser utilizado
+		oBrowse:SetArray(aPedidos)
+		oBrowse:bLDblClick := {|| oMSNewGe1:aCols[oMSNewGe1:nAt][10] := aPedidos[oBrowse:nAt][1],;//Item
+		oMSNewGe1:aCols[oMSNewGe1:nAt][11] := aPedidos[oBrowse:nAt][2],;//Pedido
+		oMSNewGe1:aCols[oMSNewGe1:nAt][3]  := aPedidos[oBrowse:nAt][3],;//Cod.Produto		
+		oMSNewGe1:oBrowse:Refresh(),;
+			oDlgPed:End()}
+		
+		//oMSNewGe1:aCols[oMSNewGe1:nAt][5]  := aPedidos[oBrowse:nAt][5],;//UM //Retirado por Niemeyer - 01/09/2016 - Afetando conversão de 2UM
+		
+		ACTIVATE MSDIALOG oDlgPed CENTERED
+	else
+		MsgBox("Não existem pedidos a serem exibidos.", "Atenção", "ALERT")
+	endIf
+	
+	// Reativando hotkey
+	SetKey(VK_F6, {|| ::GetPedidos(cFornece,cLoja,oMSNewGe1) })
+	SetKey(VK_F7, {|| ::ClearPC(@oMSNewGe1)})
+	(cAlias)->(DbCloseArea())
+	RestArea(aArea)
+RETURN
+
+
+/******************************************************************************
++-----------------------------------------------------------------------------+
+| DATA:	11/10/2013					|   Módulo: Importador XML                |
+|-----------------------------------------------------------------------------|
+|Rotina: ClearPC     				| Analista: Yves Oliveira      		      |
+|-----------------------------------------------------------------------------|
+|Descrição: Limpa os pedidos de compra preenchidos						      |
++-----------------------------------------------------------------------------+
+******************************************************************************/
+METHOD ClearPC(oMSNewGe1) CLASS TIMPNFE
+	oMSNewGe1:aCols[oMSNewGe1:nAt][10] := "" //NumPC
+	oMSNewGe1:aCols[oMSNewGe1:nAt][11] := "" //ItemPc
+RETURN
+
+/**
+* Verifica o Grupo de Perguntas
+*
+* @author Victor Hugo
+* @since 23/09/2013
+*/
+method chkPergs() class TImpNfe
+	
+	Pergunte(::cPerg, .F.)
+	
+return
+
+
+/**
+* Retorna data do fonte no RPO
+*
+* @author Thiago Meschiatti
+* @since 11/08/2015
+*/
+method getDataRpo(cFunc) class TImpNfe
+	local cRet	:= ""
+	
+	if len(GetApoInfo(cFunc)) > 3
+		if ValType(GetApoInfo(cFunc)[DATA_RPO]) == "D"
+			cRet := alltrim(dtoc(GetApoInfo(cFunc)[DATA_RPO]))
+		else
+			cRet := alltrim(GetApoInfo(cFunc)[DATA_RPO])
+		endif
+	endif
+	
+return (cRet)
+
+/**
+* Retorna se o produto controla lote
+*
+* @author Gustavo Luiz
+* @since 13/02/2019
+*/
+method isProdutLote(cCodProd) class TImpNfe
+	
+	local lIsProdlote	:= .F.
+	local aArea 		:= getArea()
+	local aAreaSB1 		:= SB1->(getArea())
+	local cChaveSB1		:= ""
+	
+	cCodProd := padr(cCodProd, tamSx3("B1_COD")[1], "")
+	cChaveSB1:= fwxFilial("SB1") + cCodProd
+	
+	SB1->(dbSetOrder(1))
+	
+	if SB1->(dbSeek(cChaveSB1))
+		if SB1->B1_RASTRO = "L"
+			lIsProdlote := .T.
+		endif
+	endIf
+	
+	restArea(aAreaSB1)
+	restArea(aArea)
+	
+return lIsProdlote
+
+
+/*/{Protheus.doc} vldSalvar
+Função responsavel por validar a ação do botão "Salvar" da tela criada pelo method view2
+@author Tiago Faria
+@since 27/08/2014
+@version 1.0
+@param cNFTipo, caracter, variavel recebe o tipo da nota "N" = normal "B" = beneficiamento "F" = fornecedor
+@param cTipo, caracter, variavel recebe o tipo "C" = cliente "F" = fornecedor
+@return lRet, logico, se .t. continua com a gravação da nota, se .f. não grava a nota
+/*/
+Static Function vldSalvar(cNFTipo,cTipo)
+	Local lRet := .t.
+	
+	If cNfTipo == "N" .and. cTipo == "C"
+		MsgBox("Para o 'Tipo da nota:' NORMAL obrigatoriamente o 'Tipo:' deve ser FORNECEDOR","","ALERT")
+		lRet := .f.
+	EndIf
+return lRet
+
+/*
+*	Função responsável pelo tratamento da data.
+*/
+static function trataData(cData)
+	dData	:= STOD(STRTRAN(cData,"-",""))
+return dData
+
+/**
+*	obtém a quantidade de rastros do SKU em processamento
+**/
+static function getQtdRastro(oDet, nI)
+	
+	local nQtdRastro := 0
+	private oDetAux  := oDet
+	
+	if type("oDetAux[" + cValToChar(nI) + "]:_PROD:_RASTRO") == "O"
+		nQtdRastro := 1
+	elseIf type("oDetAux[" + cValToChar(nI) + "]:_PROD:_RASTRO") == "A"
+		nQtdRastro := len(oDetAux[nI]:_PROD:_RASTRO)
+	endif
+	
+	//Libera memoria apos o uso
+	oDetAux := Nil
+	
+return nQtdRastro
+
+/**
+*	Obtém a data de validade e fabricação do rastro
+**/
+static function getDtValFabrRastro(aItem, aDet)
+	
+	local cCpoDtFabr	:= AllTrim(GetNewPar("ZZ_CPODTFA", ""))
+	local nPosDFabric	:= Ascan(aItem,{|x| Upper(AllTrim(x[01]))==cCpoDtFabr})
+	local nPosDValid	:= Ascan(aItem,{|x| Upper(AllTrim(x[01]))=="D1_DTVALID"})
+	local lGetDtFab		:= .T.
+	
+	if ValType(aDet[14]) != "N"	
+		aItem[nPosDValid][2]   := IIf(ValType(aDet[14]) = "D",aDet[14],CtoD(aDet[14]))
+			If nPosDFabric > 0
+				aItem[nPosDFabric][2]  := IIf(ValType(aDet[15]) = "D",aDet[15],CtoD(aDet[15]))
+			EndIf
+	else
+		MsgInfo("Data de fabricação: Tipo de dado inválido. Em execução o tipo " + getTipoDado(aDet[14]) + ". Esperado o tipo DATA. Verifique!")
+		lGetDtFab := .F.
+	endIf
+	
+return lGetDtFab
+
+/**
+*	Obtém o indice do oDET. Depois do ajuste para considerar os rastros de uma mesma SKU, agora o tamanho do oDet
+* pode ser diferente do aDet. Sendo assim, retorna o indice referente a primeira ocorrencia do aDet
+**/
+static function getIndDet(aDet, cProduto)
+	
+	local nScan			:= 0
+	local nIndDet		:= 0
+	
+	nIndDet			:= aScan(aDet, {|x| allTrim(x) == allTrim(cProduto)})
+	
+return  nIndDet
+
+/**
+*	Aglutina o aDet quando mesmo produto
+**/
+static function aglutDet(aDet, aDetAglutin)
+	
+	local nI 		:= 0
+	local nScan		:= 0
+	local cProduto	:= ""
+	
+	for nI := 1 to len(aDet)
+		
+		cProduto := aDet[nI][3]
+		
+		nScan 	 := aScan(aDetAglutin, {|x| allTrim(x) == allTrim(cProduto)})
+		
+		if nScan == 0
+			aAdd(aDetAglutin, cProduto)
+		endIf
+		
+	next nI
+	
+return
+
+/**
+* appenda no array aDados as datas de validade e fabricação do rastro
+**/
+static function appendDtRastro(aDados, cDataLtVal, cDataLtFab)
+	
+	if len(aDados) >= 15
+		if valtype(aDados[14]) = "D" .and. valtype(aDados[15]) = "D"
+			aDados[14] := cValToChar(sTod(cDataLtVal))
+			aDados[15] := cValToChar(sTod(cDataLtFab))
+		endif
+	else
+		aAdd(aDados,	cValToChar(sTod(cDataLtVal)))
+		aAdd(aDados,	cValToChar(sTod(cDataLtFab)))
+	endif
+	
+return
+
+/*
+Retorna o tipo da variável
+*/
+Static Function fTypeVar(cVar)
+Return Type(cVar)
+
+/**
+*	Função responsável pelo tratamento da data.
+**/
+static function formatDate(cData)
+	
+	local cNewDate  := ""
+	local cDia		:= ""
+	local cMes		:= ""
+	local cAno		:= ""
+	
+	cAno := substr(cData, 1, 4)
+	cMes := substr(cData, 6, 2)
+	cDia := substr(cData, 9, 2)
+	
+	cNewDate := cAno + cMes + cDia
+	
+return cNewDate
+
+/**
+* retorna o tipo de dado da variável
+**/
+static function getTipoDado(xTipoDado)
+	
+	local cTipoDado := ""
+	
+	if ValType(xTipoDado) == "N"
+		cTipoDado := "NUMÉRICO"
+	endIf
+	
+return cTipoDado

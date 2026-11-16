@@ -1,0 +1,532 @@
+#Include 'Protheus.ch'
+#include "dhl.ch"
+
+#define ERROR_CLIENTE 		1
+#define INVOICE_HAS_IMPORT  2
+#define ERROR_INCLU_INVOICE 3
+#define SALDO_PODER3 		4
+#define GERA_RETORNO_SIMB 	5
+#define ERROR_INCLU_INVOICE_SALDO 6
+
+#define PRODUCT      		1
+#define QUANTITY      		2
+
+/*/{Protheus.doc} MondRetSimbolico
+
+Rotina em gerar retorno efetivo MONDELEZ
+
+@author Gustavo Luiz
+@since 12/04/2019
+
+@param nil
+/*/
+User Function MondRetSimbolico(cParFilePath)
+	
+	local lOk := .F.
+	
+	private cFilePath 	:= cParFilePath
+	private lMsErroAuto	:= .F.
+	
+	
+	if incCustomer()
+		if (validorder())
+			lOk := incOutflowOrder()
+		endIf
+	else
+		DisarmTransaction()
+		geraLog(ERROR_CLIENTE)
+	endIf
+	
+Return lOk
+
+/**
+* Inclui o Pedido de Venda
+**/
+static function incOutflowOrder()
+	
+	local aHeader		:= {}
+	local aDetails  	:= {}
+	local lOk			:= .T.
+	local cCliFor 		:= ""
+	local cLoja   		:= ""
+	local cEmail  		:= ""
+	local cTipoCliFor	:= ""	
+	
+	getCliFor(@cClifor, @cLoja, @cEmail, @cTipoCliFor)
+	
+	aHeader := getHeader(cClifor, cLoja)
+	aDetails:= getDetails(cClifor, cLoja, cTipoCliFor, @lOk)
+	
+	if lOk
+		
+		lMsErroAuto := .F.
+		MSExecAuto({|x,y,z| MATA410(x,y,z)},aHeader,aDetails,3)
+		
+		if lMsErroAuto
+			disarmTransactio()
+			geraLog(ERROR_INCLU_INVOICE)		
+		endif		
+	endIf
+	
+return lOk
+
+
+/*
+** Obtém os itens do pedido.
+*/
+static function getDetails(cClifor, cLoja, cTipoCliFor, lOk)
+	
+	local oSql 					:= IpSqlObject():newIpSqlObject()
+	local aProducts   			:= retProducts()
+	local nI					:= 0	
+	local cProduto				:= ""
+	local aItens				:= {}
+	local aItem					:= {}
+	local cItem					:= ""	
+	local nQtdProdInInterface 	:= 0		
+	local nPrecoUnit			:= 0
+	local nSaldo				:= 0	
+	
+	aProducts := groupProducts(aProducts)
+	
+	for nI := 1 to len(aProducts)
+			
+		aItem					:= {}
+			
+		cProduto 				:= aProducts[nI][PRODUCT]
+		
+		nSaldo := getSaldo(cProduto, "01")
+		
+		nQtdProdInInterface 	:= aProducts[nI][QUANTITY]
+		cUnidMedi 				:= aProducts[nI,4]
+		nPrecoUnit				:= GetPrecoUnit(cProduto)
+		
+		if nSaldo == 0 .OR. nSaldo < nQtdProdInInterface
+			lOk := .F.
+			disarmTransaction()
+			geraLog(ERROR_INCLU_INVOICE_SALDO, cProduto)
+			exit
+		endIf
+		
+							
+								  
+											
+	  
+		aItem   := {}
+						
+		cItem 	:= getItem(aItens)
+				
+		cTes			:= alltrim(GetNewPar("ZZ_TESSAI"))
+							
+		aAdd(aItem,{"C6_ITEM"   ,cItem           											,nil})
+		aAdd(aItem,{"C6_PRODUTO",cProduto													,nil})
+		aAdd(aItem,{"C6_QTDVEN" ,nQtdProdInInterface                     					,nil})
+		aAdd(aItem,{"C6_UOM" ,cUnidMedi  													,nil})
+		aAdd(aItem,{"C6_PRCVEN" , nPrecoUnit 														,nil})
+		aAdd(aItem,{"C6_VALOR" 	,A410Arred(nQtdProdInInterface * nPrecoUnit ,"C6_VALOR")	,nil})
+		aAdd(aItem,{"C6_TES"    ,cTes              								,nil})
+							
+		aAdd(aItens, aItem)				
+	
+	next nI
+	
+return aItens
+
+
+/**
+* Obtém o número do item da SC6 (C6_ITEM)
+**/
+static function getItem(aItens)
+	
+	if len(aItens) == 0
+		cItem := "01"
+	else
+		cItem := Soma1(aItens[len(aItens),1,2])
+	endif
+	
+return cItem
+
+/**
+* Agrupa os Produtos do Pedido de Vendas
+*/
+static function groupProducts(aProducts)
+	
+	local nI	   	 := 0
+	local nScan		 := 0
+	local nQuantity  := 0
+	local cProduct   := ""
+	local cLote		 := ""
+	local cUnidMedi	 := ""
+	local aGroupProd := {}
+	
+	for nI := 1 to Len(aProducts)
+		
+		cProduct  := aProducts[nI,1]
+		nQuantity := aProducts[nI,2]
+		cLote	  := aProducts[nI,3]
+		cUnidMedi := aProducts[nI,4]
+		nScan	  := aScan(aGroupProd, {|x| x[1] == cProduct })
+		
+		if (nScan > 0)
+			aGroupProd[nScan,2] += nQuantity
+		else
+			aAdd(aGroupProd, {cProduct, nQuantity, cLote, cUnidMedi})
+		endIf
+		
+	next nI
+	
+	aProducts := aClone(aGroupProd)
+	
+return aProducts
+
+/**
+* Coleta os Items da interface Invoice Request
+**/
+static function retProducts()
+	
+	local aItems       := {}
+	local nItem        := 1
+	local nLenItem     := 0
+	
+	if ValType(oXml:_INV_REQ:_BODY) <> nil
+		if ValType(oXml:_INV_REQ:_BODY:_FILEITEM) == "A"
+			
+			nLenItem := Len(oXml:_INV_REQ:_BODY:_FILEITEM)
+			aItems   := {}
+			
+			for nItem := 1 to nLenItem
+				aAdd(aItems,{getProduct(@nItem),getQuantity(@nItem), getLote(@nItem), getUOM(@nItem), getSubLote(@nItem), getExpDate(@nItem)})
+			next
+			
+		elseif ValType(oXml:_INV_REQ:_BODY:_FILEITEM) == "O"
+			
+			nItem	:= 0
+			aItems  := {}
+			
+			aAdd(aItems,{getProduct(@nItem),getQuantity(@nItem), getLote(@nItem), getUOM(@nItem) , getSubLote(@nItem), getExpDate(@nItem)})
+			
+		endif
+		
+	else
+		aAdd(aItems,{})
+	endif
+	
+return aItems
+
+/**
+* Coleta o Produto
+**/
+static function getProduct(nItem)
+	local xRet := ""
+	
+	if nItem > 0
+		xRet := AllTrim(oXml:_INV_REQ:_BODY:_FILEITEM[nItem]:_ITEM:TEXT)
+	else
+		xRet := AllTrim(oXml:_INV_REQ:_BODY:_FILEITEM:_ITEM:TEXT)
+	endif
+	
+return (xRet)
+
+/**
+* Coleta o lote
+**/
+static function getLote(nItem)
+	local xRet := ""
+	
+	if nItem > 0
+		xRet := oXml:_INV_REQ:_BODY:_FILEITEM[nItem]:_LOT:TEXT
+	else
+		xRet := oXml:_INV_REQ:_BODY:_FILEITEM:_LOT:TEXT
+	endif
+return (xRet)
+
+/**
+* Coleta o sublote
+**/
+static function getSubLote(nItem)
+	local xRet := ""
+	
+	if nItem > 0
+		xRet := oXml:_INV_REQ:_BODY:_FILEITEM[nItem]:_SUBLOT:TEXT
+	else
+		xRet := oXml:_INV_REQ:_BODY:_FILEITEM:_SUBLOT:TEXT
+	endif
+return (xRet)
+
+/**
+* Coleta a data de expriração
+**/
+static function getExpDate(nItem)
+	local xRet 	:= ""
+	local aData	:= {}
+	local cMes  := ""
+	local cDia	:= ""
+	local cAno	:= ""
+	
+	if nItem > 0
+		xRet := oXml:_INV_REQ:_BODY:_FILEITEM[nItem]:_EXPIRATION_DATE:TEXT
+	else
+		xRet := oXml:_INV_REQ:_BODY:_FILEITEM:_EXPIRATION_DATE:TEXT
+	endif
+	
+	if !empty(xRet)
+		aData:=StrToKarr(xRet, "-")
+		cAno := aData[1]
+		cMes := aData[2]
+		cDia := aData[3]
+		
+		xRet:=cAno+cMes+cDia
+	endif
+	
+return (xRet)
+
+
+/**
+* UNidade de Medida
+**/
+static function getUOM(nItem)
+	local xRet := ""
+	
+	if nItem > 0
+		xRet := oXml:_INV_REQ:_BODY:_FILEITEM[nItem]:_UOM:TEXT
+	else
+		xRet := oXml:_INV_REQ:_BODY:_FILEITEM:_UOM:TEXT
+	endif
+return (xRet)
+
+
+/**
+* Coleta a Quantidade
+**/
+static function getQuantity(nItem)
+	local xRet := ""
+	
+	if nItem > 0
+		xRet := Val(oXml:_INV_REQ:_BODY:_FILEITEM[nItem]:_QUANTITY:TEXT)
+	else
+		xRet := Val(oXml:_INV_REQ:_BODY:_FILEITEM:_QUANTITY:TEXT)
+	endif
+return (xRet)
+
+
+/*
+** Obtém o Header do pedido de vendas
+*/
+static function getHeader(cClifor, cLoja)
+	
+	local aHeader 		:= {}
+	local cShipping   	:= getShipping()
+	local cSalesOrd   	:= getSalesOrder()
+	
+	aAdd(aHeader,{"C5_TIPO"   , getDocType()                 ,nil})
+	aAdd(aHeader,{"C5_CLIENTE", cCliFor  					 ,nil})
+	aAdd(aHeader,{"C5_LOJACLI", cLoja 						 ,nil})
+	aAdd(aHeader,{"C5_CONDPAG" , GetMV("ZZ_CONDINT")         ,nil})
+	aAdd(aHeader,{"C5_ZZSHIP"  , cShipping                   ,nil})
+	aAdd(aHeader,{"C5_ZZTIPO"  , getDocType()   			 ,nil})
+	aAdd(aHeader,{"C5_ZZORDEX" , getSalesOrder()			 ,nil})
+	aAdd(aHeader,{"C5_TPFRETE" , "F"			             ,nil})
+	
+return aHeader
+
+/*
+** Obtém o cliente/fornecedor
+*/
+static function getCliFor(cClifor, cLoja, cEmail, cTipoCliFor)
+	
+	local oSqlUtil		:= IpSqlObject():newIpSqlObject()
+	local lOk	 		:= .t.
+	
+	default cClifor 	:= ""
+	default cLoja 		:= ""
+	default cEmail 		:= ""
+	default cTipoCliFor := ""
+	
+	
+	if getDocType() == 'N'
+		oSqlUtil:newTable("SA1", "A1_COD, A1_LOJA, A1_EMAIL", "A1_FILIAL = '%SA1.FILIAL%' AND A1_CGC = '" + cCnpjCli + "' ")
+		if oSqlUtil:hasRecords()
+			cClifor		:= oSqlUtil:getValue("A1_COD")
+			cLoja		:= oSqlUtil:getValue("A1_LOJA")
+			cEmail		:= oSqlUtil:getValue("A1_EMAIL")
+			cTipoCliFor := "C"
+		else
+			lOk := .f.
+		endif
+	else
+		oSqlUtil:newTable("SA2", "A2_COD, A2_LOJA, A2_EMAIL", "A2_FILIAL = '%SA2.FILIAL%' AND A2_CGC = '" + cCnpjCli + "' ")
+		if oSqlUtil:hasRecords()
+			cClifor		:= oSqlUtil:getValue("A2_COD")
+			cLoja		:= oSqlUtil:getValue("A2_LOJA")
+			cEmail		:= oSqlUtil:getValue("A2_EMAIL")
+			cTipoCliFor := "F"
+		else
+			lOk := .f.
+		endif
+	endif
+	
+	oSqlUtil:close()
+	
+return (lOk)
+
+/*
+** Verifica se existe cliente/fornecedor
+*/
+static function incCustomer()
+	
+	lOk := getCliFor()
+	
+return (lOk)
+
+/**
+* Gera Log
+**/
+static function geraLog(nTipoErro, cProduto)
+	
+	local cCnpjCli 		:= ""
+	local cMsg     		:= ""
+	
+	default  cProduto 	:= ""
+	
+	if nTipoErro == ERROR_CLIENTE
+		
+		cCnpjCli    	:= getCnpjCustomer()
+		cMsg     		:= "Cliente não localizado no Protheus - CNPJ: "+alltrim(cCnpjCli)+"."
+		
+	elseIf nTipoErro == INVOICE_HAS_IMPORT
+		
+		cMsg     := "Shippment: "+alltrim(getShipping())+" e Sales Order: "+alltrim(getSalesOrder())+" já utilizados no Protheus."
+		
+	elseIf nTipoErro == ERROR_INCLU_INVOICE
+		
+		cMsg     := "Falha ao incluir o pedido de vendas"+oUtils:getErroAuto()
+		
+	elseIf nTipoErro == SALDO_PODER3
+	
+		cMsg     := "Falha ao incluir o pedido de vendas. Não possui saldo suficiente em poder de terceiro para o produto " + allTrim(cProduto)
+		
+	elseIf nTipoErro == GERA_RETORNO_SIMB
+	
+		cMsg     := "Falha ao gerar nota de retorno efetivo"
+		
+	elseIf nTipoErro == ERROR_INCLU_INVOICE_SALDO
+	
+		cMsg     := "Falha ao incluir pedido de vendas. Saldo indisponível para o produto " + cProduto
+				
+	endIf
+	
+	setFileLog(cFilePath,"fail",cMsg)
+	
+return
+
+/**
+* Define os Logs de acordo com os tipos de arquivos
+*/
+static function setFileLog(cFile,cLogType,cLogText,cTag,cValue)
+	
+	local cInterface := "Invoice Request"
+	
+	oLog:start(APP_DLX,DHL_IMPORTACAO,cFile)
+	
+	if !(Empty(cTag))
+		cLogText += CRLF+CRLF+"Tag: "+cTag
+	endIf
+	
+	if !(Empty(cValue))
+		cLogText += CRLF+CRLF+"Valor: "+cValue
+	endIf
+	
+	if (cLogType == "fail")
+		oLog:fail(cInterface, cLogText)
+	elseIf (cLogType == "warn")
+		oLog:warn(cInterface, cLogText)
+	endIf
+	
+return
+
+/*
+** Valida se Inv. Req. pode ser importada.
+*/
+static function validOrder()
+	
+	local oSql 			:= IpSqlObject():newIpSqlObject()
+	local cShipping   	:= getShipping()
+	local cSalesOrd   	:= getSalesOrder()
+	local lOk			:= .t.
+	
+	oSql:newTable("SC5", "C5_NUM", " %SC5.XFILIAL% AND C5_ZZSHIP = '" + upper(cShipping) + "' AND C5_ZZORDEX = '" + upper(cSalesOrd) + "' ")
+	
+	if oSql:hasRecords()
+		DisarmTransaction()
+		geraLog(INVOICE_HAS_IMPORT)
+		lOk := .f.
+	endif
+	
+	oSql:close()
+	
+return (lOk)
+
+/**
+* Coleta o Document Type
+**/
+static function getDocType()
+return oXml:_INV_REQ:_BODY:_FILEHEADER:_DOCUMENT_TYPE:TEXT
+
+/**
+* Coleta o Customer CNPJ
+**/
+static function getCnpjCustomer()
+return oXml:_INV_REQ:_BODY:_FILEHEADER:_CUSTOMER_CNPJ:TEXT
+
+/**
+* Coleta o Shipping Number
+**/
+static function getShipping()
+return oXml:_INV_REQ:_BODY:_FILEHEADER:_SHIPPING_NUMBER:TEXT
+
+/**
+* Coleta o Sales Order
+**/
+static function getSalesOrder()
+return oXml:_INV_REQ:_BODY:_FILEHEADER:_SALES_ORDER:TEXT
+
+
+
+/**
+* Função que pega o preço unitário do produto
+*/
+Static Function GetPrecoUnit(cProduto)
+	
+	local oSqlAux	  := IpSqlObject():newIpSqlObject()
+	local cTabela	  := "SB1"
+	local cCampos	  := "B1_PRV1"
+	local cWhere	  := "%SB1.XFILIAL% AND B1_COD = '" + cProduto + "'"
+	local nPrecoUni	  := 0
+	
+	oSqlAux:newTable(cTabela,cCampos,cWhere )
+	
+	if oSqlAux:hasRecords()
+		nPrecoUni	:= oSqlAux:GetValue("B1_PRV1")
+	endif
+	
+	oSqlAux:Close()
+	
+Return nPrecoUni
+
+
+/**
+* obtém o saldo da SB2
+**/
+static function getSaldo(cProduto, cLocPad)
+	
+	local nSaldo := 0
+	
+	cProduto := padr(cProduto, tamSx3("B1_COD")[1], "")
+	
+	dbSelectArea("SB2")
+	if SB2->(dbSeek(xFilial("SB2") + cProduto + cLocPad))		
+		nSaldo := SaldoSb2()
+	endIf
+	
+return nSaldo
+

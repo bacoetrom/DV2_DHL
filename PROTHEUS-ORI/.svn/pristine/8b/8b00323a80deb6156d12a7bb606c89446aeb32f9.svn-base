@@ -1,0 +1,492 @@
+#include 'totvs.ch'
+#include 'safx52.ch'
+#include 'safx.ch'
+#include 'dhl.ch'
+
+/*/{Protheus.doc} DHLSafx52Dis
+
+Responsável pelas regras e montagem das informacoees para a exportacao
+	
+@author Daniel Braga
+@since 30/10/2014
+
+/*/
+user function _Safx52Dis;return
+
+class DHLSafx52Dis from DHLSafx
+
+	method newDHLSafx52Dis () constructor
+	method addLine()
+	method getSql()
+	method getSqlSB9()
+	method notFieldRequired()
+	method getDateDefault()
+	method getSqlSb6()
+	method getAglutB6()
+	method getSldTerc()
+	method getCliSld()
+
+endclass
+
+//-----------------------------------------------------------------
+method newDHLSafx52Dis () class DHLSafx52Dis
+
+return
+
+/*/{Protheus.doc} addLine
+
+Cria a lina ‡ ser impressa no arquivo txt
+	
+@author Daniel Braga
+@since 30/10/2014
+
+/*/
+method addLine( dDtInvent, lTerceiro, lContSB6, cLocal, nTerceiro ) class DHLSafx52Dis
+	
+	local lFormatZero 	:= .f.	
+	local lPATerceiro	:= .f.	
+	local cProduto 		:= Iif( !lTerceiro, ::getFieldValue("B9_COD"), ::getFieldValue("B2_COD") )
+//	local cLocal   		:= if (empty(::getFieldValue("B2_LOCAL")), ::getFieldValue("B1_LOCPAD"),::getFieldValue("B2_LOCAL")) 
+	local aSaldo   		:= {}//CalcEst(cProduto, cLocal, dDtInvent)
+	local aProduct		:= {}
+	local aSupCus		:= {}
+	local aEntity		:= {}
+//	local nTerceiro		:= iif(lTerceiro, 0, ::getSldTerc(cProduto, dDtInvent, cLocal))
+	local nQuant   		:= iif(valtype(::getFieldValue("SALDO")) == "C", 0,::getFieldValue("SALDO")) - nTerceiro
+	local nValorTot		:= iif(valtype(::getFieldValue("CUSTO")) == "C", 0,::getFieldValue("CUSTO"))//aSaldo[2])
+	local nCustoUnit 	:= nValorTot / nQuant // nValorTot / nQuant = 100.000173
+	local cCod 			:= ""
+	local cBranch		:= ""
+	Local __cTIPO		:= getType(self, .F., aProduct)//::getProdType(::getFieldValue("B1_TIPO")) //TODO RETIRAR DEPOIS
+	Local __cUM			:= ""
+	Local __cZZCDPRO	:= ::getFieldValue("B1_ZZCDPRO")
+	Local __cZZLJPRO	:= ::getFieldValue("B1_ZZLJPRO")
+	Local __cZZCONTA	:= ::getFieldValue("B1_ZZCONTA")
+	Local __cZZCONTA_x	:= ::getFieldValue("B1_ZZCONTA",aProduct)
+	Local __ZZ_CDEMODW	:= GetNewPar("ZZ_CDEMPDW", FwCodEmp())
+
+	Default cLocal   	:= Iif( !lTerceiro, ::getFieldValue("B9_LOCAL"), ::getFieldValue("B2_LOCAL") )
+	Default nTerceiro	:= iif(lTerceiro, 0, nTerceiro)
+
+	if !lTerceiro
+		lPATerceiro := isProdTerc(self)
+		if lPATerceiro
+			aSupCus := ::getSupCusRecords('2', __cZZCDPRO, __cZZLJPRO)
+		endif
+	endif
+	
+	default nSaldo := 0
+	
+	if lTerceiro
+		nQuant 		:= ::getFieldValue("SALDO")
+		nCustoUnit	:= (nValorTot / nQuant)
+		aProduct 	:= ::getProduct(cProduto)
+		aEntity		:= ::getCliSld(cProduto, dDtInvent)
+		aSupCus 	:= ::getSupCusRecords('2', aEntity[1], aEntity[2])
+		__cUM		:= ::getFieldValue("B1_UM",aProduct)
+	else
+		nValorTot	:=  nQuant * nCustoUnit 
+		__cUM		:= ::getFieldValue("B1_UM")
+	endif
+	
+	nSaldo := iif(nQuant < 0 , 0 , nQuant)
+	if nSaldo == 0 .and. nTerceiro > 0
+		lContSB6 := .t.
+	endif
+
+	::addField(COD_EMPRESA				, alltrim(GetNewPar("ZZ_IDEMPDW", "SOL")))
+	::addField(COD_ESTAB				, alltrim(__ZZ_CDEMODW))
+	::addField(DATA_INVENTARIO			, dDtInvent)
+	::addField(GRUPO_CONTAGEM			, '3')
+	::addField(COD_NBM					, iif(lTerceiro,::getFieldValue("B1_POSIPI",aProduct),::getFieldValue("B1_POSIPI")))
+	::addField(IND_PRODUTO				, getType(self, lTerceiro, aProduct))//iif(lTerceiro,::getProdType(::getFieldValue("B1_TIPO",aProduct)),__cTIPO)) //RETIRAR DEPOIS
+	::addField(COD_PRODUTO				, cProduto)
+	::addField(COD_UND_PADRAO			, __cUM)
+	::addField(COD_ALMOX				, cLocal)
+	if !lTerceiro .and. lPATerceiro
+		::addField(COD_NAT_ESTOQUE			, '03')
+	else 
+		::addField(COD_NAT_ESTOQUE			, iif(lTerceiro, '03', '02'))
+	endif
+	::addField(COD_MEDIDA				, __cUM)
+	::addField(QUANTIDADE				, nQuant, lFormatZero)
+	::addField(VLR_TOT					, Round(nValorTot,2), lFormatZero)
+	::addField(VLR_UNIT					, nCustoUnit, lFormatZero)
+	::addField(COD_CONTA				, iif(lTerceiro,iif(alltrim(__cZZCONTA_x) == '.....', ' ', __cZZCONTA_x),;
+										  iif(alltrim(__cZZCONTA) == '.....', ' ', __cZZCONTA)))
+	if !lTerceiro .and. lPATerceiro
+		::addField(IND_FIS_JUR			, ::getFieldValue("A1_ZZINDDW", aSupCus))
+		::addField(COD_FIS_JUR			, alltrim(__ZZ_CDEMODW) + __cZZCDPRO + __cZZLJPRO)
+	else
+		::addField(IND_FIS_JUR			, iif(lTerceiro, ::getFieldValue("A1_ZZINDDW", aSupCus), '3'))
+		::addField(COD_FIS_JUR			, iif(lTerceiro, alltrim(__ZZ_CDEMODW) + aEntity[1] + aEntity[2], SM0->M0_CGC))
+	endif
+	::addField(IND_PRODUTO_RASTRO		, __cTIPO)
+	::addField(COD_PRODUTO_RASTRO		, cProduto)
+	::addField(COD_SITUACAO_A			, iif(lTerceiro, ::getFieldValue("B1_ORIGEM",aProduct), ::getFieldValue("B1_ORIGEM")))
+	::addField(COD_SITUACAO_B			, iif(lTerceiro, ::getFieldValue("B1_CLASFIS",aProduct), ::getFieldValue("B1_CLASFIS")))
+	::addField(IND_MOT_INV				, "01")
+
+	::notFieldRequired()
+
+return
+
+/*/{Protheus.doc} getSql
+
+Instrucao SQL para exportacao
+	
+@author Daniel Braga
+@since 30/10/2014
+
+@return string instrucao sql
+/*/
+method getSql() class DHLSafx52Dis
+	
+	local cQuery 		:= ""
+
+	//cQuery:= "select sb2.*, sb1.*, (b2_qatu - b2_qtnp) saldo"
+	cQuery:= "select B2_LOCAL B2_LOCAL, sb2.*, sb1.*, (b2_qfim) saldo, b2_vfim1 custo"
+	cQuery+= " from "+retSqlName("SB2")+" sb2 "
+	cQuery+= "inner join "+retSqlName("SB1")+" sb1 on sb1.B1_COD = sb2.b2_cod and "
+	cQuery+= "					 sb1.b1_filial = '"+xFilial("SB1")+"' and "
+	cQuery+= "					 sb1.D_E_L_E_T_ = ' ' "	
+	cQuery+= "where sb2.D_E_L_E_T_ = ' '  and sb2.b2_filial= '"+xFilial("SB2")+"' and sb2.b2_qfim > 0 AND B2_COD = 'F000141663' "
+//	cQuery+= " and sb2.b2_cod = '84147780' "
+
+return Upper(cQuery)
+
+
+/*/{Protheus.doc} getSqlSb6
+
+Instrucao SQL para exportacao
+	
+@author Thiago Meschiatti
+@since 04/02/2015
+
+@return string instrucao sql
+/*/
+method getSqlSb6(cProduct, dDtInvent) class DHLSafx52Dis
+	
+	local cQuery 		:= ""
+
+	cQuery += " SELECT 	B6_FILIAL FILIAL, B6_PRODUTO PRODUTO,  				"+CRLF
+	cQuery += " 		 B6_TPCF TIPO, B2_VFIM1 CUSTO,                              "+CRLF
+	cQuery += " 		SUM(CASE WHEN B6_PODER3 = 'R' THEN (B6_QUANT) ELSE  (-B6_QUANT) END) SALDO "+CRLF
+	cQuery += " FROM %SB2.SQLNAME% 		                                                        "+CRLF
+	cQuery += " INNER JOIN  %SB1.SQLNAME% ON SB1.B1_COD = SB2.B2_COD AND                        "+CRLF
+	cQuery += " 	SB1.B1_FILIAL = SB2.B2_FILIAL AND                                     		"+CRLF
+	cQuery += " 	SB1.B1_LOCPAD = SB2.B2_LOCAL AND                                     		"+CRLF
+	cQuery += " 	SB1.D_E_L_E_T_ = ' '                                                        "+CRLF
+	cQuery += " INNER JOIN 	%SB6.SQLNAME% ON SB1.B1_COD = SB6.B6_PRODUTO               		    "+CRLF
+	cQuery += " 	AND SB6.B6_FILIAL = SB1.B1_FILIAL                                			"+CRLF
+	cQuery += "		AND SB6.B6_DTDIGIT >= '20000101' 											"+CRLF
+	cQuery += "		AND SB6.B6_DTDIGIT <= '"+Dtos(dDtInvent)+"' 								"+CRLF
+	cQuery += " 	AND SB6.D_E_L_E_T_ = ' '                                                    "+CRLF
+	cQuery += " WHERE                                                                           "+CRLF
+	cQuery += " 	SB2.D_E_L_E_T_ = ' '                                                        "+CRLF
+	cQuery += " 	AND %SB2.XFILIAL%	 				                                   		"+CRLF
+	cQuery += " 	AND SB2.B2_COD = '"+cProduct+"'                                         	"+CRLF
+	cQuery += " GROUP BY                                                                        "+CRLF
+	//VALIDAR SALDO
+	cQuery += " 	B6_FILIAL, B6_PRODUTO, B6_TPCF, B2_VFIM1              "+CRLF
+
+return cQuery
+
+
+/*/{Protheus.doc} getAglutB6
+
+Instrucao SQL para exportacao
+	
+@author Thiago Meschiatti
+@since 04/02/2015
+
+@return string instrucao sql
+/*/
+method getAglutB6(cProduct, cType, dDtInvent, cEntity, cUnit) class DHLSafx52Dis
+	local cQuery 	:= ""
+	local cField	:= ""
+	local cGroup	:= ""
+	
+//	if cType $ SAFX52_CLIENTE
+//		cField := " A1_ZZINDDW ZZINDDW,"
+//		cGroup := " A1_ZZINDDW," 
+//	else
+//		cField := " A2_ZZINDDW ZZINDDW," 
+//		cGroup := " A2_ZZINDDW,"
+//	endif
+	
+	cQuery += " SELECT 	B6_FILIAL FILIAL, B6_PRODUTO PRODUTO,  B6_TPCF, "+CRLF
+	cQuery += " 	SUM(CASE WHEN B6_PODER3 = 'R' THEN (B6_QUANT) ELSE  (-B6_QUANT) END) SALDO, "+CRLF
+	cQuery += " 	SUM(CASE WHEN B6_PODER3 = 'R' THEN (B6_CUSTO1) ELSE  (-B6_CUSTO1) END) CUSTO, "+CRLF
+	cQuery += cField	
+	cQuery += " 		B1_EX_NBM,B2_COD,B1_UM,B1_LOCPAD,B1_TIPO,B1_UM,B1_ZZCONTA,B1_ORIGEM,B1_CLASFIS		        		"+CRLF
+	cQuery += " FROM %SB2.SQLNAME%                                                                                          "+CRLF
+	cQuery += " INNER JOIN  %SB1.SQLNAME% ON SB1.B1_COD = SB2.B2_COD AND                                                    "+CRLF
+	cQuery += " 	SB1.B1_FILIAL = SB2.B2_FILIAL AND                                                                       "+CRLF
+	cQuery += " 	SB1.B1_LOCPAD = SB2.B2_LOCAL AND                                                                       "+CRLF
+	cQuery += " 	SB1.D_E_L_E_T_ = ' '                                                                                    "+CRLF
+	cQuery += " INNER JOIN 	%SB6.SQLNAME% ON SB1.B1_COD = SB6.B6_PRODUTO                                                    "+CRLF
+	cQuery += " 	AND SB6.B6_FILIAL = SB1.B1_FILIAL	                                                                    "+CRLF
+//	cQuery += " 	AND SB6.B6_CLIFOR	= '" + cEntity + "'                                                                 "+CRLF
+//	cQuery += " 	AND SB6.B6_LOJA 	= '" + cUnit + "'                                                                   "+CRLF	
+	cQuery += "		AND SB6.B6_DTDIGIT >= '20000101' 																		"+CRLF
+	cQuery += "		AND SB6.B6_DTDIGIT <= '"+Dtos(dDtInvent)+"' 															"+CRLF
+	cQuery += " 	AND SB6.D_E_L_E_T_ = ' '                                                                                "+CRLF
+	if cType $ SAFX52_CLIENTE
+		cQuery += " INNER JOIN %SA1.SQLNAME% ON SA1.A1_COD = SB6.B6_CLIFOR                                                  "+CRLF
+		cQuery += " 	AND SA1.A1_LOJA = SB6.B6_LOJA                                                                       "+CRLF
+		cQuery += " 	AND SA1.A1_FILIAL = SB6.B6_FILIAL 	                                                                "+CRLF
+		cQuery += " 	AND SA1.D_E_L_E_T_ = ' '                                                                            "+CRLF
+	else
+		cQuery += " INNER JOIN %SA2.SQLNAME% ON SA2.A2_COD = SB6.B6_CLIFOR                                                  "+CRLF
+		cQuery += " 	AND SA2.A2_LOJA = SB6.B6_LOJA                                                                       "+CRLF
+		cQuery += " 	AND SA2.A2_FILIAL = SB6.B6_FILIAL 	                                                                "+CRLF
+		cQuery += " 	AND SA2.D_E_L_E_T_ = ' '                                                                            "+CRLF
+	endif
+	cQuery += " WHERE                                                                                                       "+CRLF
+	cQuery += " 	SB2.D_E_L_E_T_ = ' '                                                                                    "+CRLF
+	cQuery += " 	AND %SB2.XFILIAL%	 				                                   									"+CRLF
+	cQuery += " 	AND SB2.B2_COD = '"+cProduct+"'                                                                        	"+CRLF
+	cQuery += " GROUP BY                                                                                                    "+CRLF
+//	cQuery += " 	B6_FILIAL, B6_PRODUTO, B6_CLIFOR, B6_LOJA, B6_TPCF, 		                                            "+CRLF
+	cQuery += " 	B6_FILIAL, B6_PRODUTO,  B6_TPCF, 		                                            "+CRLF
+	cQuery += cGroup
+	cQuery += " 	B1_EX_NBM,B2_COD,B1_UM,B1_LOCPAD,B1_TIPO,B1_UM,B1_ZZCONTA,B1_ORIGEM,B1_CLASFIS                  		"+CRLF
+	
+return(cQuery)
+
+
+/*/{Protheus.doc} getSldTerc
+
+Instrucao SQL para exportacao
+	
+@author Thiago Meschiatti
+@since 04/02/2015
+
+@return string instrucao sql
+/*/
+method getSldTerc(cProduct, dDtInvent, cLocal) class DHLSafx52Dis
+	local cQuery 	:= ""
+	local oSql	 	:= IpSqlObject():newIpSqlObject()
+	local nSldTerc	:= 0
+	
+	cQuery += " SELECT 	SUM(CASE WHEN B6_PODER3 = 'R' THEN (B6_QUANT) ELSE  (-B6_QUANT) END) SALDO                       	"+CRLF             
+	cQuery += " FROM %SB6.SQLNAME%                                  "+CRLF
+	cQuery += " WHERE                                              	"+CRLF
+	cQuery += "     %SB6.XFILIAL%                                 	"+CRLF
+	cQuery += " 	AND SB6.B6_PRODUTO = '"+cProduct+"'             "+CRLF
+	cQuery += " 	AND SB6.B6_DTDIGIT >= '20000101' 	           	"+CRLF
+	cQuery += " 	AND SB6.B6_DTDIGIT <= '" + dtos(dDtInvent) + "' "+CRLF
+	cQuery += " 	AND SB6.B6_LOCAL = '" + cLocal + "'             "+CRLF
+	cQuery += " 	AND SB6.D_E_L_E_T_ = ' '                       	"+CRLF
+	
+	oSql:newAlias(cQuery)
+	
+	if oSql:hasRecords()
+		nSldTerc := oSql:getValue("SALDO")
+	endif
+	
+	oSql:close()
+return (nSldTerc)
+
+
+/*/{Protheus.doc} getCliSld
+
+Instrucao SQL para exportacao
+	
+@author Thiago Meschiatti
+@since 04/02/2015
+
+@return string instrucao sql
+/*/
+method getCliSld(cProduct, dDtInvent) class DHLSafx52Dis
+	local cQuery 	:= ""
+	local oSql	 	:= IpSqlObject():newIpSqlObject()
+	local cCliFor	:= ""
+	local cLoja		:= ""
+	
+	cQuery += " SELECT 	DISTINCT B6_CLIFOR, B6_LOJA                 "+CRLF             
+	cQuery += " FROM %SB6.SQLNAME%                                  "+CRLF
+	cQuery += " WHERE                                              	"+CRLF
+	cQuery += "     %SB6.XFILIAL%                                 	"+CRLF
+	cQuery += " 	AND SB6.B6_PRODUTO = '"+cProduct+"'             "+CRLF
+	cQuery += " 	AND SB6.B6_DTDIGIT >= '20000101' 	           	"+CRLF
+	cQuery += " 	AND SB6.B6_DTDIGIT <= '" + dtos(dDtInvent) + "' "+CRLF
+	cQuery += " 	AND SB6.B6_PODER3 = 'R' 						"+CRLF
+	cQuery += " 	AND SB6.D_E_L_E_T_ = ' '                       	"+CRLF
+	
+	oSql:newAlias(cQuery)
+	
+	if oSql:hasRecords()
+		cCliFor := oSql:getValue("B6_CLIFOR")
+		cLoja	:= oSql:getValue("B6_LOJA")
+	endif
+	
+	oSql:close()
+return {cCliFor, cLoja}
+
+
+/*/{Protheus.doc} notFieldRequired
+
+Campos que não precisa passar valor
+	
+@author Daniel Braga
+@since 13/11/2014
+
+/*/
+method notFieldRequired()  class DHLSafx52Dis
+
+	::addField(COD_CUSTO, ' ')
+	::addField(OBSERVACAO, ' ')
+	::addField(VLR_ICMS, ' ')
+	::addField(IND_DEB_CRE, ' ')
+	::addField(DESCRICAO_RIPI, ' ')
+	::addField(VLR_ICMS_MEDIO, ' ')
+	::addField(VLR_ICMSS_MEDIO, ' ')
+	::addField(INSC_ESTADUAL, ' ')
+	::addField(VLR_BASE_ICMS, ' ')
+	::addField(VLR_BASE_ISENTO, ' ')
+	::addField(VLR_BASE_OUTRAS, ' ')
+	::addField(VLR_BASE_ICMSS, ' ')
+	::addField(COD_OBSERVACAO, ' ')
+	::addField(VLR_CUSTO_DCA, ' ')
+	::addField(VLR_IPI, ' ')
+	::addField(VLR_PIS, ' ')
+	::addField(VLR_COFINS, ' ')
+	::addField(VLR_TRIB_NC, ' ')
+
+return
+
+/*/{Protheus.doc} getDateDefault
+
+Coleta a Data Padrão da Interface
+	
+@author Victor Hugo
+@since 11/12/2014
+
+@return Data Data padrão da interface
+/*/
+method getDateDefault() class DHLSafx52Dis
+
+return (FirstDay(Date()) - 1)
+
+
+/*
+** Verifica Produtos que sao produzido pela DHL que pertecem a Unilever.
+*/
+static function isProdTerc(oSelf)
+	local lRet := .f.
+	
+	if alltrim(oSelf:getFieldValue("B1_TIPO")) == "PA" .and. right(alltrim(oSelf:getFieldValue("B1_GRUPO")), 1) == "U"
+		if !empty(oSelf:getFieldValue("B1_ZZCDPRO")) .and. !empty(oSelf:getFieldValue("B1_ZZLJPRO"))
+			lRet := .t.
+		endif
+	endif
+return (lRet)
+
+
+/*/{Protheus.doc} getSqlSB9
+Query que retornará os registros aptos para geração de instrução SQL para exportacao conforme
+saldo do momento do encerramento do estoque do referido ano/mes
+
+@author Icaro Queiroz
+@since 25 de agosto de 2017
+
+@return String instrucao sql
+/*/
+Method getSqlSB9( dDtInvent ) class DHLSafx52Dis
+Local __cQuery		:= ""
+
+Default dDtInvent	:= dDataBase
+
+__cQuery := " SELECT DISTINCT B9_COD, B1_ZZCDPRO, B1_ZZLJPRO, B1_POSIPI, B1_TIPO, B1_UM, B1_ZZCONTA, B1_ORIGEM, B1_CLASFIS, B1_GRUPO, B1_LOCPAD, '01' B9_LOCAL, SUM(B9_QINI) SALDO, SUM(B9_VINI1) CUSTO "
+__cQuery += "  FROM " + RetSqlName( "SB9" ) + " SB9"
+__cQuery += " INNER JOIN " + RetSqlName( "SB1" ) + " SB1 ON B1_FILIAL = B9_FILIAL AND SB1.D_E_L_E_T_ = ' ' AND B1_COD = B9_COD"
+__cQuery += " WHERE B9_FILIAL = '" + xFilial( "SB9" ) + "' "
+__cQuery += "  AND SB9.D_E_L_E_T_ = ' '"
+__cQuery += "   AND B9_DATA = '" + dTOs( dDtInvent ) + "'"
+__cQuery += "   AND B9_QINI <> 0 "
+//__cQuery += "   AND B9_COD = 'F000129454' "
+//__cQuery += "   AND B9_COD IN ('F000142910','F000141663','0000496327', '0000495305') "
+//__cQuery += "   AND B9_COD BETWEEN '0000496500' AND '0000496550'"
+__cQuery += " GROUP BY B9_COD, B1_ZZCDPRO, B1_ZZLJPRO, B1_POSIPI, B1_TIPO, B1_UM, B1_ZZCONTA, B1_ORIGEM, B1_CLASFIS, B1_GRUPO, B1_LOCPAD"
+
+Return( __cQuery )
+
+/*
+** Obtém o tipo (Tratamento bloco K)
+*/
+static function  getType(self, lTerceiro, aProduct)	
+	
+	local cTipo 		:= ""
+	local cParBlocoK	:= ""
+	local aTiposPar		:= {}	
+	local lParametro	:= .F.
+	
+	if lTerceiro
+		cTipo := self:getFieldValue("B1_TIPO", aProduct) 
+	else
+		cTipo := self:getFieldValue("B1_TIPO")
+	endIf
+	
+	if !cTipo $ LISTA_RECEITA_FEDERAL
+		
+		cParBlocoK := getParBlocK(cTipo)
+		if !empty(cParBlocoK)
+			aTiposPar := strToKarr(cParBlocoK, ",")
+			cTipo := aTiposPar[TIPO_RECEITA_FEDERAL] 
+			lParametro	:= .T.
+		endIf
+		
+	endIf
+	
+	cTipo := self:getProdType(cTipo, lParametro)
+	
+return cTipo
+
+/*
+** Obtém o parâmetro bloco K referente ao tipo
+*/
+static function getParBlocK(cTipo)
+	
+	local oSql	 	:= IpSqlObject():newIpSqlObject()
+	local cQuery	:= ""
+	local xContPar	:= ""
+	local cNameTableSX6 := ""
+	
+	//NECESSÁRIO, POIS O RETSQLNAME RETORNAVA VAZIO QUANDO PASSAVA SX6
+	cNameTableSX6 := getNameTableSx6()
+	
+	cQuery := "SELECT " + CRLF
+	cQuery += "	X6_CONTEUD AS CONTEUD " + CRLF
+	cQuery += "FROM " + cNameTableSX6 + CRLF
+	cQuery += "WHERE 1=1" + CRLF
+	cQuery += "	AND X6_FIL = '" + FWxFilial("SX6") + "' " + CRLF
+	cQuery += "	AND X6_VAR LIKE 'MV_BLKTP%' " + CRLF
+	cQuery += "	AND X6_CONTEUD != ' ' " + CRLF
+	cQuery += "	AND D_E_L_E_T_ = ' ' " + CRLF
+	
+	oSql:newAlias(cQuery)
+	
+	While oSql:notIsEof()
+		
+		xContPar := oSql:getValue("CONTEUD")
+		
+		if cTipo $ xContPar
+			exit
+		endIf
+		oSql:skip()
+	EndDo
+	
+	oSql:close()
+		
+return xContPar
+
+/**
+* retorna o nome da tabela físico no banco
+**/
+static function getNameTableSx6()
+	
+	local cNameTableSX6 := "SX6" + cEmpant + "0"
+	
+return cNameTableSX6

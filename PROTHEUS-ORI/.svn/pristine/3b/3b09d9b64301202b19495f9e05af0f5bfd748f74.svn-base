@@ -1,0 +1,391 @@
+#include "totvs.ch"
+#include "dhl.ch"
+
+#define ALL_FILES_MASK	"*.*"
+
+
+/*/{Protheus.doc} DHLDirectoryManager
+
+Objeto para Controle dos Diretórios de Integrações
+	
+@author Victor Hugo
+@since 25/10/2014
+/*/
+class DHLDirectoryManager
+	
+	data cDirectory
+	data aFiles
+	data cMsg
+	
+	method newDHLDirectoryManager() constructor
+	
+	method getDirectory()
+	method setDirectory()
+	method getFiles()
+	method getMsg()
+	
+	method startProcess()
+	method setProcessed()
+	method setError()
+	method getProcessingFile()
+	method removeExtension(cFile)
+	
+endClass
+
+
+/*/{Protheus.doc} newDHLDirectoryManager
+
+Construtor
+	
+@author Victor Hugo
+@since 25/10/2014
+
+@param cDirectory, String, Diretório de Integração
+/*/
+method newDHLDirectoryManager(cDirectory) class DHLDirectoryManager
+	
+	::aFiles := {}
+	::cMsg	 := ""
+	::setDirectory(cDirectory)
+		
+return self
+
+
+/*/{Protheus.doc} getDirectory
+
+Coleta o Diretório do objeto
+	
+@author Victor Hugo
+@since 25/10/2014
+
+@return String Diretório do objeto
+/*/
+method getDirectory() class DHLDirectoryManager
+return ::cDirectory
+
+
+/*/{Protheus.doc} setDirectory
+
+Define o Diretório do objeto
+	
+@author Victor Hugo
+@since 25/10/2014
+
+@param cDirectory, String, Diretório do objeto
+/*/
+method setDirectory(cDirectory) class DHLDirectoryManager		
+	
+	::cDirectory := StrTran(AllTrim(cDirectory), ALL_FILES_MASK, "")
+	
+	loadFiles(@self)	
+	
+return
+
+
+/*/{Protheus.doc} getFiles
+
+Coleta os Arquivos do Diretório
+	
+@author Victor Hugo
+@since 25/10/2014
+
+@return Array Arquivos do Diretório (vetor de strings)
+/*/
+method getFiles() class DHLDirectoryManager
+return aClone(::aFiles)
+
+
+/*/{Protheus.doc} getMsg
+
+Coleta as Mensagens do Objeto
+	
+@author Victor Hugo
+@since 25/10/2014
+
+@return String Mensagens do Objeto
+/*/
+method getMsg() class DHLDirectoryManager
+return ::cMsg
+
+
+/*/{Protheus.doc} startProcess
+
+Define que um arquivo está em processamento
+	
+@author Victor Hugo
+@since 25/10/2014
+
+@param cFile, String, Arquivo que será processado
+
+@return Logico Indica se o arquivo pode ser processado
+/*/
+method startProcess(cFile) class DHLDirectoryManager
+	
+	local lOk  		:= .F.	
+	local cNewFile 	:= ""
+	
+	cFile 	 := AllTrim(cFile)
+	cNewFile := cFile+PROCESSING_EXTENSION
+	
+	begin sequence		
+		
+		if isProcessingFile(cFile)
+			::cMsg := "O arquivo "+cFile+" já está sendo processado"
+			break	
+		endIf
+		
+		if !File(cFile)
+			::cMsg := "Arquivo "+cFile+" não encontrado"
+			break
+		endIf
+		
+		if !moveFile(@self, cFile, cNewFile)
+			break
+		endIf
+		
+		lOk := .T.
+		
+	end sequence
+	
+return lOk
+
+
+/*/{Protheus.doc} removeExtension
+
+Define um arquivo para novo processamento
+	
+@author Thiago Meschiatti
+@since 30/06/2016
+
+@param cFile, String, Arquivo que será processado
+
+@return Logico Indica se o arquivo pode ser processado
+/*/
+method removeExtension(cFile) class DHLDirectoryManager
+	
+	local lOk  		:= .F.	
+	local cNewFile 	:= ""
+	
+	cNewFile := AllTrim(cFile)
+	cFile 	 := AllTrim(cFile) + PROCESSING_EXTENSION
+	
+	begin sequence		
+		
+		if isProcessingFile(cFile)
+			if !File(cFile)
+				::cMsg := "Arquivo "+cFile+" não encontrado"
+				break
+			endIf
+			
+			if !moveFile(@self, cFile, cNewFile)
+				break
+			endIf
+		endIf
+		
+		lOk := .T.
+		
+	end sequence
+	
+return lOk
+
+
+/*/{Protheus.doc} setProcessed
+
+Define que um arquivo foi processado com sucesso
+	
+@author Victor Hugo
+@since 25/10/2014
+
+@param cFile, String, Arquivo que foi processado
+
+@return Logico Indica se o arquivo foi definido como processado (copiado para a pasta PROCESSED)
+/*/
+method setProcessed(cFile)  class DHLDirectoryManager
+return endProcessing(@self, cFile, PROCESSED_FOLDER)
+
+
+/*/{Protheus.doc} setError
+
+Define que um arquivo não foi processado 
+	
+@author Victor Hugo
+@since 25/10/2014
+
+@param cFile, String, Arquivo que não foi processado
+
+@return Logico Indica se o arquivo foi definido como não processado (copiado para a pasta ERRORS)
+/*/
+method setError(cFile)  class DHLDirectoryManager		
+return endProcessing(@self, cFile, ERROR_FOLDER)
+
+/**
+ * Finaliza o processamento de um arquivo, movendo-o para a pasta de 
+ * Processados ou Erros
+ */
+static function endProcessing(oSelf, cFile, cFolder)
+	
+	local lOk 			:= .F.
+	local oUtils		:= IpUtilsObject():newIpUtilsObject()
+	local cProcFolder	:= oUtils:concatDirectory(oSelf:getDirectory(), cFolder)
+	local cNewFile		:= getCopyFileName(cProcFolder, cFile)
+	
+	cFile := AllTrim(cFile)
+	
+	begin sequence
+		
+		if !isProcessingFile(cFile)
+			oSelf:cMsg := "O arquivo "+cFile+" não está sendo processado"
+			break
+		endIf
+		
+		if !ExistDir(cProcFolder) .and. (MakeDir(cProcFolder) != 0)
+			oSelf:cMsg := "Falha ao criar diretório "+cProcFolder
+			break
+		endIf
+			
+		if !moveFile(@oSelf, getProcessingFile(cFile), cNewFile)
+			break
+		endIf	
+		
+		lOk := .T.
+		
+	end sequence
+	
+return lOk
+
+
+/**
+ * Carrega os arquivos do diretório
+ */
+static function loadFiles(oSelf)
+	
+	local nI		 := 0
+	local cFile		 := ""
+	local aObjFiles	 := {} 
+	local aDirFiles	 := {}
+	local cDirectory := oSelf:getDirectory()
+	local oUtils	 := IpUtilsObject():newIpUtilsObject()
+	
+	if !Empty(cDirectory)
+		cDirectory := oUtils:concatDirectory(cDirectory, ALL_FILES_MASK)
+		aDirFiles  := Directory(cDirectory)
+	endIf
+	
+	cDirectory := StrTran(AllTrim(cDirectory), ALL_FILES_MASK, "")	
+	
+	for nI := 1 to Len(aDirFiles)
+		cFile := oUtils:concatDirectory(cDirectory, aDirFiles[nI,1])
+		if !isProcessingFile(cFile)
+			aAdd(aObjFiles, cFile)
+		endIf		
+	next nI
+	
+	oSelf:aFiles := aClone(aObjFiles)
+	
+return
+
+/**
+ * Indica se um arquivo esta em processamento
+ */
+static function isProcessingFile(cFile)
+return File(getProcessingFile(cFile))
+
+/** 
+ * Retorna o nome do arquivo em processamento
+ */
+static function getProcessingFile(cFile)
+	
+	local cFileExtension:= ""
+	
+	cFile 			:= AllTrim(cFile)
+	cFileExtension	:= Right(cFile, Len(PROCESSING_EXTENSION))
+	
+	if (Lower(cFileExtension) != PROCESSING_EXTENSION)
+		cFile += PROCESSING_EXTENSION
+	endIf	
+	
+return cFile
+
+/**
+ * Move ou Renomea os arquivos
+ */
+static function moveFile(oSelf, cFile, cNewFile)
+	
+	local lOk	   := .F.
+	local lRet     := .F.
+	local oFile    := IpFileObject():newIpFileObject(cFile)	
+	local oNewFile := IpFileObject():newIpFileObject(Upper(cNewFile))
+		
+	if !FWIsInCallStack("U_XMLTERCEIRO") .and. !(FunName() == "XMLTERCEIR")
+		//RONI SILVA ALTERADO PARA NÃO REFAZER O ARQUIVO E SOMENTE RENOMEAR O MESMO
+        lRet := __CopyFile(cFile , cNewFile) //RONI SILVA 29/09/2021
+		IF !lRet
+			msgalert("Erro ao tentar renomear o arquivo: "+cFile+" código erro -> "+str(ferror()))
+		else
+			if oFile:delete()
+				lOk := .T.
+			else
+				FErase(cFile)	
+			endIf
+		endif
+/*
+		if oNewFile:writeLine(MemoRead(cFile)) //RONI SILVA 
+			if oFile:delete()
+				lOk := .T.
+			else
+				FErase(cNewFile)	
+			endIf
+		endIf
+*/
+	else
+		lOk := IIF(FRename( cFIle, cNewFile, nil, .F.) == 0 , .T., .F.)
+	endIf
+	
+	oFile:close()
+	oNewFile:close()
+	
+	if !lOk
+		oSelf:cMsg := "Falha ao mover ou renomear arquivo "+CRLF
+		oSelf:cMsg += "Origem: "+cFile+CRLF
+		oSelf:cMsg += "Destino: "+cNewFile
+	endIf
+	
+return lOk
+
+/**
+ * Coleta o nome do arquivo para cópia como Processado ou com Erro
+ */
+static function getCopyFileName(cFolder, cFile)
+	
+	local oUtils	  := IpUtilsObject():newIpUtilsObject()
+	local oFile		  := IpFileObject():newIpFileObject(getProcessingFile(cFile))
+	local cFileNoDir  := oFile:getFileName()
+	local nLenFile 	  := Len(AllTrim(cFileNoDir))
+	local nLenProcExt := Len(PROCESSING_EXTENSION)
+	local cFileName	  := SubStr(AllTrim(cFileNoDir), 1, (nLenFile - nLenProcExt)) 
+	
+return oUtils:concatDirectory(cFolder, cFileName)
+
+
+/*/{Protheus.doc} getProcessingFile
+
+Coleta um arquivo que está em Processamento
+	
+@author Victor Hugo
+@since 10/11/2014
+
+@param cFile, String, Arquivo em Processamento (com ou sem a extensão .processing)
+
+@return String Arquivo em Processamento (com ou sem a extensão .processing)
+/*/
+method getProcessingFile(cFile) class DHLDirectoryManager
+	
+	local cRet := ""
+	
+	if isProcessingFile(cFile)
+		cRet := getProcessingFile(cFile)
+	else
+		cRet := cFile
+	endIf
+
+return cRet

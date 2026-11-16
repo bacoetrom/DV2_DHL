@@ -1,0 +1,66 @@
+{
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"type": "totvs_language_debug",
+			"request": "launch",
+			"name": "TOTVS Language Debug",
+			"program": "${command:AskForProgramName}",
+			"cwb": "${workspaceFolder}",
+			"smartclientBin": "E:\\TOTVS\\smartclient_X64\\smartclient.exe",
+			"enableMultiThread": true,
+			"enableProfile": false,
+			"isMultiSession": true,
+			"isAccessibilityMode": false,
+			"doNotShowSplash": false,
+			"language": "",
+			"ignoreFiles": true,
+			"enableTableSync": true
+		},
+		{
+			"type": "totvs_language_debug",
+			"request": "launch",
+			"cwb": "${workspaceRoot}",
+			"name": "PRODUCAO_FSW",
+			"smartclientBin": "E:\\TOTVS\\smartclient_X64\\smartclient.exe",
+			"program": "${command:AskForProgramName}",
+			"programArguments": "${command:AskForProgramArguments}",
+			"enableMultiThread": true,
+			"enableProfile": false,
+			"isMultiSession": true,
+			"isAccessibilityMode": false,
+			"doNotShowSplash": false,
+			"language": "",
+			"ignoreFiles": true,
+			"enableTableSync": true
+		}
+	],
+	"lastPrograms": [
+		{
+			"args": [],
+			"label": "producao_fsw",
+			"description": ""
+		},
+		{
+			"args": [],
+			"label": "sigamdi",
+			"description": ""
+		},
+		{
+			"label": "sigamdi",
+			"description": "<nil>"
+		},
+		{
+			"label": "sigaadv",
+			"description": "<nil>"
+		},
+		{
+			"args": [
+				"sigamdi"
+			],
+			"label": "sigaadv",
+			"description": "sigamdi"
+		}
+	],
+	"lastProgramExecuted": "sigaadv"
+}

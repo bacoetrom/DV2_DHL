@@ -1,0 +1,378 @@
+#include "totvs.ch" 
+#include "rwmake.ch"  
+#include "safx.ch"
+#include "dhl.ch"  
+
+/*/{Protheus.doc} ProcMsaDW
+
+Função de menu para a geração dos arquivos manualmente
+
+@author Daniel Braga
+@since 31/10/2014
+
+/*/
+user function ProcMsaDW() 
+
+	private lGerouArquivos	:= .F.
+	public __lHasWarnLogDHL	:= .F.
+	public __lHasFailLogDHL	:= .F.
+
+	//IpSqlObject():execute("DELETE FROM %SZ2.SQLNAME% WHERE Z2_CODAPLI = '"+APP_MASTERSAF_DW+"'")
+
+	if !screenParameter()
+		return
+	endIf
+
+	if (__lHasWarnLogDHL .or. __lHasFailLogDHL)
+		MsgBox("Um ou mais registros não foram exportados. Verifique o Log de Integrações", "Atenção", "ALERT")
+	endIf
+
+	if lGerouArquivos
+		MsgBox("Processamento Concluído", "Aviso", "INFO")
+	else
+		MsgBox("Nenhum arquivo foi gerado. Verifique os parâmetros informados", "Atenção", "ALERT") 	 		
+	endIf	
+
+return
+
+
+static function screenParameter()
+
+	local lOk := .F.
+	local lCheck1:=lCheck2:=lCheck3:=lCheck4:=lCheck5:=lCheck6:=lCheck7:=lCheck8:=lCheck9:=lCheck10:=lCheck11:=lCheck12 := lCheck13 := .f.
+	local aItens := {"1=Entrada","2=Saída","3=Ambas"}          
+	local dDtDe07:= dDtAte07 := dDtDe10 := dDtAte10:= dDtDe52:=dDtDe130:=dDtAte130:=dDtAte2006 := dDtde235 := dDtAte235 :=  stod("")    
+	local nCombo := 1
+	local bSAFX04 	:=  {|| {'SAFX04'  ,{lCheck1}} } 
+	local bSAFX07 	:=  {|| {'SAFX07'  ,{lCheck2,nCombo,dDtDe07,dDtAte07}} }   
+	local bSAFX10 	:=  {|| {'SAFX10'  ,{lCheck3,dDtDe10,dDtAte10}} }    
+	local bSAFX2006 :=  {|| {'SAFX2006',{lCheck4,dDtAte2006}} }  
+	local bSAFX2007 :=  {|| {'SAFX2007',{lCheck5}} } 
+	local bSAFX2009 :=  {|| {'SAFX2009',{lCheck6}} } 
+	local bSAFX2013 :=  {|| {'SAFX2013',{lCheck7}} } 
+	local bSAFX2017 :=  {|| {'SAFX2017',{lCheck8}} } 
+	local bSAFX2081 :=  {|| {'SAFX2081',{lCheck9}} }  
+	local bSAFX82   :=  {|| {'SAFX52'  ,{lCheck10,dDtDe52}} } 
+	local bSAFX130  :=  {|| {'SAFX130'  ,{lCheck11,dDtDe130,dDtAte130}} }      
+	local bSAFX128  :=  {|| {'SAFX128'  ,{lCheck12}} }	
+	local bSAFX235  :=  {|| {'SAFX235'  ,{lCheck13,dDtde235,dDtAte235}} }	
+	private oDhlParmeter :=  DHLMsafDWParameters():newDHLMsafDWParameters(50,180,590,700,"Integração com MasterSaf DW")
+
+	oDhlParmeter:addCheckBox(01,01,"SAFX04 - Cadastro de Pessoas Físicas/Jurídicas"  ,@lCheck1,200,20, "oCkbx04") 
+
+	oDhlParmeter:addLine(10,01,700,1,"oLine1")
+
+	oDhlParmeter:addCheckBox(13,01,"SAFX07/SAFX08/SAFX112/SAFX116 - Notas Fiscais",@lCheck2,200,20,"oCkbx07")
+	oDhlParmeter:addSay("Data de:", 15,197,nil,nil,"oSay071") 
+	oDhlParmeter:addGet(12,220,"dDtDe07",nil,nil,nil,@dDtDe07)
+	oDhlParmeter:addSay("Tipo de Documento:", 28,01,nil,nil,"oSay072")
+	oDhlParmeter:addCombo(aItens,24,50,nil,nil,"cb0701", @nCombo )	
+	oDhlParmeter:addSay("Data ate:",31,197,nil,nil,"oSay072") 
+	oDhlParmeter:addGet(28,220,"dDtAte07",nil,nil,nil,@dDtAte07)
+
+	oDhlParmeter:addLine(43,01,700,1,"oLine2")
+
+	oDhlParmeter:addCheckBox(46,01,"SAFX10 - Controle de Estoque"  ,@lCheck3,200,20, "oCkbX10")
+	oDhlParmeter:addSay("Data de:", 48,197,nil,nil,"oSay071") 
+	oDhlParmeter:addGet(45,220,"dDtDe10",nil,nil,nil,@dDtDe10)	
+	oDhlParmeter:addSay("Data ate:",64,197,nil,nil,"oSay072") 
+	oDhlParmeter:addGet(61,220,"dDtAte10",nil,nil,nil,@dDtAte10)   
+
+	oDhlParmeter:addLine(76,01,700,1,"oLine2")
+
+	oDhlParmeter:addCheckBox(79,01,"SAFX2006 - Natureza de Operação"  ,@lCheck4,200,20, "oCkbX2006")
+	if (FWUnitBusiness() != DHL_BUSINESSUNIT_SPL) .and. (FWUnitBusiness() != DHL_BUSINESSUNIT_PKG)
+		oDhlParmeter:addSay("Data:",81,197,nil,nil,"oSay20061") 
+		oDhlParmeter:addGet(78,220,"dDtAte2006",nil,nil,nil,@dDtAte2006)
+	endif   
+
+	oDhlParmeter:addLine(93,01,700,1,"oLine3")
+
+	oDhlParmeter:addCheckBox(96,01,"SAFX2007 - Unidade de Medida"  ,@lCheck5,200,20, "oCkbX2007")  
+
+	oDhlParmeter:addLine(105,01,700,1,"oLine4")
+
+	oDhlParmeter:addCheckBox(108,01,"SAFX2009 - Cadastro de Observações - Ato Cotepe/ICMS 35/05"  ,@lCheck6,200,20, "oCkbX2009")
+
+	oDhlParmeter:addLine(117,01,700,1,"oLine5")
+
+	oDhlParmeter:addCheckBox(120,01,"SAFX2013 - Produtos"  ,@lCheck7,200,20, "oCkbX2013")
+
+	oDhlParmeter:addLine(129,01,700,1,"oLine6")
+
+	oDhlParmeter:addCheckBox(132,01,"SAFX2017 - Unidade Padrão"  ,@lCheck8,200,20, "oCkbX2017")
+
+	oDhlParmeter:addLine(141,01,700,1,"oLine7")
+
+	oDhlParmeter:addCheckBox(144,01,"SAFX2081 - Extensão de CFOP"  ,@lCheck9,200,20, "oCkbX2081")  
+
+	oDhlParmeter:addLine(153,01,700,1,"oLine8")
+
+	oDhlParmeter:addCheckBox(156,01,"SAFX52 - Inventário de Estoque por Produto"  ,@lCheck10,200,20, "oCkbX82")
+	oDhlParmeter:addSay("Data Base:", 158,190,nil,nil,"oSay821") 
+	oDhlParmeter:addGet(155,220,"dDtDe82",nil,nil,nil,@dDtDe52)        
+
+	oDhlParmeter:addLine(170,01,700,1,"oLine9")
+
+	oDhlParmeter:addCheckBox(173,01,"SAFX130 - Doc. Fiscais Eletrônicos Denegados ou Inutilizados"  ,@lCheck11,200,20, "oCkbX180")
+	oDhlParmeter:addSay("Data de:", 175,197,nil,nil,"oSay1801") 
+	oDhlParmeter:addGet(172,220,"dDtDe180",nil,nil,nil,@dDtDe130)	
+	oDhlParmeter:addSay("Data ate:",191,197,nil,nil,"oSay1802") 
+	oDhlParmeter:addGet(188,220,"dDtAte180",nil,nil,nil,@dDtAte130)
+
+	oDhlParmeter:addLine(203,01,700,1,"oLine10")
+
+	oDhlParmeter:addCheckBox(206,01,"SAFX128 - Cadastro de Conversões de Unidade"  ,@lCheck12,200,20, "oCkbX1281")
+
+	oDhlParmeter:addLine(215,01,700,1,"oLine11")
+
+	oDhlParmeter:addCheckBox(218,01,"SAFX235 - Tabela das Correções de Apontamento da EFD - Bloco K"  ,@lCheck13,200,20, "oCkbX235")
+	oDhlParmeter:addSay("Data de:", 220,197,nil,nil,"oSay1901") 
+	oDhlParmeter:addGet(217,220,"dDtDe190",nil,nil,nil,@dDtDe235)	
+	oDhlParmeter:addSay("Data ate:",236,197,nil,nil,"oSay1902") 
+	oDhlParmeter:addGet(233,220,"dDtAte190",nil,nil,nil,@dDtAte235)
+
+	oDhlParmeter:addLine(248,01,700,1,"oLine12")
+
+	oDhlParmeter:addButton(253, 160, "Confirmar", {|| lOk := buttonAction({ eval(bSAFX04),; 
+	eval(bSAFX07),;
+	eval(bSAFX10),;
+	eval(bSAFX2006),; 
+	eval(bSAFX2007),;
+	eval(bSAFX2009),;
+	eval(bSAFX2013),; 
+	eval(bSAFX2017),;
+	eval(bSAFX2081),;
+	eval(bSAFX82)  ,; 
+	eval(bSAFX130) ,;
+	eval(bSAFX128) ,;
+	eval(bSAFX235) })}, 40, 15, "oBtnOk")
+
+	oDhlParmeter:addButton(253,210,"Cancelar", {|| oDhlParmeter:oDlg:end() },40,15,"oBtnCancel")
+
+
+	oDhlParmeter:show()
+
+return lOk                                              
+
+
+static function buttonAction(aValue)    
+
+	local lOk := .F.
+
+	MsAguarde({|| lOk := confirmar(aValue) }, "Aguarde", "Gerando arquivos ...") 
+
+return lOk
+
+static function confirmar(aValue)  	
+
+	local nType 	:= nil 		
+	local DtFrom 	:= nil 	 
+	local dDtUntil	:= nil
+
+	if !validMarks(aValue)
+		return .F.
+	endIf
+
+	if (aValue[S04,1] == "SAFX04" .and. aValue[S04,2,1])
+		if U_SAFX04MSDW()
+			lGerouArquivos := .T.
+		endIf
+	endIf    
+
+	if aValue[S07,1] == "SAFX07" .and. aValue[S07,2,1]	 					
+		nType 		:= aValue[S07,2,2]
+		dDtFrom 	:= aValue[S07,2,3]
+		dDtUntil 	:= aValue[S07,2,4]
+		nType 		:= iif(ValType(nType)=="N",nType,val(nType) )	 
+		if (FWUnitBusiness() == DHL_BUSINESSUNIT_DIS)
+			if U_SAFX07DIS(nil,nType,dDtFrom,dDtUntil)
+				lGerouArquivos := .T.
+			endIf
+		elseif (FWUnitBusiness() == DHL_BUSINESSUNIT_AGE)
+			if U_SAFX07AGE(nil,nType,dDtFrom,dDtUntil)
+				lGerouArquivos := .T.
+			endIf
+		elseif (FWUnitBusiness() == DHL_BUSINESSUNIT_AGL)
+			if U_AGL07(nil,nType,dDtFrom,dDtUntil)
+				lGerouArquivos := .T.
+			endIf
+		elseif (FWUnitBusiness() == DHL_BUSINESSUNIT_REP) //REP COM AGE
+			if U_SAFX07AGE(nil,nType,dDtFrom,dDtUntil)
+				lGerouArquivos := .T.
+			endIf			
+		elseif (FWUnitBusiness() == DHL_BUSINESSUNIT_AG2)
+			if U_07AG2SAFX(nil,nType,dDtFrom,dDtUntil)
+				lGerouArquivos := .T.
+			endIf
+		elseif (FWUnitBusiness() == DHL_BUSINESSUNIT_MUL)
+			if U_07SAFXMUL(nil,nType,dDtFrom,dDtUntil)
+				lGerouArquivos := .T.
+			endIf
+		elseif (FWUnitBusiness() == DHL_BUSINESSUNIT_DI2)
+			if U_Di2SAFX07MSDW(nil,nType,dDtFrom,dDtUntil)			
+				lGerouArquivos := .T.
+			endIf
+		else	
+			if U_SAFX07MSDW(nil,nType,dDtFrom,dDtUntil)			
+				lGerouArquivos := .T.
+			endIf
+		endif
+	endIf 
+
+	if aValue[S10,1] == "SAFX10" .and. aValue[S10,2,1]	 		
+		dDtFrom  := aValue[S10,2,2]
+		dDtUntil := aValue[S10,2,3]	 		
+		if (FWUnitBusiness() == DHL_BUSINESSUNIT_DIS)
+			if U_SAFX10DIS(nil,dDtFrom,dDtUntil)
+				lGerouArquivos := .T.
+			endIf
+		else
+			if U_SAFX10MSDW(nil,dDtFrom,dDtUntil)
+				lGerouArquivos := .T.
+			endIf
+		endif
+	endIf
+
+	if aValue[S2006,1] == "SAFX2006" .and. aValue[S2006,2,1]  
+		dDtFrom  := aValue[S2006,2,2]
+		if U_SAFX2006MSDW(nil,dDtFrom)
+			lGerouArquivos := .T.
+		endIf
+	endIf  
+
+	if aValue[S2007,1] == "SAFX2007" .and. aValue[S2007,2,1]  
+		if U_SAFX2007MSDW()
+			lGerouArquivos := .T.
+		endIf
+	endIf
+
+	if aValue[S2009,1] == "SAFX2009" .and. aValue[S2009,2,1] 
+		if U_SAFX2009MSDW()
+			lGerouArquivos := .T.
+		endIf
+	endIf
+
+	if aValue[S2013,1] == "SAFX2013" .and. aValue[S2013,2,1]
+		if U_SAFX2013MSDW()
+			lGerouArquivos := .T.
+		endIf	
+	endIf
+
+	if aValue[S2017,1] == "SAFX2017" .and. aValue[S2017,2,1]	
+		if U_SAFX2017MSDW()
+			lGerouArquivos := .T.
+		endIf
+	endIF
+
+	if aValue[S2081,1] == "SAFX2081" .and. aValue[S2081,2,1]
+		if U_SAFX2081MSDW()
+			lGerouArquivos := .T.
+		endIf
+	endIf
+
+	if aValue[S52,1]   == "SAFX52" .and. aValue[S52,2,1]
+		dDtFrom :=aValue[S52,2,2]
+		if (FWUnitBusiness() == DHL_BUSINESSUNIT_DIS)
+			if U_SAFX52DIS(nil,dDtFrom)
+				lGerouArquivos := .T.
+			endIf
+		elseif (FWUnitBusiness() == DHL_BUSINESSUNIT_AGE) 
+			if U_SAFX52AGE(nil,dDtFrom)
+				lGerouArquivos := .T.
+			endIf
+		elseif (FWUnitBusiness() == DHL_BUSINESSUNIT_AGL) 
+			if U_52AGL(nil,dDtFrom)
+				lGerouArquivos := .T.
+			endIf
+		elseif (FWUnitBusiness() == DHL_BUSINESSUNIT_MUL)
+			if U_SAFX52MUL(nil,dDtFrom)
+				lGerouArquivos := .T.
+			endIf
+		elseif (FWUnitBusiness() == DHL_BUSINESSUNIT_AG2)
+			if U_52AG2SAFX(nil,dDtFrom)
+				lGerouArquivos := .T.
+			endIf
+		else
+			if (FWUnitBusiness() == DHL_BUSINESSUNIT_REP)
+				if U_SAFX52REP(nil,dDtFrom)
+					lGerouArquivos := .T.
+				endIf
+			else
+				if U_SAFX52MSDW(nil,dDtFrom)
+					lGerouArquivos := .T.
+				endIf
+			endIf
+		endif		
+	endIf
+
+	if aValue[S130,1]  == "SAFX130" .and. aValue[S130,2,1]
+		dDtFrom  := aValue[S130,2,2]
+		dDtUntil := aValue[S130,2,3]		
+		if (FWUnitBusiness() == DHL_BUSINESSUNIT_DIS)
+			if U_SAFX130DIS(nil,dDtFrom,dDtUntil)
+				lGerouArquivos := .T.
+			endIf
+		else
+			if U_SAFX130MSDW(nil,dDtFrom,dDtUntil)
+				lGerouArquivos := .T.
+			endIf
+		endif		
+	endIf
+
+	if aValue[S128,1]  == "SAFX128" .and. aValue[S128,2,1]
+		if U_SAFX128MSDW()
+			lGerouArquivos := .T.
+		endIf
+	endIf	
+
+	if aValue[S235,1]  == "SAFX235" .and. aValue[S235,2,1]
+		dDtFrom  := aValue[S235,2,2]
+		dDtUntil := aValue[S235,2,3]
+
+		if empty(dDtFrom) .or. empty(dDtUntil)
+			MsgInfo("Campo data obrigatório","")
+			return .F.
+		endIf
+
+		if (FWUnitBusiness() == DHL_BUSINESSUNIT_DIS)
+			if U_SAFXDIS235(nil,dDtFrom,dDtUntil)
+				lGerouArquivos := .T.
+			endIf
+		elseIf (FWUnitBusiness() == DHL_BUSINESSUNIT_MUL)
+			if U_SAFXMUL235(nil,dDtFrom,dDtUntil)
+				lGerouArquivos := .T.
+			endIf
+		elseIf (FWUnitBusiness() == DHL_BUSINESSUNIT_PKG)
+			if U_SAFXPKG235(nil,dDtFrom,dDtUntil)
+				lGerouArquivos := .T.
+			endIf
+		else
+			MsgInfo("Geração do bloco K não permitido para a unidade de negócio " + allTrim(FWUnitBusiness()),"")
+		endif		
+	endIf
+
+	oDhlParmeter:oDlg:end()	
+
+return .T.
+
+/**
+* Verifica se ao menos uma interface foi selecionada
+*/
+static function validMarks(aValue)
+
+	local nI  := 0
+	local lOk := .F.
+
+	for nI := 1 to Len(aValue)
+		if aValue[nI,2,1]
+			lOk := .T.
+			exit
+		endIf
+	next nI
+
+	if !lOk
+		MsgBox("Selecione ao menos uma interface para Geração dos Arquivos", "Atenção", "ALERT")
+	endIf
+
+return lOk

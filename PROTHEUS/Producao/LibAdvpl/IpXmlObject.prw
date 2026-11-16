@@ -1,0 +1,261 @@
+#include "totvs.ch"
+
+
+/*/{Protheus.doc} IpXmlObject
+
+Objeto para manipulação de arquivos XML
+
+@type class
+@author Victor Hugo
+@since 08/05/2014
+/*/
+class IpXmlObject from IpAdvplObject
+
+	data oXml
+	data cXml
+	data cError
+	data cWarning
+
+	method newIpXmlObject() constructor
+
+	method getXml()
+	method setXml()
+	method getError()
+	method getWarning()
+
+	method doParse()
+	method doParseFile()
+	method getNodeValue()
+	method getNodeArray()
+	method nodeToXml()
+	method existNode()
+
+endClass
+
+
+/*/{Protheus.doc} newIpXmlObject
+
+Construtor
+
+@type method
+@author Victor Hugo
+@since 08/05/2014
+
+@param cXml, cString, String ou Arquivo XML
+/*/
+method newIpXmlObject(cXml) class IpXmlObject
+
+	default cXml := ""
+
+	::newIpAdvplObject()
+
+	::setXml(cXml)
+
+	::cError    := ""
+	::cWarning  := ""
+
+return
+
+
+/*/{Protheus.doc} getXml
+
+Coleta a String do XML
+
+@type method
+@author Victor Hugo
+@since 08/05/2014
+
+@return String XML
+/*/
+method getXml() class IpXmlObject
+return ::cXml
+
+
+/*/{Protheus.doc} setXml
+
+Define a String ou Arquivo XML
+
+@type method
+@author Victor Hugo
+@since 08/05/2014
+
+@param cXml, String, String ou Arquivo XML
+/*/
+method setXml(cXml) class IpXmlObject
+
+	if File(cXml)
+		cXml := MemoRead(cXml)
+	endIf	
+
+	::cXml := cXml	
+
+return
+
+
+/*/{Protheus.doc} getError
+
+Coleta o erro do último parser
+
+@type method
+@author Victor Hugo
+@since 08/05/2014
+
+@return String Mensagem de erro
+/*/
+method getError() class IpXmlObject
+return ::cError
+
+
+/*/{Protheus.doc} getWarning
+
+Coleta o aviso do último parser
+
+@type method
+@author Victor Hugo
+@since 08/05/2014
+
+@return String Mensagem de aviso
+/*/
+method getWarning() class IpXmlObject
+return ::cWarning
+
+
+/*/{Protheus.doc} doParse
+
+Realiza o parser do Xml
+
+@type method
+@author Victor Hugo
+@since 08/05/2014
+
+@return Logico Indica se o parser foi realizado
+/*/
+method doParse() class IpXmlObject
+
+	local cXml := ::getXml()
+
+	cXml := EncodeUTF8(NoAcento(cXml))
+
+	if valType(::oXml) != "U"
+
+		if Empty(cXml)
+			return .F.
+		endIf
+		
+	else
+	
+		cXml := ::getXml()
+
+	endIf
+
+	::cError    := ""
+	::cWarning  := ""    
+	::oXml 	    := XmlParser(cXml, "_", @::cError, @::cWarning)
+
+return (ValType(::oXml) == "O")
+
+method doParseFile(cXmlFile) class IpXmlObject
+	::cError    := ""
+	::cWarning  := ""    
+	::oXml 	    := XmlParserFile(cXmlFile, "_", @::cError, @::cWarning)
+return (ValType(::oXml) == "O")
+
+
+/*/{Protheus.doc} getNodeValue
+
+Coleta o valor de um nó
+
+@type method
+@author Victor Hugo
+@since 08/05/2014
+
+@param cNode, String, Nó a ser considerado. Ex.: oXml:getNodeValue("pedido:_cabecalho:_numero")
+
+@return Indefinido, String ou Objeto referente ao nó
+/*/
+method getNodeValue(cNode) class IpXmlObject
+
+	local xRet   := ""
+	private oXml := ::oXml
+
+	cNode := "oXml:_"+AllTrim(cNode)
+
+	if (Type(cNode) != "U")
+		xRet := &cNode
+	endIf
+
+return xRet
+
+
+/*/{Protheus.doc} getNodeArray
+
+Coleta o valor de um nó em forma de array (lista de objetos)
+
+@type method
+@author Victor Hugo
+@since 08/05/2014
+
+@param cNode, String, Nó a ser considerado. Ex.: oXml:getNodeArray("pedido:_itens:_item")
+
+@return Array, Lista de Nós. Se a tag não existir retorna um array vazio.
+/*/
+method getNodeArray(cNode) class IpXmlObject
+
+	local aNodes := {}
+	local xValue := ::getNodeValue(cNode)
+
+	if (ValType(xValue) == "A")
+		aNodes := xValue
+	elseIf (ValType(xValue) != "U")
+		aAdd(aNodes, xValue)
+	endIf
+
+return aNodes
+
+
+/*/{Protheus.doc} nodeToXml
+
+Converte Nó em string Xml
+
+@type method
+@author Deivid Lima
+@since 05/06/2014
+
+@param oNode, Object, Objecto do Nó a ser considerado
+
+@return String, String do Xml
+/*/
+method nodeToXml(oNode) class IpXmlObject
+
+	local cXml := ""
+
+	cXml := XMLSaveStr(oNode, .F.)
+	cXml := StrTran(cXml, "\n", "")
+
+return cXml
+
+
+/*/{Protheus.doc} existNode
+
+Verifica se um nó existe
+
+@type method
+@author Victor Hugo
+@since 30/10/2014
+
+@param cNode, String, Nó a ser considerado. Ex.: oXml:getNodeValue("pedido:_cabecalho:_numero")
+
+@return Logico Indica se o nó existe
+/*/
+method existNode(cNode) class IpXmlObject
+
+	local lExist := .F.
+	private oXml := ::oXml
+
+	cNode := "oXml:_"+AllTrim(cNode)
+
+	if (Type(cNode) != "U")
+		lExist := .T.
+	endIf
+
+return lExist

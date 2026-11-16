@@ -1,0 +1,295 @@
+
+
+// campos do layout 
+#define COD_EMPRESA                    {1,3}
+#define COD_ESTAB                      {2,6}
+#define DATA_FISCAL                    {3,8}
+#define MOVTO_E_S                      {4,1}
+#define NORM_DEV                       {5,1}
+#define COD_DOCTO                      {6,5}
+#define IND_FIS_JUR                    {7,1}
+#define COD_FIS_JUR                    {8,14}
+#define NUM_DOCFIS                     {9,12}
+#define SERIE_DOCFIS                   {10,3}
+#define SUB_SERIE_DOCFIS               {11,2}
+#define IND_BEM_PATR                   {12,1}
+#define IND_PRODUTO                    {13,1}
+#define COD_PRODUTO                    {14,35}
+#define COD_BEM                        {15,30}
+#define COD_INC_BEM                    {16,6}
+#define COD_UND_PADRAO                 {17,8}
+#define NUM_ITEM                       {18,5}
+#define COD_ALMOX                      {19,20}
+#define COD_CUSTO                      {20,20}
+#define DESCRICAO_COMPL                {21,50}
+#define COD_CFO                        {22,4}
+#define COD_NATUREZA_OP                {23,3}
+#define QUANTIDADE                     {24,17,6}
+#define COD_MEDIDA                     {25,3}
+#define COD_NBM                        {26,10}
+#define VLR_UNIT                       {27,19,4}
+#define VLR_ITEM                       {28,17,2}
+#define VLR_DESCONTO                   {29,17,2}
+#define COD_SITUACAO_A                 {30,1}
+#define COD_SITUACAO_B                 {31,2}
+#define COD_FEDERAL                    {32,5}
+#define IND_IPI_INCLUSO                {33,1}
+#define NUM_ROMANEIO                   {34,12}
+#define DATA_ROMANEIO                  {35,8}
+#define PESO_LIQUIDO                   {36,14,3}
+#define COD_INDICE                     {37,10}
+#define VLR_ITEM_CONVER                {38,17,2}
+#define VLR_FRETE                      {39,17,2}
+#define VLR_SEGURO                     {40,17,2}
+#define VLR_OUTRAS                     {41,17,2}
+#define VLR_ALIQ_ICMS                  {42,7,4}
+#define VLR_ICMS                       {43,17,2}
+#define DIF_ALIQ_ICMS                  {44,7,4}
+#define OBS_ICMS                       {45,45}
+#define COD_APUR_ICMS                  {46,5}
+#define VLR_ALIQ_IPI                   {47,7,4}
+#define VLR_IPI                        {48,17,2}
+#define OBS_IPI                        {49,45}
+#define COD_APUR_IPI                   {50,5}
+#define VLR_ALIQ_SUB_ICMS              {51,7,4}
+#define VLR_SUBST_ICMS                 {52,17,2}
+#define OBS_SUBST_ICMS                 {53,45}
+#define COD_APUR_SUB_ICMS              {54,5}
+#define TRIB_ICMS                      {55,1}
+#define BASE_ICMS                      {56,17,2}
+#define BASE_REDU_ICMS                 {57,17,2}
+#define TRIB_IPI                       {58,1}
+#define BASE_IPI                       {59,17,2}
+#define BASE_REDU_IPI                  {60,17,2}
+#define BASE_SUB_TRIB_ICMS             {61,17,2}
+#define VLR_CONTAB_COMPL               {62,17,2}
+#define VLR_ALIQ_DESTINO               {63,7,4}
+#define VLR_CONTAB_ITEM                {64,17,2}
+#define COD_OBS_VCONT_COMP             {65,10}
+#define COD_OBS_VCONT_ITEM             {66,10}
+#define VLR_OUTROS_ICMS                {67,17,2}
+#define VLR_OUTROS_IPI                 {68,17,2}
+#define VLR_OUTROS1                    {69,17,2}
+#define NUM_ATO_CONCES                 {70,15}
+#define DAT_EMBARQUE                   {71,8}
+#define NUM_REG_EXP                    {72,12}
+#define NUM_DESP_EXP                   {73,11}
+#define VLR_TOM_SERVICO                {74,17,2}
+#define VLR_DESP_MOEDA_EXP             {75,17,2}
+#define COD_MOEDA_NEGOC                {76,10}
+#define COD_PAIS_DEST_ORIG             {77,3}
+#define IND_CRED_ICMSS                 {78,1}
+#define COD_TRIB_INT                   {79,5}
+#define VLR_ICMS_NDESTAC               {80,17,2}
+#define VLR_IPI_NDESTAC                {81,17,2}
+#define TRIB_ICMS_AUX                  {82,1}
+#define BASE_ICMS_AUX                  {83,17,2}
+#define TRIB_IPI_AUX                   {84,1}
+#define BASE_IPI_AUX                   {85,17,2}
+#define VLR_BASE_PIS                   {86,17,2}
+#define VLR_PIS                        {87,17,2}
+#define VLR_BASE_COFINS                {88,17,2}
+#define VLR_COFINS                     {89,17,2}
+#define BASE_ICMS_ORIGDEST             {90,17,2}
+#define VLR_ICMS_ORIGDEST              {91,17,2}
+#define ALIQ_ICMS_ORIGDEST             {92,7,4}
+#define VLR_DESC_CONDIC                {93,17,2}
+#define TRIB_ICMSS                     {94,1}
+#define BASE_REDU_ICMSS                {95,17,2}
+#define VLR_CUSTO_TRANSF               {96,17,6}
+#define PERC_RED_BASE_ICMS             {97,7,4}
+#define QTD_EMBARCADA                  {98,17,6}
+#define DAT_REGISTRO_EXP               {99,8}
+#define DAT_DESPACHO                   {100,8}
+#define DAT_AVERBACAO                  {101,8}
+#define DAT_DI                         {102,8}
+#define NUM_DEC_IMP_REF                {103,12}
+#define DSC_MOT_OCOR                   {104,45}
+#define COD_CONTA                      {105,70}
+#define VLR_BASE_ICMS_ORIG             {106,17,2}
+#define VLR_TRIB_ICMS_ORIG             {107,17,2}
+#define VLR_BASE_ICMS_DEST             {108,17,2}
+#define VLR_TRIB_ICMS_DEST             {109,17,2}
+#define VLR_PERC_PRES_ICMS             {110,7,4}
+#define VLR_PRECO_BASE_ST              {111,17,2}
+#define COD_OPER_OIL                   {112,10}
+#define COD_DCR                        {113,15}
+#define COD_PROJETO                    {114,20}
+#define IND_MOV_FIS                    {115,1}
+#define CHASSI                         {116,17}
+#define NUM_DOCFIS_REF                 {117,12}
+#define SERIE_DOCFIS_REF               {118,3}
+#define SSERIE_DOCFIS_REF              {119,2}
+#define VLR_BASE_PIS_ST                {120,17,2}
+#define VLR_ALIQ_PIS_ST                {121,7,4}
+#define VLR_PIS_ST                     {122,17,2}
+#define VLR_BASE_COFINS_ST             {123,17,2}
+#define VLR_ALIQ_COFINS_ST             {124,7,4}
+#define VLR_COFINS_ST                  {125,17,2}
+#define VLR_BASE_CSLL                  {126,17,2}
+#define VLR_ALIQ_CSLL                  {127,7,4}
+#define VLR_CSLL                       {128,17,2}
+#define VLR_ALIQ_PIS                   {129,7,4}
+#define VLR_ALIQ_COFINS                {130,7,4}
+#define IND_FORNEC_ICMSS               {131,1}
+#define IND_SITUACAO_ESP_ST            {132,1}
+#define VLR_ICMSS_NDESTAC              {133,17,2}
+#define IND_DOCTO_REC                  {134,1}
+#define DAT_PGTO_GNRE_DARJ             {135,8}
+#define VLR_CUSTO_UNIT                 {136,17,2}
+#define QUANTIDADE_CONV                {137,17,6}
+#define VLR_FECP_ICMS                  {138,17,2}
+#define VLR_FECP_DIFALIQ               {139,17,2}
+#define VLR_FECP_ICMS_ST               {140,17,2}
+#define VLR_FECP_FONTE                 {141,17,2}
+#define TRIB_ICMSS_AUX2                {142,1}
+#define BASE_ICMSS_AUX2                {143,17,2}
+#define VLR_BASE_ICMSS_N_ESCRIT        {144,17,2}
+#define VLR_ICMSS_N_ESCRIT             {145,17,2}
+#define COD_TRIB_IPI                   {146,2}
+#define LOTE_MEDICAMENTO               {147,50}
+#define VALID_MEDICAMENTO              {148,8}
+#define IND_BASE_MEDICAMENTO           {149,1}
+#define VLR_PRECO_MEDICAMENTO          {150,17,2}
+#define IND_TIPO_ARMA                  {151,1}
+#define NUM_SERIE_ARMA                 {152,50}
+#define NUM_CANO_ARMA                  {153,50}
+#define DSC_ARMA                       {154,100}
+#define COD_OBSERVACAO                 {155,8}
+#define COD_EX_NCM                     {156,2}
+#define COD_EX_IMP                     {157,2}
+#define CNPJ_OPERADORA                 {158,14}
+#define CPF_OPERADORA                  {159,14}
+#define UF_OPERADORA                   {160,2}
+#define INS_EST_OPERADORA              {161,14}
+#define IND_ESPECIF_RECEITA            {162,1}
+#define COD_CLASS_ITEM                 {163,4}
+#define VLR_TERCEIROS                  {164,17,2}
+#define VLR_PRECO_SUGER                {165,17,2}
+#define VLR_BASE_CIDE                  {166,17,2}
+#define VLR_ALIQ_CIDE                  {167,7,4}
+#define VLR_CIDE                       {168,17,2}
+#define COD_OPER_ESP_ST                {169,1}
+#define VLR_COMISSAO                   {170,17}
+#define VLR_ICMS_FRETE                 {171,17,2}
+#define VLR_DIFAL_FRETE                {172,17,2}
+#define IND_VLR_PIS_COFINS             {173,1}
+#define COD_ENQUAD_IPI                 {174,3}
+#define COD_SITUACAO_PIS               {175,2}
+#define QTD_BASE_PIS                   {176,18,3}
+#define VLR_ALIQ_PIS_R                 {177,19,4}
+#define COD_SITUACAO_COFINS            {178,2}
+#define QTD_BASE_COFINS                {179,18,3}
+#define VLR_ALIQ_COFINS_R              {180,19,4}
+#define ITEM_PORT_TARE                 {181,2}
+#define VLR_FUNRURAL                   {182,17,2}
+#define IND_TP_PROD_MEDIC              {183,1}
+#define VLR_CUSTO_DCA                  {184,17,6}
+#define COD_TP_LANCTO                  {185,6}
+#define VLR_PERC_CRED_OUT              {186,7,4}
+#define VLR_CRED_OUT                   {187,17,2}
+#define VLR_ICMS_DCA                   {188,17,6}
+#define VLR_PIS_EXP                    {189,17,2}
+#define VLR_PIS_TRIB                   {190,17,2}
+#define VLR_PIS_N_TRIB                 {191,17,2}
+#define VLR_COFINS_EXP                 {192,17,2}
+#define VLR_COFINS_TRIB                {193,17,2}
+#define VLR_COFINS_N_TRIB              {194,17,2}
+#define COD_ENQ_LEGAL                  {195,4}
+#define DAT_LANC_PIS_COFINS            {196,8}
+#define IND_PIS_COFINS_EXTEMP          {197,1}
+#define IND_NATUREZA_FRETE             {198,1}
+#define COD_NAT_REC                    {199,3}
+#define IND_NAT_BASE_CRED              {200,2}
+#define VLR_ACRESCIMO                  {201,17,2}
+#define IND_IPI_NDESTAC_DF             {202,1}
+#define DSC_RESERVADO1                 {203,50}
+#define DSC_RESERVADO2                 {204,50}
+#define DSC_RESERVADO3                 {205,50}
+#define COD_TRIB_PROD                  {206,4}
+#define DSC_RESERVADO4                 {207,50}
+#define DSC_RESERVADO5                 {208,50}
+#define DSC_RESERVADO6                 {209,17,2}
+#define DSC_RESERVADO7                 {210,17,2}
+#define DSC_RESERVADO8                 {211,17,2}
+#define INDICE_PROD_ACAB               {212,3}
+#define VLR_BASE_DIA_AM                {213,17,2}
+#define VLR_ALIQ_DIA_AM                {214,7,4}
+#define VLR_ICMS_DIA_AM                {215,17,2}
+#define VLR_ADUANEIRO				   {216,15,2}
+#define COD_SITUACAO_PIS_ST			   {217,2}
+#define COD_SITUACAO_COFINS_ST		   {218,2}
+#define VLR_ALIQ_DCIP				   {219,3,4}
+#define NUM_LI						   {220,10}
+#define VLR_FCP_UF_DEST				   {221,15,2}
+#define VLR_ICMS_UF_DEST			   {222,15,2}
+#define VLR_ICMS_UF_ORIG			   {223,15,2}
+#define VLR_DIF_DUB					   {224,15,2}
+#define VLR_ICMS_NAO_DEST		       {225,15,2}
+#define VLR_BASE_ICMS_NAO_DEST		   {226,15,2}
+#define VLR_ALIQ_ICMS_NAO_DEST		   {227,3,4}
+#define IND_MOTIVO_RES				   {228,1}
+#define NUM_DOCFIS_RET				   {229,12}
+#define SERIE_DOCFIS_RET		       {230,3}
+#define NUM_AUTENTIC_NFE_RET		   {231,80}
+#define NUM_ITEM_RET				   {232,5}
+#define IND_FIS_JUR_RET				   {233,1}
+#define COD_FIS_JUR_RET				   {234,14}
+#define IND_TP_DOC_ARREC			   {235,1}
+#define NUM_DOC_ARREC				   {236,50}
+#define COD_CFO_DCIP				   {237,4}
+#define VLR_BASE_INSS				   {238,15,2}
+#define VLR_INSS_RETIDO				   {239,15,2}
+#define VLR_TOT_ADIC				   {240,15,2}
+#define VLR_N_RET_PRINC				   {241,15,2}
+#define VLR_N_RET_ADIC				   {242,15,2}
+#define VLR_ALIQ_INSS				   {243,3,4}
+#define VLR_RET_SERV				   {244,15,2}
+#define VLR_SERV_15					   {245,15,2}
+#define VLR_SERV_20					   {246,15,2}
+#define VLR_SERV_25					   {247,15,2}
+#define IND_TP_PROC_ADJ_PRINC	       {248,1}
+#define NUM_PROC_ADJ_PRINC			   {249,21}
+#define COD_SUSP_PRINC				   {250,14}
+#define IND_TP_PROC_ADJ_ADIC		   {251,1}
+#define NUM_PROC_ADJ_ADIC			   {252,21}
+#define COD_SUSP_ADIC				   {253,14}
+#define VLR_IPI_DEV					   {254,15,2}
+#define COD_BENEFICIO				   {255,10}
+#define VLR_ABAT_NTRIBUTADO 		   {256,15,2}
+#define VLR_CREDITO_MVA_SN			   {257,15,2}
+#define VLR_DESONERADO_ICMS			   {258,15,2}
+#define VLR_DIFERIDO_ICMS			   {259,15,2}
+
+
+
+
+
+//quantidade de colunas
+#define SAFX08_POSICOES		259
+
+//Titulo do erro 
+#define SAFX08_ERROR_TITLE				"Falha da Exportacao SAFX08"
+#define SAFX08_ERROR_OBRIGAT 			"Obrigatorio - 
+
+// Validacao campos obrigatorios
+#define VLD_08_FIELD 			   { {COD_EMPRESA			,"CODIGO EMPRESA" },;
+										 {COD_ESTAB  			,"CODIGO DO ESTABELECIMENTO"},;
+										 {MOVTO_E_S	 		,"MOVIMENTO ENTRADA/SAIDA"},;
+										 {NORM_DEV	 			,"NORMAL OU DEVOLUCAO"},;
+										 {COD_DOCTO  			,"TIPO DO DOCUMENTO"},;
+										 {IND_FIS_JUR			,"INDICADOR PESSOA FISICA /JURIDICA"},;
+										 {COD_FIS_JUR			,"CODIGO DO DESTINATARIO/EMITENTE"},;
+										 {NUM_DOCFIS			,"NUMERO DO DOCUMENTO FISCAL"},;
+										 {SERIE_DOCFIS    	,"SERIE DO DOCUMENTO FISCAL "},;
+										 {DATA_FISCAL 	 	,"DATA DA ESCRITA FISCAL"},;
+										 {IND_BEM_PATR	    ,"BEM PATRIMONIAL"},;
+										 {COD_PRODUTO			,"PRODUTO"},;
+										 {COD_UND_PADRAO		,"UNIDADE PADRAO"},;
+										 {NUM_ITEM				,"ITEM NOTA FISCAL"},;
+										 {COD_MEDIDA			,"UNIDADE DE MEDIDA"}    }	
+										 
+//Posições para array UfTaxes
+#define VLR_FCP			1
+#define VLR_ICMS_DEST	2
+#define VLR_ICMS_ORIG	3										 

@@ -1,0 +1,488 @@
+#Include 'Protheus.ch'
+
+#Define OP 			1
+#Define COD			2
+#Define D3LOCAL		3
+#Define NUMSEQ		4
+#Define QUANTIDADE 	5
+#Define NUMDOC		6
+#Define CHAVE		7
+#Define D3RECNO 	8
+#Define ESTORNO		5
+
+/*/{Protheus.doc} MulBkPositivAdjust
+
+Rotina que realiza o ajuste positivo do backflush
+	
+@author Gustavo Luiz
+@since 14/02/2017
+/*/
+User Function MulBkPositivAdjust(oDHLBackFlush)
+
+	Local oDHLApontProducao := Nil
+	//QUANDO NÃO HAVER ORDEM CRIADA PARA O PROJETO EM QUESTÃO
+	If !ExistOPCriado(oDHLBackFlush) .AND. !oDHLBackFlush:HasErroOperacao()
+		If VerificarEstrutura(oDHLBackFlush)
+			If VerificarQtdPlanned(oDHLBackFlush)
+				If !oDHLBackFlush:IsLoteVencido()
+					If ExistEstBOM(oDHLBackFlush)
+						Begin Transaction
+							Begin Sequence
+								oDHLBackFlush:CreateOP()
+								If !oDHLBackFlush:HasErroOperacao()								
+									oDHLBackFlush:GeraConsumo()
+									If !oDHLBackFlush:HasErroOperacao()
+										oDHLBackFlush:ApontProducao()
+										If oDHLBackFlush:HasErroOperacao()
+											DisarmTransaction()
+											oDHLBackFlush:SetFileLog(oDHLBackFlush:GetFilePath(),"fail","Falha ao apontar a Ordem de Produção"+CRLF+CRLF+oDHLBackFlush:GetMsgErro())
+										EndIf
+									Else
+										DisarmTransaction()
+										oDHLBackFlush:SetFileLog(oDHLBackFlush:GetFilePath(),"fail","Falha ao realizar o empenho"+CRLF+CRLF+oDHLBackFlush:GetMsgErro())
+									EndIf
+								Else
+									DisarmTransaction()
+									oDHLBackFlush:SetFileLog(oDHLBackFlush:GetFilePath(),"fail","Falha ao incluir a Ordem de Produção"+CRLF+CRLF+oDHLBackFlush:GetMsgErro())
+								EndIf
+							End Sequence
+						End Transaction
+					EndIf
+				EndIf
+			EndIf
+		EndIf
+	
+	//QUANDO JÁ EXISTIR ORDEM CRIADA PARA O PROJETO EM QUESTÃO
+	Elseif !oDHLBackFlush:HasErroOperacao()
+		If VerificarEstrutura(oDHLBackFlush)
+			If !oDHLBackFlush:IsLoteVencido()
+				If ExistEstBOM(oDHLBackFlush)
+					Begin Transaction
+						Begin Sequence
+							If VerificarQtdPlanned(oDHLBackFlush)
+								oDHLBackFlush:CreateOP()
+								If oDHLBackFlush:HasErroOperacao()
+									DisarmTransaction()
+									oDHLBackFlush:SetFileLog(oDHLBackFlush:GetFilePath(),"fail","Falha ao incluir a Ordem de Produção"+CRLF+CRLF+oDHLBackFlush:GetMsgErro())
+								EndIf
+							
+								ExecApontParcial(oDHLBackFlush)
+								If oDHLBackFlush:HasErroOperacao()
+								
+									DisarmTransaction()
+									oDHLBackFlush:SetFileLog(oDHLBackFlush:GetFilePath(),"fail","Falha ao processar interface BackFlush"+CRLF+CRLF+ oDHLBackFlush:GetErrorMsg())
+								EndIf
+							Else
+								If !oDHLBackFlush:HasErroOperacao()
+									ExecApontParcial(oDHLBackFlush)
+									If oDHLBackFlush:HasErroOperacao()
+								
+										DisarmTransaction()
+										oDHLBackFlush:SetFileLog(oDHLBackFlush:GetFilePath(),"fail","Falha ao processar interface BackFlush"+CRLF+CRLF+ oDHLBackFlush:GetErrorMsg())
+									
+									EndIf
+								EndIf
+							EndIf
+						End Sequence
+					End Transaction
+				EndIf
+			EndIf
+		EndIf
+	EndIf
+
+Return
+
+/**
+* Executa o apontamento parcial de acordo com a disponibilidade de saldos por OP
+**/
+Static Function ExecApontParcial(oDHLBackFlush)
+
+	Local cIdProject 	:= oDHLBackFlush:GetProjectID()
+	Local oSqlRat		:= ipSqlObject():newIpSqlObject()
+	Local cQuery		:= GetQueryRateio(oDHLBackFlush)
+	Local nQuant		:= 0
+	Local nQuje			:= 0
+	Local nQuantPA 		:= oDHLBackFlush:GetQtyBom()
+	Local nSaldo		:= 0
+	Local cOP			:= ""
+	Local lAchou		:= .F.
+	Local nFator		:= 0
+	Local nSaldoTotOP	:= 0
+	Local aApontProducao:= {}
+	
+	oSqlRat:newAlias(cQuery)
+	
+	nSaldoTotOP := GetTotaoOP(oSqlRat)
+	
+	oSqlRat:newAlias(cQuery)
+	
+	If nSaldoTotOP >= nQuantPA
+		
+		oDHLBackFlush:SetFator(nQuantPA)
+		
+		If oSqlRat:hasRecords()
+			While oSqlRat:notIsEof()
+				
+				cOP 		:= oSqlRat:GetValue("C2_NUM")
+				nQuant		:= oSqlRat:GetValue("C2_QUANT")
+				nQuje		:= oSqlRat:GetValue("C2_QUJE")
+				nSaldo  	:=  nQuant - nQuje
+				
+				If nSaldo >= nQuantPA
+					
+					oDHLBackFlush:SetExistMod(.T.)		//NECESSÁRIO PARA REALIZAR O CALCULO DO MOD NO GeraConsumo()
+					oDHLBackFlush:SetOrdemProducao(cOP)
+					oDHLBackFlush:SetQtyBom(nQuantPA)
+					
+					if (oDHLBackFlush:hasItens())
+						
+						oDHLBackFlush:GeraConsumo()
+					
+						If !oDHLBackFlush:HasErroOperacao()
+							oDHLBackFlush:ApontProducao()						
+						EndIf
+					
+						lAchou	:= .T.
+						exit
+						
+					else
+					
+						aApontProducao := getApontProducao(oDHLBackFlush:GetSubLote(), oDHLBackFlush:GetProjectID())
+						oDHLBackFlush:retInsumosPositivo(aApontProducao[1])
+						DbSelectArea("SD3")
+						StaticCall(MulBkNegativAdjust, CalculaProporInsumos, oDHLBackFlush, aApontProducao[1][QUANTIDADE])
+						oDHLBackFlush:SetExistMod(.F.)	
+						
+						If !oDHLBackFlush:HasErroOperacao()
+							oDHLBackFlush:GeraConsumo()
+							oDHLBackFlush:ApontProducao()
+						Endif
+						
+						lAchou	:= .T.
+						exit
+					end
+					
+				Else
+				
+					if (oDHLBackFlush:hasItens())
+						
+						oDHLBackFlush:SetExistMod(.T.)
+						nQtdAserPont :=  nSaldo
+						oDHLBackFlush:SetOrdemProducao(cOP)
+						oDHLBackFlush:SetQtyBom(nQtdAserPont)
+						oDHLBackFlush:GeraConsumo()
+						oDHLBackFlush:ApontProducao()
+					else
+					
+						aApontProducao := getApontProducao(oDHLBackFlush:GetSubLote(), oDHLBackFlush:GetProjectID())
+						oDHLBackFlush:retInsumosPositivo(aApontProducao[1])
+						DbSelectArea("SD3")
+						StaticCall(MulBkNegativAdjust, CalculaProporInsumos, oDHLBackFlush, aApontProducao[1][QUANTIDADE])
+						
+						oDHLBackFlush:SetExistMod(.F.)
+						nQtdAserPont :=  nSaldo
+						oDHLBackFlush:SetOrdemProducao(cOP)
+						oDHLBackFlush:SetQtyBom(nQtdAserPont)	
+						
+						If !oDHLBackFlush:HasErroOperacao()
+							oDHLBackFlush:GeraConsumo()
+							oDHLBackFlush:ApontProducao()
+						Endif
+					endif
+					
+				EndIf
+				
+				nQuantPA := nQuantPA - nSaldo
+									
+				oSqlRat:Skip()
+					
+			EndDo
+		Endif
+		
+	Else
+		oDHLBackFlush:SetErrorMsg("Não há saldo suficiente para o projeto: " + oDHLBackFlush:GetProjectID()+ ". Saldo atual: " + cValToChar(nSaldoTotOP) + ". Quantidade de apontamento desejado " + cValToChar(nQuantPA))
+		oDHLBackFlush:SetErroOperacao(.T.)
+		Return
+		
+	EndIf
+	
+	If oDHLBackFlush:HasErroOperacao()
+		oDHLBackFlush:SetErrorMsg("Falha ao processar a interface: " + oDHLBackFlush:getMsgErro())
+		oDHLBackFlush:SetErroOperacao(.T.)
+	EndIf
+	
+		
+	If !lAchou
+		oDHLBackFlush:SetErrorMsg("Não há saldo suficiente para o projeto: " + oDHLBackFlush:GetProjectID()+ ". Saldo atual: " + cValToChar(nSaldo) + ". Quantidade de apontamento desejado " + cValToChar(nQuantPA))
+		oDHLBackFlush:SetErroOperacao(.T.)
+	EndIf
+	
+
+Return
+
+/**
+* Retorna o saldo total das Op's referente a um projeto específico
+**/
+Static Function GetTotaoOP(oSqlRat)
+
+	Local nQuant 		:= 0
+	Local nQuje	 		:= 0
+	Local nQuje  		:= 0
+	Local nSaldoTotOP 	:= 0
+
+	If oSqlRat:hasRecords()
+		While oSqlRat:notIsEof()
+		
+			nQuant	:= oSqlRat:GetValue("C2_QUANT")
+			nQuje	:= oSqlRat:GetValue("C2_QUJE")
+			nSaldo  :=  nQuant - nQuje
+			
+			nSaldoTotOP += nSaldo
+		
+			oSqlRat:Skip()
+					
+		EndDo
+	Endif
+
+Return nSaldoTotOP
+
+
+/**
+* Retorna a query do rateio de apontamento
+**/
+Static Function GetQueryRateio(oDHLBackFlush)
+	
+	Local cQuery := ""
+	
+	cQuery += " SELECT SC2.C2_QUANT, SC2.C2_QUJE, (SC2.C2_QUANT - SC2.C2_QUJE) SALDO, SC2.*	"   +CRLF
+	cQuery += " FROM %SC2.SQLNAME%"                   					 						+CRLF
+	cQuery += " WHERE C2_FILIAL = '%SC2.FILIAL%' AND" 					 						+CRLF
+	cQuery += " C2_ZZPROJE = '" + oDHLBackFlush:GetProjectID() + "' AND" 						+CRLF
+	cQuery += " (SC2.C2_QUANT - SC2.C2_QUJE) != 0  AND" 										+CRLF
+	cQuery += " %SC2.NOTDEL%"                   		 				 						+CRLF
+	cQuery += " ORDER BY C2_NUM"                   		 				 						+CRLF
+	
+	MemoWrite("rateio.txt", oSql:ParseQuery(cQuery))
+	
+Return cQuery
+
+/**
+* Verificar se já existe uma OP criada baseado no número do projeto
+**/
+Static Function ExistOPCriado(oDHLBackFlush)
+	
+	Local cQuery 	:= ""
+	Local oSql		:= ipSqlObject():newIpSqlObject()
+	Local lExiste	:= .F.
+	Local cChave	:= ""
+	Local cStatus	:= ""
+	Local aArea		:= GetArea()
+	Local aAreaSD3  := SD3->(GetArea())
+	
+	cQuery += " SELECT *	"                  			 				 +CRLF
+	cQuery += " FROM %SC2.SQLNAME%"                   					 +CRLF
+	cQuery += " WHERE C2_FILIAL = '%SC2.FILIAL%' AND" 					 +CRLF
+	cQuery += " C2_ZZPROJE = '" + oDHLBackFlush:GetProjectID() + "' AND" +CRLF
+	cQuery += " %SC2.NOTDEL%"                   		 				 +CRLF
+	
+	MemoWrite("Projeto.txt", oSql:ParseQuery(cQuery))
+	
+	oSql:newAlias(cQuery)
+	
+	If oSql:hasRecords()
+	
+		lExiste	:= .T.
+		
+		If oSql:GetValue("C2_QUJE") < oSql:GetValue("C2_QUANT")
+			oDHLBackFlush:SetOrdemProducao(oSql:GetValue("C2_NUM"))
+			cChave 	:= oSql:GetValue("C2_NUM") + "01001"
+			cStatus :=  Posicione("SD3", 1, xFilial("SD3")+cChave, "D3_PARCTOT" )
+			lExiste	:= .T.
+		Else
+		/*
+			oDHLBackFlushSetFileLog(oDHLBackFlush:GetFilePath(),"fail","Falha ao processar interface BackFlush"+CRLF+CRLF+"Ordem de Produção " + AllTrim(oSql:GetValue("C2_NUM")) + "  já encerrada")
+			oDHLBackFlush:SetErroOperacao(.T.)
+		*/
+		EndIf
+	Endif
+	
+	oSql:Close()
+	
+	RestArea(aAreaSD3)
+	RestArea(aArea)
+
+Return lExiste
+
+/**
+* Verifica se na estrutura BOM existe o produto da mão de obra
+**/
+Static Function VerificarEstrutura(oDHLBackFlush)
+
+	Local lExiste 		:= .T.
+	Local cComponente	:= ""
+	Local oSql	  		:= ipSqlObject():newIpSqlObject()
+	
+	cComponente := oSql:getFieldValue("SG1", "G1_COMP", "%SG1.XFILIAL% AND G1_COD = '"  + Padr(oDHLBackFlush:GetBom(), TamSx3("G1_COD")[1], "") + "'")
+	
+	If  !"MOD" $ cComponente
+	
+		oDHLBackFlush:SetFileLog(oDHLBackFlush:GetFilePath(),"fail","Falha ao processar interface BackFlush"+CRLF+CRLF+"Não existe o produto de mão de obra para o BOM " + oDHLBackFlush:GetBom())
+		oDHLBackFlush:SetErroOperacao(.T.)
+		lExiste := .F.
+		
+	EndIF
+	
+Return lExiste
+
+/**
+* Verifica se existe a estrutura BOM
+**/
+Static Function ExistEstBOM(oDHLBackFlush)
+	
+	Local lExiste := .T.
+	
+	If oDHLBackFlush:GetQtyBom() == 0
+		oDHLBackFlush:SetFileLog(oDHLBackFlush:GetFilePath(),"fail","Falha ao processar interface BackFlush"+CRLF+CRLF+"Interface a quantidade BOM")
+		lExiste := .F.
+	EndIf
+
+Return lExiste
+
+/**
+* Verifica se existe a estrutura File Pallet
+**/
+Static Function ExistEstPallet(oDHLBackFlush)
+
+	Local lExiste := .T.
+	
+	If Empty(oDHLBackFlush:GetSubLote())
+		oDHLBackFlush:SetFileLog(oDHLBackFlush:GetFilePath(),"fail","Falha ao processar interface BackFlush"+CRLF+CRLF+"Interface sem SUBLOTE ")
+		lExiste := .F.
+	ElseIf Empty(oDHLBackFlush:GetWorkOrder())
+		oDHLBackFlush:SetFileLog(oDHLBackFlush:GetFilePath(),"fail","Falha ao processar interface BackFlush"+CRLF+CRLF+"Interface sem WORK_ORDER ")
+		lExiste := .F.
+	EndIf
+
+Return lExiste
+
+/**
+* Verificar a quantidade planejada (QTY_PLANNED)
+**/
+Static Function VerificarQtdPlanned(oDHLBackFlush)
+	
+	Local cQuery 	:= ""
+	Local oSql		:= ipSqlObject():newIpSqlObject()
+	Local lOk		:= .T.
+	Local nNewQtdOp	:= 0
+	Local nQuantTotOP	:= 0
+	
+	
+	cQuery := GetQueryOP(oDHLBackFlush, "TOTAL")
+	
+	oSql:newAlias(cQuery)
+	
+	If oSql:HasRecords() .AND. oSql:getValue("QUANTOP") > 0
+		
+		nQuantTotOP := oSql:getValue("QUANTOP")
+		
+		If oSql:getValue("QUANTOP") == oDHLBackFlush:GetQtyPlanned()
+			lOk := .F.
+		Else
+			oSql:Close()
+			cQuery := GetQueryOP(oDHLBackFlush, "ALL")
+			oSql:newAlias(cQuery)
+			
+			If oDHLBackFlush:GetQtyPlanned() < oSql:getValue("C2_QUANT")
+				lOk := .F.
+				oDHLBackFlush:SetErroOperacao(.T.)
+				oDHLBackFlush:SetFileLog(oDHLBackFlush:GetFilePath(),"fail","Falha ao processar interface BackFlush"+CRLF+CRLF+"Projeto já iniciado com a quantidade " + cValToChar(oSql:getValue("C2_QUANT")) + ". Erro ao criar o projeto. Quantidade:" + cValToChar(oDHLBackFlush:GetQtyPlanned()))
+			ElseIf oDHLBackFlush:GetQtyPlanned() == oSql:getValue("C2_QUANT")
+				lOk := .F.
+			ElseIf oDHLBackFlush:GetQtyPlanned() < nQuantTotOP //TODO VALIDAR A NECESSIDADE DE VERIFICAR CASO TENHA UMA QUANTIDADE PLANEJADA INFERIOR AO TOTAL DAS OP'S. EXEMPLO: 1º OP CRIADA COM 200. 2º OP AJUSTADA PARA 205. 3º OP COM 204. CAI NESSA VALIDAÇÃO
+				lOk := .F.
+				oDHLBackFlush:SetErroOperacao(.T.)
+				oDHLBackFlush:SetFileLog(oDHLBackFlush:GetFilePath(),"fail","Falha ao processar interface BackFlush"+CRLF+CRLF+"Projeto já iniciado com a quantidade " + cValToChar(oSql:getValue("C2_QUANT")) + " sendo reajustado para "+cValToChar(nQuantTotOP)+". Erro ao criar o projeto. Quantidade:" + cValToChar(oDHLBackFlush:GetQtyPlanned()))
+			Else
+				nNewQtdOp := oDHLBackFlush:GetQtyPlanned() - nQuantTotOP
+				oDHLBackFlush:SetNewQtdOP(nNewQtdOp)
+			EndIF
+		EndIf
+	EndIf
+	
+	oSql:Close()
+	
+Return lOk
+
+/**
+* Obtém a query da quantidade quando cTipo == TOTAL obter o script totalizando as OP's criadas.
+* Quando cTipo == ALL, obtém todos os campos
+**/
+Static Function GetQueryOP(oDHLBackFlush , cTipo)
+	
+	Local cQuery := ""
+	
+	If cTipo == "TOTAL"
+		cQuery := " SELECT SUM(C2_QUANT) QUANTOP	"                  		+CRLF
+	ElseIf cTipo == "ALL"
+		cQuery := " SELECT * "                  							+CRLF
+	EndIf
+	cQuery += " FROM %SC2.SQLNAME%"                   						+CRLF
+	cQuery += " WHERE C2_FILIAL = '%SC2.FILIAL%' AND" 						+CRLF
+	cQuery += " C2_ZZPROJE = '" + oDHLBackFlush:GetProjectID() + "' AND"    +CRLF
+	cQuery += " %SC2.NOTDEL%"                   		 					+CRLF
+	cQuery += "  ORDER BY C2_NUM ASC, C2_QUANT DESC"                   		+CRLF
+	
+	MemoWrite("TotalOP.txt", oSql:ParseQuery(cQuery))
+
+Return cQuery
+
+
+/**
+* Retorna os apontamentos para a ordem de produção em questão
+**/
+Static Function getApontProducao(cPalletID, cNumProjeto)
+	
+	Local cQuery 		:= ""
+	Local oSql			:= ipSqlObject():newIpSqlObject()
+	Local aApontProduc	:= {}
+	
+	cQuery := RunQueryApontProd(cPalletID, cNumProjeto)
+	
+	oSql:newAlias(cQuery)
+	
+	If oSql:hasRecords()
+		aAdd(aApontProduc, {oSql:getValue("D3_OP"), oSql:getValue("D3_COD"), oSql:getValue("D3_LOCAL") ,oSql:getValue("D3_NUMSEQ"), oSql:getValue("D3_QUANT"), oSql:getValue("D3_DOC") , oSql:getValue("D3_CHAVE") , oSql:getValue("R_E_C_N_O_"), oSql:getValue("D3_ZZPALLET"), oSql:getValue("D3_ZZDOCBK") })
+		oSql:skip()
+	Endif
+	
+	oSql:Close()
+	
+Return aApontProduc
+
+
+/**
+* Obtém a query apontamento de produção
+**/
+Static Function RunQueryApontProd(cPalletID, cNumProjeto)
+	
+	Local cQuery 		:= ""
+	Local oSql			:= ipSqlObject():newIpSqlObject()
+	Local lExiste		:= .F.
+	Local aApontProduc 	:= {}
+	
+	cQuery += " SELECT *	"                  			 				 +CRLF
+	cQuery += " FROM %SD3.SQLNAME%"                   					 +CRLF
+	cQuery += " WHERE D3_FILIAL = '%SD3.FILIAL%' AND" 					 +CRLF
+	cQuery += " D3_ZZPALLE = '" + cPalletID + "' AND" 					 +CRLF
+	cQuery += " D3_ZZPROJE = '" + cNumProjeto + "' AND" 				 +CRLF
+	cQuery += " D3_ESTORNO = ' ' AND" 					 				 +CRLF
+	cQuery += " D3_PARCTOT != 'T' AND" 					 				 +CRLF
+	cQuery += " %SD3.NOTDEL%"                   		 				 +CRLF
+	cQuery += " ORDER BY D3_OP DESC, R_E_C_N_O_ DESC"                    +CRLF
+	oSql:newAlias(cQuery)
+	
+	MemoWrite("apontamento.txt", oSql:ParseQuery(cQuery))
+	
+Return cQuery
+
+

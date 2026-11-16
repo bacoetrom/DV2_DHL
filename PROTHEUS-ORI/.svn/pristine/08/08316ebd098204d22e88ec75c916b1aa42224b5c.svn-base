@@ -1,0 +1,297 @@
+#include "protheus.ch"
+#include "dhl.ch"
+
+/*/{Protheus.doc} M460FIM
+
+Ponto de entrada no final da geracao da NF Saida, utilizado para gravacao de dados adicionais.
+
+@author Thiago Meschiatti
+@since 30/10/2014
+
+/*/
+User Function M460FIM()
+	
+	local oDHLProcValid	:= nil
+	Local oTMsg  	 	:= FswTemplMsg():newTemplMsg("S",SF2->F2_DOC,SF2->F2_SERIE,SF2->F2_CLIENTE,SF2->F2_LOJA,"SZZ")
+	local oIdManager 	:= DHLIdManager():newDHLIdManager()
+	Local nPLiqui	 	:= 0
+	Local nPBruto		:= 0
+	local cTipoNf		:= SF2->F2_TIPO
+	local cNota		:= SF2->F2_DOC
+	local cSerie		:= SF2->F2_SERIE
+	local cClieFor	:= SF2->F2_CLIENTE
+	local cLoja		:= SF2->F2_LOJA
+	local cNotaOri	:= SF2->F2_NFORI
+	local cSerieOri	:= SF2->F2_SERIORI
+	local cTipo		:= DHL_NFE_INVOICE_OUTFLOW
+	local aIdItens	:= {}
+	local lSerCont	:= aScan(separa(GetNewPar("ZZ_SERCONT", ""), ";"), {|x| x == upper(alltrim(cSerie))}) > 0
+	local lCpoAuto	:= SF2->(FieldPos("F2_ZZAUTO")) > 0
+	local lModelo3   	:=  alltrim(GetNewPar("ZZ_MODEFAT", "1")) $ "3"
+	local oModelo3	:= DHLModelo3():NewDHLModelo3()
+	local lReturn		:= .F.
+
+	private nValBrut	:= SF2->F2_VALBRUT
+	private nValMerc	:= SF2->F2_VALMERC
+	private lUpdTotal	:= .f.
+	
+	// Adequação DIFAl - Gustavo Luiz - 12/08/16
+	/*
+	If FWUnitBusiness() == DHL_BUSINESSUNIT_DIS
+		
+		u_UpdTablesDifal()
+		
+	EndIf
+	*/
+	
+	// inicio calculo do peso liquido
+	SD2->(dbSetOrder(3))
+	SD2->(dbSeek(xFilial("SD2")+SF2->(F2_DOC+F2_SERIE+F2_CLIENTE+F2_LOJA)))
+	Do While !SD2->(EOF()) .and. SD2->D2_FILIAL == xFilial("SD2") .and. SD2->(D2_DOC+D2_SERIE+D2_CLIENTE+D2_LOJA) == SF2->(F2_DOC+F2_SERIE+F2_CLIENTE+F2_LOJA)
+		nPLiqui += SD2->D2_QUANT * Posicione("SB1",1,xFilial("SB1")+SD2->D2_COD,"B1_PESO")
+		nPBruto += SD2->D2_QUANT * Posicione("SB1",1,xFilial("SB1")+SD2->D2_COD,"B1_PESBRU")
+		
+		if FWUnitBusiness() == DHL_BUSINESSUNIT_SPL
+			oIdManager:updateOutDoc(SD2->D2_FILIAL, SD2->D2_PEDIDO, SD2->D2_ITEMPV, SD2->(RECNO()))
+			aadd(aIdItens, {SD2->D2_ITEM, SD2->D2_PEDIDO, SD2->D2_ITEMPV})
+		else
+			updPriceIt()
+		endif
+		
+		SD2->(dbSkip())
+	Enddo
+	// fim
+	if (FWUnitBusiness() == DHL_BUSINESSUNIT_PKG) .or. (FWUnitBusiness() == DHL_BUSINESSUNIT_MUL)
+		if lUpdTotal
+			updTotPrice(nValBrut)
+		endif
+	endif
+	
+	// inicio template mensagens da NF
+	SD2->(dbSetOrder(3))
+	SD2->(dbSeek(xFilial("SD2")+SF2->(F2_DOC+F2_SERIE+F2_CLIENTE+F2_LOJA)))
+	
+	SC5->(dbSetOrder(1))
+	SC5->(dbSeek(xFilial("SC5")+SD2->D2_PEDIDO))
+	
+	aAdd(oTMsg:aCampos,{"F2_TRANSP" ,SC5->C5_TRANSP})
+	aAdd(oTMsg:aCampos,{"F2_REDESP" ,SC5->C5_REDESP})
+	aAdd(oTMsg:aCampos,{"F2_PLIQUI" ,IIF(!Empty(SC5->C5_PESOL),SC5->C5_PESOL,nPLiqui)})
+	aAdd(oTMsg:aCampos,{"F2_PBRUTO" ,IIF(!Empty(SC5->C5_PBRUTO),SC5->C5_PBRUTO,nPBruto)})
+	if (FWUnitBusiness() == DHL_BUSINESSUNIT_AG2)
+		aAdd(oTMsg:aCampos,{"F2_VOLUME1",SF2->F2_VOLUME1})
+	else
+		aAdd(oTMsg:aCampos,{"F2_VOLUME1",SC5->C5_VOLUME1})
+	endif
+	aAdd(oTMsg:aCampos,{"F2_ESPECI1",SC5->C5_ESPECI1})
+	aAdd(oTMsg:aCampos,{"F2_ZZPLACA",CriaVar("F2_ZZPLACA")})
+	aAdd(oTMsg:aCampos,{"F2_ZZUFPLA",CriaVar("F2_ZZUFPLA")})
+	aAdd(oTMsg:aCampos,{"F2_ZZDTSAI",dDatabase})
+	aAdd(oTMsg:aCampos,{"F2_ZZHRSAI",Time()})
+	aAdd(oTMsg:aCampos,{"F2_ZZMARCA",CriaVar("F2_ZZMARCA")})
+	aAdd(oTMsg:aCampos,{"F2_ZZNUMER",CriaVar("F2_ZZNUMER")})
+	
+	if upper(alltrim(cSerie)) != DHL_SERIE_CUTOVER
+		if lCpoAuto
+			if SF2->F2_ZZAUTO <> 'S'
+				If !(FWUnitBusiness() == DHL_BUSINESSUNIT_AG2 .and. IsInCallStack("u_ImpMsaNfe"))
+					if !isBlind()
+						oTMsg:Processa()
+					endIf
+				EndIf
+			endif
+		else
+			oTMsg:Processa()
+		endif
+	endif
+	
+	RecLock("SC5",.F.)
+	SC5->C5_TRANSP := SF2->F2_TRANSP
+	SC5->C5_REDESP := SF2->F2_REDESP
+	MsUnlock()
+	// fim template mensagens da NF
+	
+	if FWUnitBusiness() == DHL_BUSINESSUNIT_SPL
+		oIdManager:outflowInvoice(DHL_INCLUSAO)
+		u_MsgIdNf(cNota, cSerie, cClieFor, cLoja, aIdItens)
+	elseif FWUnitBusiness() == DHL_BUSINESSUNIT_DIS
+		if SM0->M0_ESTCOB == SF2->F2_EST
+			u_GrvMsgNFAut()
+		endif
+	elseif FWUnitBusiness() == DHL_BUSINESSUNIT_AGE 
+		u_RefNfSafx()
+	elseif FWUnitBusiness() == DHL_BUSINESSUNIT_AGL 
+		u_RefNfSafx()
+	elseif FWUnitBusiness() == DHL_BUSINESSUNIT_REP 
+		u_RefNfSafx()
+	elseif FWUnitBusiness() == DHL_BUSINESSUNIT_AG2
+		u_PrcGrvRet()
+		if 	SF2->F2_ZZTPNF = AJUSTE_FISCAL
+			gravMsgAjustImp()
+		endIf
+	endif
+	
+	//NÃO GERA INTERFACE NFE	
+	if FWUnitBusiness() == DHL_BUSINESSUNIT_PKG .AND. lModelo3
+		oModelo3:VerifItNF1(SF2->(Recno()))
+		if !oModelo3:IsTesTransferencia()
+		
+			if SC5->C5_ZZTPPV == COBRANCA_KIT
+				oModelo3:VerifItNF1(SF2->(Recno()))
+				if !oModelo3:IsTesRede()
+					return
+				endIf
+				
+			else
+				oModelo3:PosicNF1(FwXFilial("SF2") + cNota + cSerie + cClieFor + cLoja)
+				cTipoNf		:= SF2->F2_TIPO
+				cNota		:= SF2->F2_DOC
+				cSerie		:= SF2->F2_SERIE
+				cClieFor		:= SF2->F2_CLIENTE
+				cLoja		:= SF2->F2_LOJA
+				cNotaOri		:= SF2->F2_NFORI
+				cSerieOri	:= SF2->F2_SERIORI
+				cTipo		:= DHL_NFE_INVOICE_OUTFLOW
+			endIf
+		endIf
+	endIf
+	
+	
+	// ATENÇÃO: Esse bloco de código refere-se a Geração do Arquivo de NFe para o Mastersaf e deve
+	// 			SEMPRE SER O ÚLTIMO PROCESSAMENTO do PE.
+	if !IsInCallStack("u_ImpMsaNfe") .or. (IsInCallStack("u_ImpMsaNfe") .and. FwUnitBusiness() == DHL_BUSINESSUNIT_AG2)
+		if ExistBlock("PrcXmlNfe")
+			oDHLProcValid	:= DHLProcessValidator():newDHLProcessValidator()
+			if oDHLProcValid:validDocumentType(cTipo, nil, cSerie)
+				lReturn := U_PrcXmlNfe(cTipo, cSerie, cNota, cClieFor, cLoja, cNotaOri, cSerieOri)
+				if lSerCont
+					u_PrcConti(DHL_NF_SAIDA, DHL_OPC_INCLUSAO,  SF2->(Recno()))
+				endif
+			endIf
+		endif
+	endIf
+	
+	//CASO TENHA GERADO COM SUCESSO A INTERFACE NFE, FAZ A AMARRAÇÃO DA NOTAS - COBRANÇA DE KIT E RETORNO DE INDUSTRIALIZAÇÃO
+	if FWUnitBusiness() == DHL_BUSINESSUNIT_PKG .AND. lModelo3 .AND. lReturn
+		oModelo3:RetornaAreas()
+		cNota		:= SF2->F2_DOC
+		cSerie		:= SF2->F2_SERIE
+		cClieFor	:= SF2->F2_CLIENTE
+		cLoja		:= SF2->F2_LOJA
+		if SC5->C5_ZZTPPV == RETORNO_INDUSTRIALIZACAO
+			oModelo3:GravaSF2Amarracao(FwXFilial("SF2") + cNota + cSerie + cClieFor + cLoja)
+		elseIf oModelo3:IsTesRede()
+			oModelo3:GravaAmarRetornToKit(FwXFilial("SF2") + cNota + cSerie + cClieFor + cLoja)
+		endIf
+	endIf
+	
+	if cFilAnt == AGE_MONDELEZ
+	
+		vincSZ8()
+		
+	endif
+	
+	if FWUnitBusiness() == DHL_BUSINESSUNIT_AGL .and. !isRepair(cClieFor,cLoja,cTipoNF)
+	
+		vincSZ8()
+	
+	endif	
+	
+Return
+
+/**
+* Atualiza a SZ8 realizando o vínculo
+**/
+static function vincSZ8()
+	
+	local aArea 	:= getArea()
+	local aAreaSZ8 	:= SZ8->(getArea())
+	local cNota     := StrZero(Val(Substr(SC5->C5_ZZORDEX,1,RAT("-", allTrim(SC5->C5_ZZORDEX)))),9,0)
+	local cSerie	:= Substr(SC5->C5_ZZORDEX,RAT("-", allTrim(SC5->C5_ZZORDEX)) + 1,2)+Space(1)	
+	
+	SZ8->(dbSetOrder(1))
+	
+	if SZ8->(dbSeek(xFilial("SZ8")+cNota+cSerie,.F.))
+		
+		RecLock("SZ8",.F.)
+		SZ8->Z8_PEDIDO := SC5->C5_NUM
+		SZ8->Z8_NFRET  := SF2->F2_DOC
+		SZ8->Z8_SERRET := SF2->F2_SERIE
+		SZ8->Z8_CLIRET := SF2->F2_CLIENTE
+		SZ8->Z8_LOJRET := SF2->F2_LOJA
+		SZ8->(MsUnLock())
+		
+	endif
+	
+	restArea(aAreaSZ8)
+	restArea(aArea)
+	
+return
+
+/*
+** Atualiza total do Item quando valor for igual a 0.00 para 0.01
+*/
+static function updPriceIt()
+	local oSqlUpd	:= IpSqlObject():newIpSqlObject()
+
+	if SD2->D2_TOTAL == 0
+		oSqlUpd:update("SD2", "D2_TOTAL = 0.01, D2_VALBRUT = 0.01 ", " D2_FILIAL = '"+SD2->D2_FILIAL+"' AND D2_DOC = '"+SD2->D2_DOC+"' AND D2_SERIE = '"+SD2->D2_SERIE+"' AND "+;
+			"D2_CLIENTE = '"+SD2->D2_CLIENTE+"' AND D2_LOJA = '"+SD2->D2_LOJA+"' AND D2_COD = '"+SD2->D2_COD+"' AND D2_ITEM = '"+SD2->D2_ITEM+"'")
+		
+		nValBrut 	:= nValBrut + 0.01
+		nValMerc	:= nValMerc + 0.01
+		lUpdTotal	:= .t.
+	endif
+
+return()
+
+/*
+** Atualiza total da NF quando valor for igual a 0.00 para 0.01
+*/
+static function updTotPrice()
+	local oSqlUpd	:= IpSqlObject():newIpSqlObject()
+	local cValTot	:= cValToChar(nValBrut)
+	local cValMerc	:= cValToChar(nValMerc)
+
+	oSqlUpd:update("SF2", "F2_VALMERC = "+cValMerc+", F2_VALBRUT = "+cValTot+" ", " F2_FILIAL = '"+SF2->F2_FILIAL+"' AND F2_DOC = '"+SF2->F2_DOC+"' AND F2_SERIE = '"+SF2->F2_SERIE+"' AND "+;
+		"F2_CLIENTE = '"+SF2->F2_CLIENTE+"' AND F2_LOJA = '"+SF2->F2_LOJA+"' ")
+		
+return()
+
+/*
+** Grava  mensagens SZZ quando gerado a nota de ajuste de imposto 
+*/
+static function gravMsgAjustImp()
+	
+	local oIp210 := DHLIp210():newDHLIp210()
+	
+	oIp210:GravMsgSaida()
+	
+return
+
+/**
+* Verifica se o depositante é do tipo Reparador
+**/
+static function isRepair(cClieFor,cLoja,cTipo)
+	
+	local oSqlUtil	:= IpSqlObject():newIpSqlObject()
+	local lRet	 	:= .f.
+	
+	if !(AllTrim(cTipo) $ "D/B")
+		oSqlUtil:newTable("SA1", "A1_COD, A1_LOJA, A1_ZZREPAR", "A1_FILIAL = '%SA1.FILIAL%' AND A1_COD = '" + cClieFor + "' AND A1_LOJA = '" + cLoja + "' ")
+		if oSqlUtil:hasRecords()
+			if oSqlUtil:getValue("A1_ZZREPAR") == "S"
+				lRet := .t.
+			endIf
+		endIf
+	else
+		oSqlUtil:newTable("SA2", "A2_COD, A2_LOJA, A2_ZZREPAR", "A2_FILIAL = '%SA2.FILIAL%' AND A2_COD = '" + cClieFor + "' AND A2_LOJA = '" + cLoja + "' ")
+		if oSqlUtil:hasRecords()
+			if oSqlUtil:getValue("A2_ZZREPAR") == "S"
+				lRet := .t.
+			endIf
+		endIf
+	endIf
+	oSqlUtil:close()
+	
+return lRet

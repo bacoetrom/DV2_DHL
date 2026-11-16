@@ -1,0 +1,71 @@
+#Include 'Protheus.ch'
+#Include 'dhl.ch'
+
+
+/*/{Protheus.doc} ProcTaxes
+Processamento de gravação de valores de impostos na gravação da Pré-Nota Fiscal de Entrada
+
+@type User Function
+@author Thiago Meschiatti
+@since 06/04/2016
+@version 1.0
+/*/
+User Function ProcTaxes(aItem, oDetItem, aInfProd)
+	local oTax		:= DHLTaxes():newDHLTaxes(oDetItem)
+	local nTotal	:= 0
+	local nIcms		:= 0
+	local nIpi		:= 0
+	local cProduto	:= ""	
+	
+	if FWUnitBusiness() == DHL_BUSINESSUNIT_SPL
+		nTotal	:= val(oTax:getTotal()) / val(oTax:getQuant())
+		nIcms	:= val(oTax:getIcms()) / val(oTax:getQuant())
+		nIpi	:= val(oTax:getIpi()) / val(oTax:getQuant())
+	else
+		//Inicio Gustavo Luiz - FSW Totvs IP 13/02/2019
+		cProduto := aInfProd[3]
+		if isProdutLote(cProduto)	
+			nTotal	:= aInfProd[8]
+		else
+			if cFilAnt == BAYER
+				nTotal	:= aInfProd[8]
+			endIf
+		endif
+		//Fim Gustavo Luiz - FSW Totvs IP 13/02/2019
+		nIcms	:= val(oTax:getIcms())
+		nIpi	:= val(oTax:getIpi()) 	  
+	endif
+	
+	
+	aadd(aItem,{"D1_ZZTOTAL" 	, nTotal	,Nil})
+	aadd(aItem,{"D1_ZZVLICM" 	, nIcms		,Nil})
+	aadd(aItem,{"D1_ZZVLIPI" 	, nIpi		,Nil})
+
+Return aClone(aItem)
+
+/**
+* Retorna se o produto controla lote
+**/
+static function isProdutLote(cCodProd) 
+	
+	local lIsProdlote	:= .F.
+	local aArea 		:= getArea()
+	local aAreaSB1 		:= SB1->(getArea())
+	local cChaveSB1		:= ""
+	
+	cCodProd := padr(cCodProd, tamSx3("B1_COD")[1], "")
+	cChaveSB1:= fwxFilial("SB1") + cCodProd
+	
+	SB1->(dbSetOrder(1))
+	
+	if SB1->(dbSeek(cChaveSB1))
+		if SB1->B1_RASTRO = "L"
+			lIsProdlote := .T.
+		endif
+	endIf
+	
+	restArea(aAreaSB1)
+	restArea(aArea)
+	
+return lIsProdlote
+

@@ -1,0 +1,308 @@
+#include 'protheus.ch'
+
+Static __aUserLg := {}
+
+/*/{Protheus.doc} DHLLibrary
+
+(regras de negócios genéricas da DHL )
+
+@author Daniel .A. Braga
+@since 23/10/2014
+
+/*/
+class DHLLibrary 
+
+	method newDHLLibrary() constructor 
+	method fatorNumber(nValue)
+	method getLGUser(cValue)
+	method getLGDate(cValue)
+	method showChangeCliFor(cOption)
+	method isJob()
+	method getAddress()
+
+endclass
+
+
+method newDHLLibrary() class DHLLibrary
+
+return
+
+/*/{Protheus.doc} FatorNumber
+
+(Gera o fator para retirada do decimal)
+
+@author Daniel .A. Braga
+@since 23/10/2014
+
+@param nValue, numerico, valor a ser convertido
+
+@return caractere valor convertido sem o ponto
+/*/
+method fatorNumber(nValue) class DHLLibrary
+
+	local nPartsDecimal := 0
+	local cValue := ""
+	local aValue := {}
+	local nFator := 0
+	local cNewValue := "" 
+	
+	default nValue := 0 
+	
+	if Empty(nValue)
+		return 0
+	endIf
+		
+	cValue := cValToChar(nValue)
+	aValue := strToKarr(cValue,".")
+	if  len( aValue ) == 1
+		nPartsDecimal := 2
+	else
+		if len( aValue[ len(aValue) ] ) < 2
+			nPartsDecimal := 2
+		else
+			nPartsDecimal := len( aValue[ len(aValue) ] )
+		endIf
+	endIf
+		
+	nFator :=  10 ^ nPartsDecimal
+	cNewValue := cValToChar(nValue * nFator)
+
+return cNewValue
+
+/*/{Protheus.doc} getLGUser
+
+(Trata o conteudo dos campos USERLGI e USERLGA)
+
+@author Daniel .A. Braga
+@since 23/10/2014
+
+@param cValue, Caractere, Valor do campos USERLGI e USERLGA
+
+@return Caractere Usuario do log registrado
+/*/
+method getLGUser(cValue) class DHLLibrary
+	
+	local cUserLg := ""
+	
+	if Empty(cValue)
+		return ""
+	endIf
+	
+	cUserLg  := LeUserLg(cValue,1)
+	
+return cUserLg
+
+/*/{Protheus.doc} getLGDate
+
+(Trata o conteudo dos campos USERLGI e USERLGA)
+
+@author Daniel .A. Braga
+@since 23/10/2014
+
+@param cValue, Caractere, Valor do campos USERLGI e USERLGA
+@param lDefault, Logico, Indica se deve assumir uma Data Padrão caso o campo estiver vazio
+
+@return Data Data do log registrado
+/*/
+method getLGDate(cValue, lDefault) class DHLLibrary
+	
+	local dDateLg 		:= ""
+	local cDate			:= ""
+	local dDefDate      := CtoD("01/12/14")
+	default lDefault	:= .F.
+	
+	if Empty(cValue)
+		if lDefault
+			return dDefDate
+		else
+			return stod("")
+		endIf	
+	endIf
+	
+	cDate  	:= LeUserLg(cValue,2)
+	dDateLg := CtoD(cDate)
+
+return dDateLg
+
+
+/*/{Protheus.doc} showChangeCliFor
+
+Exibe tela para alteração de cliente ou fornecedor
+
+@author Renato Castro
+@since 30/10/14
+
+@param cOption, String, Cliente ou fornecedor. Informar "cliente" ou "fornecedor"
+
+@return Array Cliente ou Fornecedor,Loja
+/*/
+method showChangeCliFor() class DHLLibrary
+
+	local cCliFor	:= ""
+	local cCliLoja	:= ""
+	local aCodLoja	:= {}
+	local cOption	:= ""
+	
+	local oParam 	:= nil
+	local oParamBox := IpParamBoxObject():newIpParamBoxObject("showCliFor")
+	local oParamBox1 := IpParamBoxObject():newIpParamBoxObject("showOptCliFor")
+	
+	oParamBox1:setTitle("Seleção")
+	oParam := IpParamObject():newIpParamObject("tipoCliFor", "combo", "Cliente/Fornecedor", "C", 60)
+	oParam:setValues({"Cliente","Fornecedor"}) 
+	oParamBox1:addParam(oParam)
+	
+	if oParamBox1:show()
+		cOption	:= oParamBox1:getValue("tipoCliFor")
+	endif
+	
+	cOption	:= AllTrim(Lower(cOption))
+	
+	oParamBox:setTitle("Seleção")
+	
+	oParam := IpParamObject():newIpParamObject("clifor", "get", "Código", "C", 60, IIF(cOption=="cliente",TamSX3("A1_COD")[1],TamSX3("A2_COD")[1]))
+	if cOption == "cliente"
+		oParam:setF3("SA1")
+	else
+		oParam:setF3("FOR")
+	endif
+	oParam:setRequired(.T.)
+	oParamBox:addParam(oParam)
+	
+	oParam := IpParamObject():newIpParamObject("loja", "get", "Loja", "C", 30, IIF(cOption=="cliente",TamSX3("A1_LOJA")[1],TamSX3("A2_LOJA")[1]))
+	oParam:setRequired(.T.)
+	oParamBox:addParam(oParam)
+	
+	if oParamBox:show()
+	
+		cCliFor	:= oParamBox:getValue("clifor")
+		cLoja	:= oParamBox:getValue("loja")
+		
+		if cOption == "cliente"
+			if ExistCpo("SA1",cCliFor+cLoja,1)
+				aCodLoja := {cCliFor, cLoja, cOption}
+			endif
+		else
+			if ExistCpo("SA2",cCliFor+cLoja,1)
+				aCodLoja := {cCliFor, cLoja, cOption}
+			endif
+		endif	
+	endif
+
+return(aCodLoja) 
+
+/*/{Protheus.doc} IsJob
+
+Verifica se a rotina está rodando via Job
+	
+@author Daniel Braga
+@since 17/11/2014
+
+/*/
+
+method isJob() class DHLLibrary
+
+	local oAdvpl := IpAdvplObject():newIpAdvplObject()
+
+return oAdvpl:isInJob()
+
+
+/*/{Protheus.doc} getAddress
+
+Coleta o Endereço ou Numero de um Logradouro
+	
+@author Victor Hugo
+@since 17/12/2014
+
+@param cType, String, Tipo do Retorno "street" ou "number"
+@param cAddress, String, Logradoudo. Ex.: Rua Pedro Paulo, 215
+
+@return String Rua ou Número do Logradouro
+/*/
+method getAddress(cType, cAddress) class DHLLibrary
+	
+	local nI   		:= 0
+	local cChr		:= ""
+	local cRet 		:= ""
+	local cStreet 	:= ""
+	local cNumber	:= ""
+	
+	cType    := AllTrim(Lower(cType))
+	cAddress := AllTrim(cAddress)
+	
+	for nI := Len(cAddress) to 1 step -1 
+		cChr := SubStr(cAddress, nI, 1)
+		if (cChr == ",")
+			cNumber := AllTrim(SubStr(cAddress, nI+1))
+			cStreet := AllTrim(SubStr(cAddress, 1, nI-1))
+			exit
+		endIf	
+	next nI
+	
+	if Empty(cStreet)
+		cStreet := cAddress
+	endIf
+	
+	if (Upper(AllTrim(cNumber)) == "S/N")
+		cNumber := "SN"
+	endIf
+	
+	if (cType == "street")
+		cRet := cStreet
+	elseIf (cType == "number")
+		cRet := cNumber
+	endIf
+	
+return cRet
+
+/**
+* Retorna as informações Nome do Usuário ou Data do USERLGI/USERLGA de acordo com o tipo de consulta informada.
+*/
+static function LeUserLg(cValue,nTipo)
+	local nPos		:= 0
+	local cAux		:= ""        
+	local cID		:= ""             
+	local cUsrName	:= "" 
+	local cRet		:= ""
+	Local cSvAlias  := Alias()
+	local aArea		:= GetArea()
+	Default nTipo 	:= 1
+	/*
+	If !Empty(cSvAlias)
+		aArea := &(cSvAlias)->(GetArea())
+	EndIf
+	*/
+	cAux := Embaralha(cValue,1)
+
+	If !Empty(cAux)
+		If Subs(cAux, 1, 2) == "#@"
+			cID := Subs(cAux, 3, 6)
+			If Empty(__aUserLg) .Or. Ascan(__aUserLg, {|x| x[1] == cID}) == 0                            
+				PSWORDER(1)
+				If ( PSWSEEK(cID) )
+					cUsrName	:= Alltrim(PSWRET()[1][2])
+				EndIf		
+				Aadd(__aUserLg, {cID, cUsrName})	
+			EndIf
+			
+			If nTipo == 1 // retorna o usuário
+				nPos := Ascan(__aUserLg, {|x| x[1] == cID})
+				cRet := __aUserLg[nPos][2]
+			Else  // retorna a data
+				cRet := Dtoc(CTOD("01/01/96","DDMMYY") + Load2In4(Substr(cAux,16)))
+			Endif                         
+		Else
+			If nTipo == 1 // retorna o usuário
+				cRet := Subs(cAux,1,15)
+			Else // retorna a data  
+				cRet := Dtoc(CTOD("01/01/96","DDMMYY") + Load2In4(Substr(cAux,16)))
+			Endif                         
+		EndIf
+	EndIf
+	
+	//If !Empty(cSvAlias)
+	//	DbSelectArea(cSvAlias)
+		RestArea(aArea)	
+	//Endif
+	
+return cRet

@@ -1,0 +1,599 @@
+#include 'protheus.ch'
+#include 'dhl.ch'
+
+#define NF_TABELA 					"01"
+
+/*/{Protheus.doc} PrcNfRco
+Processamento NF Remessa por Conta e Ordem
+@author Thiago Meschiatti
+@since 20/05/2017
+@version undefined
+@param lGerarRet, logical, Determina se efetuará somente a geração da NF Ret
+
+@type function
+/*/
+
+user function PrcNfRco(lGerarRet)
+
+	Local aArea			:= GetArea()
+	Local lRet			:= .f.
+	Local aHeader 		:= {}
+	Local aItems  		:= {}
+	Local lIsCreateRCO	:= .F.
+	Local lOk			:= .t.
+	local lNfRco		:= .F.
+	Local lBreak        := .F.
+
+	Private oIp040  	:= DhlIp040Sap():newDhlIp040Sap()
+	Private cSerie 	 	:= PadR(GetNewPar("ZZ_SERIRCO", '1'), TamSx3("F2_SERIE")[1]) //Verfiicar série
+	Private cDoc		:= ""
+	Private cMsgError 	:= ""
+	Private oSqlSZB 	:= nil
+	Private lTesUpdate	:= .F.
+
+	Default lGerarRet	:= .f.
+
+	FWLogMsg("INFO", , "BusinessObject", funName(), "", "01", "*********************INICIO FONTE PrcNfRco.PRW " + time() + " USUARIO " + PswRet()[1][2]  + " ********************" + CRLF, 0, 0, {})
+
+	If !lGerarRet
+		if isCreateRCO(@lNfRco)
+			if lNfRco
+				FWLogMsg("INFO", "LAST", "BusinessObject", funName(), "", "01", "*********************INICIO FONTE PrcNfRco.PRW SETNEWNUMSX5" + time() + " USUARIO " + PswRet()[1][2]  + " ********************" + CRLF, 0, 0, {})
+				if empty(SZA->ZA_NFRCOX5)
+					lOk := setNewNumSX5()
+				endIf
+			endIf
+		else
+			lOk := .f.
+			oIp040:showLogError()
+		endIf
+	EndIf
+
+	FWLogMsg("INFO", "LAST", "BusinessObject", funName(), "", "01", "*********************INICIO FONTE PrcNfRco.PRW BEGIN TRANSACTION" + time() + " USUARIO " + PswRet()[1][2]  + " ********************" + CRLF, 0, 0, {})
+	if lOk
+		//BEGIN TRANSACTION   //Emerson Holanda 23/03/18 - Teste faturamento simultaneo
+		//BEGIN SEQUENCE    //Emerson Holanda 23/03/18 - Teste faturamento simultaneo
+
+		FWLogMsg("INFO", "LAST", "BusinessObject", funName(), "", "01", "*********************INICIO FONTE PrcNfRco.PRW PRCNFRET L:55" + time() + " USUARIO " + PswRet()[1][2]  + " ********************" + CRLF, 0, 0, {})
+		If lGerarRet
+			If !u_PrcNfRet() //!u_PrcNfRet() //Emerson Holanda 27/03/18 - Faturamento simultaneo
+				//BREAK //Emerson Holanda 23/03/18 - Faturamento simultaneo
+				lBreak := .T.  //Emerson Holanda 27/03/18 - Faturamento simultaneo
+				BackSZB() //Emerson Holanda 07/05/18 // JOJ 24/05/2018
+				saveNumSZA("","",.t. /* limpa sza */) // JOJ 24/05/2018
+			EndIf
+		Else
+
+			FWLogMsg("INFO", "LAST", "BusinessObject", funName(), "", "01", "*********************INICIO FONTE PrcNfRco.PRW PREPRCO L:62" + time() + " USUARIO " + PswRet()[1][2]  + " ********************" + CRLF, 0, 0, {})
+			If !prepRCO(@aHeader, @aItems, @oSqlSZB)
+				//BREAK //Emerson Holanda 23/03/18 - Teste faturamento simultaneo
+				lBreak := .T.  //Emerson Holanda 27/03/18 - Faturamento simultaneo
+				BackSZB() //Emerson Holanda 07/05/18 // JOJ 24/05/2018
+				saveNumSZA("","",.t. /* limpa sza */) // JOJ 24/05/2018
+			EndIf
+			If !lBreak  //Emerson Holanda 07/05/18
+				FWLogMsg("INFO", "LAST", "BusinessObject", funName(), "", "01", "*********************INICIO FONTE PrcNfRco.PRW HASNFRET L:67" + time() + " USUARIO " + PswRet()[1][2]  + " ********************" + CRLF, 0, 0, {})
+				If oIp040:hasNfRet()
+					If !u_PrcNfRet()
+						//BREAK //Emerson Holanda 23/03/18 - Faturamento simultaneo
+						lBreak := .T.  //Emerson Holanda 27/03/18 - Faturamento simultaneo
+						BackSZB() //Emerson Holanda 07/05/18
+						saveNumSZA("","",.t. /* limpa sza */) // JOJ 24/05/2018
+					Endif
+				Else
+					If !lBreak //Emerson Holanda 29/03/18 - Faturamento simultaneo
+						FWLogMsg("INFO", "LAST", "BusinessObject", funName(), "", "01", "*********************INICIO FONTE PrcNfRco.PRW EXECRCO L:74" + time() + " USUARIO " + PswRet()[1][2]  + " ********************" + CRLF, 0, 0, {})
+						lRet := execRCO(aHeader, aItems, oSqlSZB)
+
+						if !lRet   //Emerson Holanda 12/06/18
+							BackSZB() //Emerson Holanda 07/05/18 // JOJ 24/05/2018
+
+							SZA->(reclock("SZA", .F.))
+							SZA->ZA_NFRCOX5 := ""
+							SZA->(msUnlock())
+
+							lBreak := .T.
+
+						endIf
+					EndIf
+				EndIf
+			EndIf
+		EndIf
+
+		FWLogMsg("INFO", "LAST", "BusinessObject", funName(), "", "01", "*********************INICIO FONTE PrcNfRco.PRW U_PRCGRVRCO L:88" + time() + " USUARIO " + PswRet()[1][2]  + " ********************" + CRLF, 0, 0, {})
+		If lRet  .And. !lBreak
+			dbSelectArea("SF2")
+			SF2->(dbSetOrder(1))
+			If SF2->(dbSeek(FwXFilial("SF2") + cDoc + cSerie))
+				_cDOCSCJ      := SZA->ZA_DOCSCJ
+				_cSERISCJ     := SZA->ZA_SERISCJ
+				_cNF          := cDoc
+				_cSerie       := cSerie
+
+				U_GRAVAFCP(_cSerie,_cNF,_cDOCSCJ,_cSERISCJ) //Acrescentado por Edson Deluca - FIT Gestão - 22.06.2018 - NF 4.0
+				If u_PrcGrvRco()
+					MsgInfo("NF RCO gerada com sucesso! Doc.: " + cDoc + " Série: " + cSerie)
+				Else
+					MsgAlert("NF RCO não foi gerada. Por favor verifique!")
+					FWLogMsg("INFO", "LAST", "BusinessObject", funName(), "", "01", "********************* NF RCO não foi gerada. Por favor verifique! *********************", 0, 0, {})
+					lBreak := .T.
+					//BREAK //Emerson Holanda 23/03/18 - Teste faturamento simultaneo
+				Endif
+			EndIf
+		Endif
+
+		//RECOVER //Emerson Holanda 23/03/18 - Teste faturamento simultaneo
+
+		//DisarmTransaction()//Emerson Holanda 23/03/18 - Teste faturamento simultaneo
+
+		//oIp040:showLogError()
+
+		//END SEQUENCE //Emerson Holanda 23/03/18 - Teste faturamento simultaneo
+		//END TRANSACTION //Emerson Holanda 23/03/18 - Teste faturamento simultaneo
+
+		//Emerson Holanda 30/04/18 - Apresenta erros caso exista.
+		If lBreak
+			DisarmTransaction()
+			oIp040:showLogError()
+		EndIf
+
+	endif
+
+	FWLogMsg("INFO", "LAST", "BusinessObject", funName(), "", "01", "*********************FIM FONTE PrcNfRco.PRW " + time() + " USUARIO " + PswRet()[1][2]  + " ********************" + CRLF, 0, 0, {})
+	RestArea(aArea)
+return
+
+
+/*
+** Prepara informações para RCO
+*/
+Static Function prepRCO(aHeader, aItems, oSqlSZB)
+
+	Local lRet		:= .t.
+
+	FWLogMsg("INFO", "LAST", "BusinessObject", funName(), "", "01", "*********************INICIO prepRCO IN PrcNfRco.PRW " + time() + " ********************" + CRLF, 0, 0, {})
+
+	oSqlSZB := oIp040:getItensSZB(SZA->ZA_KENFSCJ)
+
+	If !oIp040:validations(oSqlSZB)
+		lRet := .f.
+	EndIf
+
+	If lRet .and. !oIp040:HasNfRet()
+		mountHeader(@aHeader)
+
+		While oSqlSZB:notIsEof()
+
+			if updPrd(oSqlSZB:getValue("ZB_ITEM"), "B1_PICMRET" , oSqlSZB:getValue("ZB_MVA"))
+
+				lRet := mountDetails(@aItems, oSqlSZB)
+
+				if !lRet
+					//Emerson Holanda 30/04/18 - Gravar no log o erro
+					FWLogMsg("WARN", "LAST", "BusinessObject", funName(), "", "01", "**********Retornou falso da funcao mountDetails " + time() + " ********************" + CRLF, 0, 0, {})
+					exit
+				endIf
+
+			else
+				//Emerson Holanda 30/04/18 - Gravar no log o erro
+				FWLogMsg("WARN", "LAST", "BusinessObject", funName(), "", "01", "**********Retornou falso da funcao UPDPRD " + time() + " ********************" + CRLF, 0, 0, {})
+				lRet := .F.
+				exit
+
+			endIf
+
+			oSqlSZB:skip()
+		EndDo
+	EndIf
+
+	oSqlSZB:close()
+
+	If !lRet
+		DisarmTransaction() //Diogo 26/08/19 - Necessário colocar o DisarmTransaction() para voltar a informação dos campos ZB_PEDIDO e ZB_ITEMPV para vazio, para permitir um novo processamento.
+	EndIf
+
+	FWLogMsg("INFO", "LAST", "BusinessObject", funName(), "", "01", "*********************FIM prepRCO IN PrcNfRco.PRW " + time() + " ********************" + CRLF, 0, 0, {})
+
+Return (lRet)
+
+
+/*
+** Execução da NF RCO
+*/
+Static Function execRCO(aHeader, aItems, oSqlSZB)
+
+	Local lRet := .t.
+	Private lMsErroAuto	:= .f.
+
+	FWLogMsg("INFO", "LAST", "BusinessObject", funName(), "", "01", "*********************INICIO execRCO IN PrcNfRco.PRW " + time() + " ********************" + CRLF, 0, 0, {})
+
+	If Empty(cMsgError)
+		MsExecAuto({|x,y,z| mata920(x,y,z)},aHeader,aItems,3)
+
+		If lMsErroAuto
+			MostraErro()
+			//DisarmTransaction()
+			lRet := .f.
+		EndIf
+	EndIf
+
+	FWLogMsg("INFO", "LAST", "BusinessObject", funName(), "", "01", "*********************FIM execRCO IN PrcNfRco.PRW " + time() + " ********************" + CRLF, 0, 0, {})
+
+Return (lRet)
+
+
+/*
+** Monta cabeçalho da NF RCO
+*/
+Static Function mountHeader(aHeader)
+	Local oSql     := IpSqlObject():newIpSqlObject()
+	Local aLockSX6 := {}
+
+	cDoc	   := substr(SZA->ZA_NFRCOX5, 1 ,TamSx3("F2_DOC")[1])
+	/*
+	aLockSX6 := SX6->(DBRLockList())
+
+	cDoc := AllTrim(oSql:getFieldValue("SX5", "X5_DESCRI", "%SX5.XFILIAL% AND X5_TABELA = '"+NF_TABELA+"' AND X5_CHAVE = '"+cSerie+"'"))
+	contrSx5(cDoc, cSerie)
+	//TODO Momento de execução de NF de entrada, função esta pulando duas numerações
+	//cDoc := NxtSX5Nota(cSerie, NIL, GetNewPar("MV_TPNRNFS", "1"))
+	oSql:close()
+
+	aLockSX6 := SX6->(DBRLockList())
+
+	For nX := 1 To Len(aLockSX6)
+
+	SX6->(DBGoTo(aLockSX6[nX]))
+	SX6->(MSUnLock())
+
+	Next nX
+	*/
+
+
+	aAdd(aHeader, {"F2_TIPO"	, PadR( "N", TamSx3("F2_TIPO")[1] )			, nil})
+	aAdd(aHeader, {"F2_FORMUL"	, 'S'										, nil})
+	aAdd(aHeader, {"F2_DOC"		, PadR( cDoc, TamSx3("F2_DOC")[1] )			, nil})
+	aAdd(aHeader, {"F2_SERIE"	, PadR( cSerie, TamSx3("F2_SERIE")[1] ) 	, nil})
+	aAdd(aHeader, {"F2_EMISSAO"	, dDataBase									, nil})
+	aAdd(aHeader, {"F2_CLIENTE"	, oIp040:getCustomerUnit(SZA->ZA_BUYCODE)[1]	, nil})
+	aAdd(aHeader, {"F2_LOJA"	, oIp040:getCustomerUnit(SZA->ZA_BUYCODE)[2]	, nil})
+	If !empty(SZA->ZA_DELCODE)
+		aAdd(aHeader, {"F2_CLIENT"	, oIp040:getCustomerUnit(SZA->ZA_DELCODE)[1]	, nil})
+		aAdd(aHeader, {"F2_LOJA"	, oIp040:getCustomerUnit(SZA->ZA_DELCODE)[2]	, nil})
+	EndIf
+	aAdd(aHeader, {"F2_ESPECIE"	, PadR( "SPED", TamSx3("F2_ESPECIE")[1] )	, nil})
+	aAdd(aHeader, {"F2_COND"	, PadR( "001", TamSx3("F2_COND")[1] )		, nil})
+	aAdd(aHeader, {"F2_DESCONT"	, SZA->ZA_TDISAMO							, nil})
+	aAdd(aHeader, {"F2_FRETE"	, 0											, nil})
+	aAdd(aHeader, {"F2_SEGURO"	, 0											, nil})
+	aAdd(aHeader, {"F2_DESPESA"	, 0											, nil})
+	aAdd(aHeader, {"F2_TRANSP"	, oIp040:getCarrier(SZA->ZA_CNPJCAR)					, nil})
+	aAdd(aHeader, {"F2_PLIQUI"  , SZA->ZA_NETWEIG                           , nil})
+	aAdd(aHeader, {"F2_PBRUTO"  , SZA->ZA_GROWEIG                           , nil})
+	aAdd(aHeader, {"F2_VOLUME1" , "VOL"                                     , nil})
+	aAdd(aHeader, {"F2_ESPECI1" , Str(SZA->ZA_NUMPACK)                      , nil})
+	aAdd(aHeader, {"F2_HORA" 	, SUBSTR(TIME(), 1, 5)                      , nil})
+
+
+Return
+
+
+/*
+** Monta itens da NF RCO
+*/
+Static Function mountDetails(aItems, oSqlSZB)
+
+	Local oSql		:= IpSqlObject():newIpSqlObject()
+	Local aAux		:= {}
+	Local cItem		:= ""
+	local lStatus	:= .T.
+
+	if len(aItems) == 0
+		cItem := "01"
+	else
+		cItem := Soma1(aItems[len(aItems),1,2])
+	endif
+
+	if oSqlSZB:getValue("ZB_PREDBAS") != 0 .and. !lTesUpdate
+		If getCstTes(oSqlSZB:getValue("ZB_TES")) $ "20"
+			if !oSql:update("SF4", "F4_BASEICM = " + str(oSqlSZB:getValue("ZB_PREDBAS")) + " ", "%SF4.XFILIAL% AND F4_CODIGO = '" + oSqlSZB:getValue("ZB_TES") + "'")
+				lStatus 	:= .F.
+				oIp040:setMsgError("Não foi possível atualizar o campo F4_BASEICM. O processamento será abortado")
+				MsgAlert("Não foi possível atualizar o campo F4_BASEICM. O processamento será abortado")
+
+			endIf
+			lTesUpdate 	:= .T.
+		else
+		EndIf
+	endIf
+
+	aAdd(aAux, {"D2_ITEM"	, cItem													   	,nil})
+	aAdd(aAux, {"D2_COD"	, PadR( oSqlSZB:getValue("ZB_ITEM"), TamSx3("D2_COD")[1] ) 	, nil})
+	aAdd(aAux, {"D2_QUANT"	, oSqlSZB:getValue("ZB_QUANTIT")						   	, nil})
+	aAdd(aAux, {"D2_PRCVEN"	, oSqlSZB:getValue("ZB_UNIVALU")						   	, nil})
+	aAdd(aAux, {"D2_TOTAL"	, A410Arred(oSqlSZB:getValue("ZB_QUANTIT") * oSqlSZB:getValue("ZB_UNIVALU") ,"C6_VALOR"), nil})
+	aAdd(aAux, {"D2_TES"	, PadR( oSqlSZB:getValue("ZB_TES"), TamSx3("D2_TES")[1] )	, nil})
+	aAdd(aAux, {"D2_NFORI"	, 	SZA->ZA_DOCSCJ						   	, nil})
+	aAdd(aAux, {"D2_SERIORI", 	SZA->ZA_SERISCJ						   	, nil})
+	aAdd(aAux, {"D2_ITEMORI", 	oSqlSZB:getValue("ZB_LINITEM")			   	, nil})
+
+	aAdd(aItems, aAux)
+Return lStatus
+
+
+/*
+** Coleta o CST da Tes (ICMS)
+*/
+Static Function getCstTes(cTes)
+	Local oSql	:= IpSqlObject():newIpSqlObject()
+	Local cRet	:= ""
+
+	cRet := oSql:getFieldValue("SF4", "F4_SITTRIB", " %SF4.XFILIAL% AND F4_CODIGO = '"+ cTes +"'")
+
+	oSql:close()
+Return (cRet)
+
+/*
+** Atualiza o MVA (B1_PICMRET) do item no cadastro de produtos
+*/
+Static Function updPrd(cItem, cField , xValue)
+	Local oSqlSB1	:= IpSqlObject():newIpSqlObject()
+	Local cWhere	:= ""
+	Local cUpd		:= ""
+	Local lStatus 	:= .T.
+
+	cWhere += " %SB1.XFILIAL% AND "
+	cWhere += " B1_COD 		= '" + cItem + "'"
+
+	If ValType(xValue) == "C"
+		cUpd	 := cField + " = '" + xValue + "'"
+	Else
+		cUpd	 := cField + " = " + Str(xValue)
+	Endif
+
+	if !oSqlSB1:update("SB1", cUpd, cWhere)
+		lStatus := .F.
+		oIp040:setMsgError("Não foi possível atualizar o campo B1_PICMRET. O processamento será abortado")
+	endif
+
+	oSqlSB1:close()
+Return lStatus
+
+
+/*
+** Controla numeração do SX5
+*/
+static function contrSx5(cNumDoc, cSerie)
+	local oSql		:= IpSqlObject():newIpSqlObject()
+	local cNumSx5	:= Soma1(cNumDoc)
+	local cTipoNf  	:= SuperGetMv("MV_TPNRNFS")
+	local cUpd		:= "X5_DESCRI = '"+cNumSx5+"', X5_DESCSPA = '"+cNumSx5+"', X5_DESCENG = '"+cNumSx5+"'"
+	local nDif 		:= 0
+
+	oSql:update("SX5",cUpd,"%SX5.XFILIAL% AND X5_TABELA = '"+NF_TABELA+"' AND X5_CHAVE = '"+cSerie+"'")
+	oSql:close()
+return()
+
+/*
+** Define o número da nota
+*/
+static function setNewNumSX5()
+
+	local aArea 		:= getArea()
+	local aAreaSX5	:= {} 
+	local aAreaSX3	:= {} 
+	local aAreaSD9  := {}
+	local cTpNrNfs	:= SuperGetMV("MV_TPNRNFS")
+	local cNumDoc		:= ""
+	local lOk		:= .t.
+	local oSql		:= IpSqlObject():newIpSqlObject()
+	
+	dbSelectArea("SD9")
+	aAreaSD9 := SD9->(getArea())
+	aAreaSX5 := SX5->(getArea())
+	aAreaSX3 := SX3->(getArea())
+	//	cNumDoc := AllTrim(oSql:getFieldValue("SX5", "X5_DESCRI", "%SX5.XFILIAL% AND X5_TABELA = '"+NF_TABELA+"' AND X5_CHAVE = '"+cSerie+"'"))
+
+	//	contrSx5(cNumDoc, cSerie)
+	
+	dbselectArea("SX3")
+	SX3->(DbSetOrder(1))
+	If (SX3->(dbSeek("SD9"))) .And. cTpNrNfs == "3"
+		conout("** PRCNFRCO** OBTENDO NUMERACAO MA461NumNf ALIAS: " + alias() + " data/hora " + time() + " " + cValToChar(dDataBase) )
+		cNumDoc := MA461NumNf(.T., cSerie)
+		conout("** PRCNFRCO** OBTIDO NUMERACAO MA461NumNf ALIAS: " + alias() + " data/hora " + time() + " " + cValToChar(dDataBase) )
+	Else
+		Alert("Não foi possível atribuir número de NF! Verifique o conteúdo do parâmetro MV_TPNRNFS.")
+		lOk := .f.
+	EndIf
+
+	saveNumSZA(cNumDoc, cSerie,.f.)
+
+	SX3->(restArea(aAreaSX3))
+	SX5->(restArea(aAreaSX5))
+	SD9->(restArea(aAreaSD9))
+	restArea(aArea)
+
+	oSql:close()
+
+return (lOk)
+
+/*
+** salva a nmeração reservadoa para a nota SCJ
+*/
+static function saveNumSZA(cNumDoc, cSerie, lLimpaSZA )
+
+	Default lLimpaSZA	:= .f. //joj 24/05/2018
+
+	If lLimpaSZA
+		SZA->(reclock("SZA", .F.))
+
+		SZA->ZA_NFRCOX5 := ""
+
+		msUnlock("SZA")
+
+	else
+		if empty(SZA->ZA_NFRCOX5)
+			SZA->(reclock("SZA", .F.))
+
+			SZA->ZA_NFRCOX5 := cNumDoc + cSerie
+
+			msUnlock("SZA")
+		endIf
+	endif
+return
+
+/*
+** verifica se vai ser criado a RCO
+*/
+static function isCreateRCO(lNfRco)
+
+	local oSqlSZB 	:= oIp040:getItensSZB(SZA->ZA_KENFSCJ)
+	local lRet		:= .T.
+
+	lRet := validQtd(oSqlSZB:COUNT(), SZA->ZA_KENFSCJ, oIp040)
+
+	if lRet
+		lNfRco := oIp040:hasNfRco(oSqlSZB)
+	endIf
+
+	if lRet
+		While oSqlSZB:notIsEof()
+
+			If lNfRco != oIp040:hasNfRco(oSqlSZB)
+				oIp040:addMsgError(StaticCall(DHLIp040Sap, fMsgOrigDep))
+				lRet := .f.
+			EndIf
+
+			oSqlSZB:skip()
+		EndDo
+	endIf
+
+	oSqlSZB:goTop()
+
+	If lRet .and. !lNfRco
+		oIp040:setNfRet(.t.)
+	EndIf
+
+return lRet
+
+
+/*
+** limpa dados SZ, quando encontra problemas em processos após atualização da SZB.
+*/
+Static Function BackSZB()
+
+	Local lRet		:= .t.
+
+	FWLogMsg("INFO", "LAST", "BusinessObject", funName(), "", "01", "*********************INICIO BackSZB IN PrcNfRco.PRW " + time() + " ********************" + CRLF, 0, 0, {})
+
+	dbSelectArea("SZB")
+	SZB->( dbSetOrder(1) )
+	If SZB->( dbSeek(xFilial("SZB")+SZA->ZA_KENFSCJ) )
+		While !SZB->( EOF() ) .And. SZB->ZB_KENFSCJ == SZA->ZA_KENFSCJ
+			RecLock("SZB",.F.)
+			SZB->ZB_PEDIDO = ''
+			SZB->ZB_ITEMPV = ''
+			SZB->( MsUnlock() )
+
+			BackSB6(SZB->ZB_FILIAL,SZB->ZB_ITEM) //Emerson Holanda 12/06/18 - Retorna o saldo inicial disponivel da tabela de terceiros SZB
+
+			SZB->( dbSkip() )
+		end
+	EndIf
+
+	FWLogMsg("INFO", "LAST", "BusinessObject", funName(), "", "01", "*********************FIM BackSZB IN PrcNfRco.PRW " + time() + " ********************" + CRLF, 0, 0, {})
+
+Return (lRet)
+
+
+/*
+Emerson Holanda - 12/06/18
+** Limpa campo B6_XDTUMOV, para que a analise do saldo seja efetuada novamente para o proximo processo
+utilizando o campo o campo B6_SALDO inves do campo B6_XQTDMOV
+
+*/
+Static Function BackSB6(cB6FIL,cProdut)
+
+	Local lRet		:= .t.
+	Local cAliasNew := GetNextAlias()
+	Local cQuery    := ""
+
+	FWLogMsg("INFO", "LAST", "BusinessObject", funName(), "", "01", "*********************INICIO BackSB6 IN PrcNfRco.PRW - CHaVe: "+SZA->ZA_KENFSCJ +' - ' + time() + " ********************" + CRLF, 0, 0, {})
+
+	cQuery := " SELECT R_E_C_N_O_ RECSB6  "
+	cQuery += " FROM "+RetSqlName('SB6')+" SB6 "
+	cQuery += " WHERE SB6.B6_FILIAL = '"+cB6FIL+"'"
+	cQuery += " AND   SB6.B6_PRODUTO    = '"+cProdut+"'"
+	cQuery += " AND   SB6.D_E_L_E_T_ <> '*' "
+	cQuery += " AND   SB6.B6_XDTUMOV   = '"+Dtos(dDataBase) +"'"
+	cQuery += " AND   SB6.B6_PODER3 = 'R' "
+	cQuery += " AND   SB6.B6_SALDO > 0 "
+	cQuery += " ORDER BY SB6.B6_DTDIGIT "
+	cQuery := ChangeQuery(cQuery)
+
+	DbUseArea(.T.,'TOPCONN',TCGENQRY(,,cQuery),cAliasNew,.F.,.T.)
+
+	(cAliasNew)->( DbGoTop() )
+
+	If !(cAliasNew)->( Eof() )
+		While !(cAliasNew)->( Eof() )
+			dbSelectArea("SB6")
+			dbGoTo( (cAliasNew)->( RECSB6 ) )
+			//Altera Registros
+			Reclock("SB6",.F.)
+
+			SB6->B6_XDTUMOV := CToD("  /  /  ")
+			SB6->B6_XQTDMOV := SB6->B6_SALDO - SB6->B6_QULIB
+
+			SB6->( MsUnlock() )
+
+			(cAliasNew)->( DbSkip() )
+		End
+		(cAliasNew)->( DbCloseArea() )
+
+		FWLogMsg("INFO", "LAST", "BusinessObject", funName(), "", "01", "*********************Executou BackSB6 IN PrcNfRco.PRW - CHaVe: "+SZA->ZA_KENFSCJ +' - ' + time() + " ********************" + CRLF, 0, 0, {})
+
+	EndIf
+
+	FWLogMsg("INFO", "LAST", "BusinessObject", funName(), "", "01", "*********************FIM BackSZB IN PrcNfRco.PRW " + time() + " ********************" + CRLF, 0, 0, {})
+
+Return (lRet)
+
+/**
+* Valida se a quaantidade resultado da query amarração SA7 é a mesma referente a quantidade dos itens SZB
+**/
+static function validQtd(nQtdSZBSA7, cChaveSZA, oIp040)
+
+	local lValidQtd 	:= .F.
+	local cQuery    	:= ""	
+	local cAliasSZB		:= GetNextAlias()
+	local nQtdItensSZB 	:= 0
+	local aArea			:= getArea()
+	local aAreaSZB      := SZB->(getArea())
+
+	BeginSql Alias cAliasSZB
+		SELECT COUNT(*) QTD_ITENS
+		FROM %Table:SZB% ZB
+		WHERE
+		ZB_FILIAL	= %xFilial:SZB% AND
+		ZB_KENFSCJ 	= %Exp:cChaveSZA% AND		
+		ZB.%NotDel%
+	EndSql	
+
+	If (cAliasSZB)->(!Eof())
+		nQtdItensSZB := (cAliasSZB)->QTD_ITENS
+	EndIf 
+
+	if nQtdItensSZB ==  nQtdSZBSA7
+		lValidQtd := .T.
+	else
+		oIp040:addMsgError("Quantidade retornado da amarração Produto x Cliente diferente da quantidade de itens na SZB. Amarração Produto x Cliente: " + cValToChar(nQtdSZBSA7) + ". Quantidade SZB itens: " + cValToChar(nQtdItensSZB))
+	endIf
+
+	(cAliasSZB)->(dbCloseArea())
+	
+	restArea(aAreaSZB)
+	restArea(aArea)
+
+return lValidQtd

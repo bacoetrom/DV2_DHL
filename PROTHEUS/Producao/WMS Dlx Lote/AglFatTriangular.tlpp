@@ -1,0 +1,671 @@
+#Include 'Totvs.ch'
+#Include 'Font.ch'
+#Include 'Colors.ch'
+#Include 'DHL.ch'
+
+/*/{Protheus.doc} User Function AglFatTringular
+    Faturamento Triangular AGL
+    @type  Function
+    @author TOTVS IP
+    @since 24/10/2023
+    @version 1.0
+    @see AglVincNFTer
+    /*/
+User Function AglFatTringular()
+
+	If SC5->C5_ZZTPPV == REMESSA_CONTA_ORDEM
+		Aviso("Pedido de Remessa por conta e ordem","Para faturamento selecionar no pedido de retorno simbólico. Verifique!",{"Ok"},3)
+		Return Nil
+	ElseIf SC5->C5_ZZTPPV == RETORNO_SIMBOLICO
+		Processa({|| fTela() },"Selecionando Informações do Pedido...")
+	Else
+		Aviso("Pedido com erro","Pedido de venda não classificado (Retorno simbólico ou Remessa por conta e ordem). Verifique!",{"Ok"},3)
+		Return Nil
+	Endif
+
+
+Return
+
+/**
+*  Monta tela
+**/
+Static Function fTela()
+	Local oFont, oTela, oSay1, oSay2, oGrp1, oGet1, oGrp2, oGet2, oMark, oBrw2, oBtn1, oBtn2
+	Local aAreaAtu	:= GetArea()
+	Local nOpc 		:= GD_UPDATE
+    Local nI        := 0
+	Local aRegs		:= {}
+	Local aCoBrw2 	:= {}
+	Local aHoBrw2 	:= {}
+	Local cChave	:= ""
+	Local cCliente 	:= Space(10)
+	Local cLoja     := Space(05)
+	Local cNome     := Space(50)
+	Local cPedido  	:= Space(10)
+	Local aListHdr	:= {'','Emissão','No. Nota Fiscal','Série','Pedido RCO','Valor Mercadoria','Cliente','Loja','Nome'}
+	Local oOk		:= LoadBitmap( GetResources(), "LBOK")
+	Local oNo		:= LoadBitMap( GetResources(), "LBNO")
+
+	//--- Busca NF Comodato Disponivel para Selecao:
+	fQuery()
+
+	ProcRegua(QRY->(RecCount()))
+
+	QRY->(dbGoTop())
+	If QRY->(!Eof())
+
+		//--- Montagem das notas de comodato:
+		While QRY->(!Eof())
+			IncProc()
+			aAdd(aRegs, {.F., QRY->Z8_EMISSAO, QRY->Z8_DOC, QRY->Z8_SERIE, QRY->Z8_PEDIDO, QRY->Z8_VALMERC, QRY->Z8_CLIENTE, QRY->Z8_LOJA, QRY->A1_NOME} )
+			QRY->(dbSkip())
+		Enddo
+		QRY->(dbGoTop())
+
+		//--- Montagem dos itens da nota fiscal:
+		cChave	:= xFilial("SZ9") + QRY->Z8_DOC + QRY->Z8_SERIE + QRY->Z8_CLIENTE + QRY->Z8_LOJA
+		aHoBrw2 := faHeader()
+
+		Aadd(aCoBrw2,Array(Len(aHoBrw2)+1))
+		For nI := 1 To Len(aHoBrw2)
+			aCoBrw2[1][nI] := CriaVar(aHoBrw2[nI][2])
+		Next
+		aCoBrw2[1][Len(aHoBrw2)+1] := .F.
+
+		//--- Apresenta a Tela com as Notas de COMODATO:
+		If Len(aRegs) > 0 .and. Len(aCoBrw2) > 0
+
+			QRY->(dbGoTop())
+
+			SA1->(dbSetOrder(1))
+			SA1->(dbSeek( xFilial("SA1") + SC5->C5_CLIENTE + SC5->C5_LOJACLI ))
+			cCliente:= Alltrim(SC5->C5_CLIENTE)
+			cLoja  	:= Alltrim(SC5->C5_LOJACLI)
+			cNome  	:= SA1->A1_NOME
+			cPedido	:= SC5->C5_NUM
+
+			oFont:= TFont():New( "MS Sans Serif",0,-13,,.T.,0,,700,.F.,.F.,,,,,, )
+			oTela:= MSDialog():New( 092,238,642,1204,"Pedido de Venda - VINCULAR NOTA FISCAL",,,.F.,,,,,,.T.,,,.T. )
+
+			oGrp1:= TGroup():New( 004,004,032,076,"Pedido de Venda:",oTela,CLR_BLACK,CLR_WHITE,.T.,.F. )
+			oGet1:= TGet():New( 013,008,{|u| If(PCount()>0,cPedido:=u,cPedido)},oGrp1,064,010,'',,CLR_BLACK,CLR_WHITE,oFont,,,.T.,"",,,.F.,.F.,,.F.,.F.,"","cPedido",,)
+			oGet1:Disable()
+
+			oGrp2:= TGroup():New( 004,084,032,152,"Cliente:",oTela,CLR_BLACK,CLR_WHITE,.T.,.F. )
+			oGet2:= TGet():New( 013,088,{|u| If(PCount()>0,cCliente:=u,cCliente)},oGrp2,060,010,'',,CLR_BLACK,CLR_WHITE,oFont,,,.T.,"",,,.F.,.F.,,.F.,.F.,"","cCliente",,)
+			oGet2:Disable()
+
+			oGrp3:= TGroup():New( 004,160,032,192,"Loja:",oTela,CLR_BLACK,CLR_WHITE,.T.,.F. )
+			oGet3:= TGet():New( 013,164,{|u| If(PCount()>0,cLoja:=u,cLoja)},oGrp3,024,010,'',,CLR_BLACK,CLR_WHITE,oFont,,,.T.,"",,,.F.,.F.,,.F.,.F.,"","cLoja",,)
+			oGet3:Disable()
+
+			oGrp4:= TGroup():New( 004,200,032,472,"Nome:",oTela,CLR_BLACK,CLR_WHITE,.T.,.F. )
+			oGet4:= TGet():New( 013,204,{|u| If(PCount()>0,cNome:=u,cNome)},oGrp4,264,010,'',,CLR_BLACK,CLR_WHITE,oFont,,,.T.,"",,,.F.,.F.,,.F.,.F.,"","cNome",,)
+			oGet4:Disable()
+
+			oSay1:= TSay():New( 036,008,{||"Notas Fiscais (à vincular):"},oTela,,oFont,.F.,.F.,.F.,.T.,CLR_BLACK,CLR_WHITE,152,012)
+			oMark:= TWBrowse():New( 052,004,467,100,,aListHdr,,oTela,,,,,,,,,,,,.F.,,.T.,,.F.,,,)
+			oMark:bLDblClick := {|| fSeleciona(@oMark, @oBrw2, aRegs) }
+			oMark:SetArray(aRegs)
+			oMark:bLine := {|| {iif(aRegs[oMark:nAt,01],oOk,oNo), aRegs[oMark:nAt,02], aRegs[oMark:nAt,03], aRegs[oMark:nAt,04], aRegs[oMark:nAt,05], aRegs[oMark:nAt,06], aRegs[oMark:nAt,07], aRegs[oMark:nAt,08], aRegs[oMark:nAt,09]} }
+
+			oSay2:= TSay():New( 156,004,{||"Itens da Nota Fiscal de Terceiro (posicionada):"},oTela,,oFont,.F.,.F.,.F.,.T.,CLR_BLACK,CLR_WHITE,192,012)
+			oBrw2:= MsNewGetDados():New(172,004,248,472,nOpc,'AllwaysTrue()','AllwaysTrue()','',{},0,999,'AllwaysTrue()','','AllwaysTrue()',oTela,aHoBrw2,aCoBrw2 )
+
+			oBtn1:= TButton():New( 252,392,"Vincular",oTela,{|x| Processa({|| fVincula(oTela, oMark, oBrw2, aRegs) },"Gerando remessa por conta e ordem...")},037,012,,,,.T.,,"",,,,.F. )
+			oBtn2:= TButton():New( 252,436,"Fechar"  ,oTela,{|x| oTela:End()},037,012,,,,.T.,,"",,,,.F. )
+			oTela:Activate(,,,.T.)
+		Else
+			Aviso("ATENÇÃO","Não existem dados para serem exibidos. Verifique!",{"Ok"},3)
+		Endif
+	Else
+		Aviso("ATENÇÃO","Não existem notas de comodato disponíveis para vinculo. Verifique!",{"Ok"},3)
+	Endif
+	RestArea(aAreaAtu)
+
+	If Select("QRY") <> 0
+		QRY->(dbCloseArea())
+	Endif
+
+Return Nil
+
+/**
+* Consulta para localicar informações de amarrações
+**/
+Static Function fQuery()
+	Local cTipoNFTer := ""
+    Local cNfVenda := StrTokArr2(SC5->C5_ZZORDEX, "-")[1]
+    Local cSerieNfVenda := StrTokArr2(SC5->C5_ZZORDEX, "-")[2]
+
+	cTipoNFTer := Alltrim(GetMv("ZZ_TPNFTER"))
+
+	If Select("QRY") <> 0
+		QRY->(dbCloseArea())
+	Endif
+
+
+	BeginSql Alias "QRY"
+		COLUMN Z8_EMISSAO AS DATE
+		SELECT SZ8.Z8_DOC, SZ8.Z8_SERIE, SZ8.Z8_CLIENTE, SZ8.Z8_LOJA, SZ8.Z8_EMISSAO, SZ8.Z8_VALMERC, SA1.A1_NOME,
+			SZ8.Z8_PEDIDO
+		FROM %Table:SZ8% SZ8
+			INNER JOIN %Table:SA1% SA1 ON
+				SA1.A1_FILIAL = %xFilial:SA1% AND
+				SA1.A1_COD = SZ8.Z8_CLIENTE AND
+				SA1.A1_LOJA = SZ8.Z8_LOJA AND
+				SA1.%NotDel%
+		WHERE
+			SZ8.Z8_FILIAL = %xFilial:SZ8% AND
+			SZ8.Z8_CLIEMIT = %Exp:SC5->C5_CLIENTE% AND
+			SZ8.Z8_LOJEMIT = %Exp:SC5->C5_LOJACLI% AND
+			// SZ8.Z8_TPNF = %Exp:cTipoNFTer% AND
+			SZ8.Z8_DOC = %Exp:cNfVenda% AND
+			SZ8.Z8_SERIE = %Exp:cSerieNfVenda% AND
+			SZ8.Z8_NFRCO = '' AND SZ8.Z8_SERRCO = '' AND
+			SZ8.Z8_NFRET = '' AND SZ8.Z8_SERRET = '' AND
+			SZ8.%NotDel%
+		ORDER BY SZ8.Z8_EMISSAO, SZ8.Z8_DOC, SZ8.Z8_SERIE
+	EndSql
+
+Return Nil
+
+/**
+* Cabec itens tela
+**/
+Static Function faHeader()
+	Local aRetorno := {}
+
+	Aadd(aRetorno, {AllTrim(GetSx3Cache("Z9_ITEM","X3_TITULO")),;
+		GetSx3Cache("Z9_ITEM","X3_CAMPO"),;
+		GetSx3Cache("Z9_ITEM","X3_PICTURE"),;
+		GetSx3Cache("Z9_ITEM","X3_TAMANHO"),;
+		GetSx3Cache("Z9_ITEM","X3_DECIMAL"),;
+		"",;
+		"",;
+		GetSx3Cache("Z9_ITEM","X3_TIPO"),;
+		"",;
+		""})
+
+	Aadd(aRetorno, {AllTrim(GetSx3Cache("Z9_COD","X3_TITULO")),;
+		GetSx3Cache("Z9_COD","X3_CAMPO"),;
+		GetSx3Cache("Z9_COD","X3_PICTURE"),;
+		GetSx3Cache("Z9_COD","X3_TAMANHO"),;
+		GetSx3Cache("Z9_COD","X3_DECIMAL"),;
+		"",;
+		"",;
+		GetSx3Cache("Z9_COD","X3_TIPO"),;
+		"",;
+		""})
+
+	Aadd(aRetorno, {AllTrim(GetSx3Cache("B1_DESC","X3_TITULO")),;
+		GetSx3Cache("B1_DESC","X3_CAMPO"),;
+		GetSx3Cache("B1_DESC","X3_PICTURE"),;
+		GetSx3Cache("B1_DESC","X3_TAMANHO"),;
+		GetSx3Cache("B1_DESC","X3_DECIMAL"),;
+		"",;
+		"",;
+		GetSx3Cache("B1_DESC","X3_TIPO"),;
+		"",;
+		""})
+
+	Aadd(aRetorno, {AllTrim(GetSx3Cache("B1_UM","X3_TITULO")),;
+		GetSx3Cache("B1_UM","X3_CAMPO"),;
+		GetSx3Cache("B1_UM","X3_PICTURE"),;
+		GetSx3Cache("B1_UM","X3_TAMANHO"),;
+		GetSx3Cache("B1_UM","X3_DECIMAL"),;
+		"",;
+		"",;
+		GetSx3Cache("B1_UM","X3_TIPO"),;
+		"",;
+		""})
+
+	Aadd(aRetorno, {AllTrim(GetSx3Cache("Z9_QUANT","X3_TITULO")),;
+		GetSx3Cache("Z9_QUANT","X3_CAMPO"),;
+		GetSx3Cache("Z9_QUANT","X3_PICTURE"),;
+		GetSx3Cache("Z9_QUANT","X3_TAMANHO"),;
+		GetSx3Cache("Z9_QUANT","X3_DECIMAL"),;
+		"",;
+		"",;
+		GetSx3Cache("Z9_QUANT","X3_TIPO"),;
+		"",;
+		""})
+
+	Aadd(aRetorno, {AllTrim(GetSx3Cache("Z9_PRCVEN","X3_TITULO")),;
+		GetSx3Cache("Z9_PRCVEN","X3_CAMPO"),;
+		GetSx3Cache("Z9_PRCVEN","X3_PICTURE"),;
+		GetSx3Cache("Z9_PRCVEN","X3_TAMANHO"),;
+		GetSx3Cache("Z9_PRCVEN","X3_DECIMAL"),;
+		"",;
+		"",;
+		GetSx3Cache("Z9_PRCVEN","X3_TIPO"),;
+		"",;
+		""})
+
+	Aadd(aRetorno, {AllTrim(GetSx3Cache("Z9_TOTAL","X3_TITULO")),;
+		GetSx3Cache("Z9_TOTAL","X3_CAMPO"),;
+		GetSx3Cache("Z9_TOTAL","X3_PICTURE"),;
+		GetSx3Cache("Z9_TOTAL","X3_TAMANHO"),;
+		GetSx3Cache("Z9_TOTAL","X3_DECIMAL"),;
+		"",;
+		"",;
+		GetSx3Cache("Z9_TOTAL","X3_TIPO"),;
+		"",;
+		""})
+
+	Aadd(aRetorno, {AllTrim(GetSx3Cache("Z9_LOTE","X3_TITULO")),;
+		GetSx3Cache("Z9_LOTE","X3_CAMPO"),;
+		GetSx3Cache("Z9_LOTE","X3_PICTURE"),;
+		GetSx3Cache("Z9_LOTE","X3_TAMANHO"),;
+		GetSx3Cache("Z9_LOTE","X3_DECIMAL"),;
+		"",;
+		"",;
+		GetSx3Cache("Z9_LOTE","X3_TIPO"),;
+		"",;
+		""})
+
+	Aadd(aRetorno, {AllTrim(GetSx3Cache("Z9_DTVALID","X3_TITULO")),;
+		GetSx3Cache("Z9_DTVALID","X3_CAMPO"),;
+		GetSx3Cache("Z9_DTVALID","X3_PICTURE"),;
+		GetSx3Cache("Z9_DTVALID","X3_TAMANHO"),;
+		GetSx3Cache("Z9_DTVALID","X3_DECIMAL"),;
+		"",;
+		"",;
+		GetSx3Cache("Z9_DTVALID","X3_TIPO"),;
+		"",;
+		""})
+
+	Aadd(aRetorno, {AllTrim(GetSx3Cache("Z9_DTFABR","X3_TITULO")),;
+		GetSx3Cache("Z9_DTFABR","X3_CAMPO"),;
+		GetSx3Cache("Z9_DTFABR","X3_PICTURE"),;
+		GetSx3Cache("Z9_DTFABR","X3_TAMANHO"),;
+		GetSx3Cache("Z9_DTFABR","X3_DECIMAL"),;
+		"",;
+		"",;
+		GetSx3Cache("Z9_DTFABR","X3_TIPO"),;
+		"",;
+		""})
+
+Return aRetorno
+
+/**
+* Itens tela
+**/
+Static Function faCols(aCabec, cChave)
+	Local aRetorno	:= {}
+	Local nI		:= 0
+
+	SB1->(dbSetOrder(1))
+	SZ9->(dbSetOrder(1))
+	SZ9->(dbSeek( cChave ))
+	While SZ9->(!Eof()) .and. SZ9->Z9_FILIAL + SZ9->Z9_DOC + SZ9->Z9_SERIE + SZ9->Z9_CLIENTE + SZ9->Z9_LOJA == cChave
+
+		SB1->(dbSeek( xFilial("SB1") + SZ9->Z9_COD ))
+
+		Aadd(aRetorno,Array(Len(aCabec)+1))
+		aRetorno[Len(aRetorno)][GdFieldPos("Z9_ITEM",aCabec)] 	:= SZ9->Z9_ITEM
+		aRetorno[Len(aRetorno)][GdFieldPos("Z9_COD",aCabec)] 	:= SZ9->Z9_COD
+		aRetorno[Len(aRetorno)][GdFieldPos("B1_DESC",aCabec)] 	:= SB1->B1_DESC
+		aRetorno[Len(aRetorno)][GdFieldPos("B1_UM",aCabec)] 	:= SB1->B1_UM
+		aRetorno[Len(aRetorno)][GdFieldPos("Z9_QUANT",aCabec)] 	:= SZ9->Z9_QUANT
+		aRetorno[Len(aRetorno)][GdFieldPos("Z9_PRCVEN",aCabec)] := SZ9->Z9_PRCVEN
+		aRetorno[Len(aRetorno)][GdFieldPos("Z9_TOTAL",aCabec)]	:= SZ9->Z9_TOTAL
+		//Lote
+		aRetorno[Len(aRetorno)][GdFieldPos("Z9_LOTE",aCabec)] 	:= SZ9->Z9_LOTE
+		aRetorno[Len(aRetorno)][GdFieldPos("Z9_DTVALID",aCabec)] := SZ9->Z9_DTVALID
+		aRetorno[Len(aRetorno)][GdFieldPos("Z9_DTFABR",aCabec)]	:= SZ9->Z9_DTFABR
+
+		aRetorno[Len(aRetorno)][Len(aCabec)+1] := .F.
+
+		SZ9->(dbSkip())
+	Enddo
+
+	If Len(aRetorno) == 0
+		Aadd(aRetorno,Array(Len(aCabec)+1))
+		For nI := 1 To Len(aCabec)
+			aRetorno[1][nI] := CriaVar(aCabec[nI][2])
+		Next
+		aRetorno[1][Len(aCabec)+1] := .F.
+	Endif
+
+Return aRetorno
+
+*********************************************************************************************************************************************************************
+Static Function fVincula(oTela, oMark, oBrw2, aRegs)
+*********************************************************************************************************************************************************************
+	Local aArea	    := Lj7GetArea({"SC5", "SC6"})
+	Local cNota		:= ""
+	Local cSerie	:= ""
+	Local cCliente	:= ""
+	Local cLoja		:= ""
+	Local cPedidoRCO:= ""
+	Local cSerieRCO := fSerieAut("RCO")
+	Local oLibFat 	:= Nil
+	local nTentat	:= 0
+	local nI		:= 0
+	Local lAvisa	:= .f.
+	Local lErroLote := .f.
+
+	///----------->dados anteriores para retornar
+	local __Z8_PEDIDO	:= ""
+	local __C5_ZZNFTER	:= ""
+	local __C5_ZZSETER	:= ""
+	local __C5_ZZCLTER	:= ""
+	local __C5_ZZLJTER	:= ""
+	LOCAL NREC_C5		:= 0
+	LOCAL NREC_Z8		:= 0
+
+	For nI:=1 to Len(aRegs)
+		If aRegs[nI,01] .and. Empty(cNota) .and. Empty(cSerie) .and. Empty(cCliente) .and. Empty(cLoja)
+			cNota		:= aRegs[nI,03]
+			cSerie		:= aRegs[nI,04]
+			cPedidoRCO	:= aRegs[nI,05]
+			cCliente	:= aRegs[nI,07]
+			cLoja		:= aRegs[nI,08]
+		Endif
+	Next
+
+	If Empty(cNota)
+		Aviso("Sem Seleção de Nota","Nenhuma nota fiscal foi selecionada. Verifique!",{"Ok"},3)
+		Return .F.
+	Endif
+
+	ProcRegua(1)
+
+	//--- 1o. Valida Itens da NF Comodato vs Pedido de Venda:
+	// If fNFxPed(cNota, cSerie, cCliente, cLoja)
+
+		If !MsgYesNo("Confirma o vínculo do pedido '"+SC5->C5_NUM+"' com a nota '"+cNota+"'?")
+			Return .F.
+		Else
+			If SB1->B1_RASTRO = "L"
+				lErroLote = ValidLote(cNota, cSerie, cCliente, cLoja, SC5->C5_NUM)
+
+				If !lErroLote
+					Aviso("L O T E   D I V E R G E N T E","Os lotes estão divergentes para a Nota '"+cNota +"/"+ cSerie+"' vinculada ao pedido '"+SC5->C5_NUM+"'. Verifique!",{"Ok"},3)
+					Return .F.
+				EndIf
+			EndIf
+		Endif
+
+		IncProc()
+
+		//Begin Transaction
+
+		SZ8->(dbSetOrder(1))
+		If SZ8->(dbSeek( xFilial("SZ8") + cNota + cSerie + cCliente + cLoja ))
+
+			//--- 2o. Amarra Pedido com a Nota:
+			NREC_Z8 := SZ8->(RECNO())
+			// RecLock("SZ8",.F.)
+			// __Z8_PEDIDO    := SZ8->Z8_PEDIDO
+			// SZ8->Z8_PEDIDO := SC5->C5_NUM
+			// SZ8->(MsUnLock())
+
+			NREC_C5 := SC5->(RECNO())
+			RecLock("SC5",.F.)
+			__C5_ZZNFTER	:= SC5->C5_ZZNFTER
+			__C5_ZZSETER	:= SC5->C5_ZZSETER
+			__C5_ZZCLTER	:= SC5->C5_ZZCLTER
+			__C5_ZZLJTER	:= SC5->C5_ZZLJTER
+
+
+			SC5->C5_ZZNFTER := SZ8->Z8_DOC
+			SC5->C5_ZZSETER := SZ8->Z8_SERIE
+			SC5->C5_ZZCLTER := SZ8->Z8_CLIEMIT
+			SC5->C5_ZZLJTER := SZ8->Z8_LOJEMIT
+
+			SC5->(MsUnLock())
+		Else
+			//UnLockByName("AGEVINCNFTER", .T. , .T. )
+			Alert("Nota '"+cNota +"/"+ cSerie+"' não encontrada.")
+			Return .F.
+		Endif
+
+		SC5->(dbSetOrder(1))
+		SC5->(dbSeek( xFilial("SC5") + cPedidoRCO ))
+
+		SC6->(dbSetOrder(1))
+		SC6->(dbSeek( xFilial("SC6") + cPedidoRCO ))
+
+		//--- 3o. Liberacao do Pedido de Venda:
+		oLibFat:= DhlDisControl():newDhlDisControl()
+		oLibFat:setSeries(cSerieRCO)
+		oLibFat:libSalesOrder()
+		If !oLibFat:lError
+			//--- 4o. Gera Nota Fiscal Saida - Fatura o Pedido:
+			oLibFat:incOutFlowInv(SC5->C5_NUM)
+			If !oLibFat:lError
+				RecLock("SZ8",.F.)
+				/* SZ8->Z8_NFRET  := SF2->F2_DOC
+				SZ8->Z8_SERRET := SF2->F2_SERIE
+				SZ8->Z8_CLIRET := SF2->F2_CLIENTE
+				SZ8->Z8_LOJRET := SF2->F2_LOJA */
+				
+				SZ8->Z8_NFRCO  := SF2->F2_DOC
+				SZ8->Z8_SERRCO := SF2->F2_SERIE
+				SZ8->Z8_CLIRCO := SF2->F2_CLIENTE
+				SZ8->Z8_LOJRCO := SF2->F2_LOJA
+					
+				SZ8->(MsUnLock())
+
+				lavisa := .t.
+			Else
+				FwAlertWarning(oLibFat:cError,FunName() + ' - incOutFlowInv')
+			Endif
+		ELSE
+			// SZ8->(DBGOTO( NREC_Z8 ))
+			// RecLock("SZ8",.F.)
+			// SZ8->Z8_PEDIDO := __Z8_PEDIDO
+			// SZ8->(MsUnLock())
+
+			SC5->(DBGOTO( NREC_C5 ))
+			RecLock("SC5",.F.)
+			SC5->C5_ZZNFTER := __C5_ZZNFTER
+			SC5->C5_ZZSETER := __C5_ZZSETER
+			SC5->C5_ZZCLTER := __C5_ZZCLTER
+			SC5->C5_ZZLJTER := __C5_ZZLJTER
+			SC5->(MsUnLock())
+			FwAlertWarning(oLibFat:cError,FunName() + ' - libSalesOrder')
+		Endif
+		oTela:End()
+		
+
+		//End Transaction
+		//UnLockByName("AGEVINCNFTER", .T. , .T. )
+
+		if lAvisa
+			Aviso("N O T A   F I S C A L   G E R A D A","Foi gerada a nota fiscal no. "+Alltrim(SF2->F2_DOC)+"/"+Alltrim(SF2->F2_SERIE)+".",{"Ok"},3)
+		endif
+
+
+	// Endif
+
+	Lj7RestArea(aArea)
+
+Return Nil
+
+/**
+* Marcação do regitro da tela
+**/
+Static Function fSeleciona(oMark, oBrw2, aRegs)
+	Local nCont := 0
+	Local cChave:= ""
+
+	aRegs[oMark:nAt,1] := !aRegs[oMark:nAt,1]
+
+	If aRegs[oMark:nAt,1]
+		For nCont:=1 to Len(aRegs)
+			If nCont <> oMark:nAt
+				aRegs[nCont,1] := .F.
+			Endif
+		Next
+		oMark:Refresh()
+
+		cChave := xFilial("SZ9") + aRegs[oMark:nAt,3] + aRegs[oMark:nAt,4] + aRegs[oMark:nAt,7] + aRegs[oMark:nAt,8]
+
+		oBrw2:aCols := faCols(oBrw2:aHeader, cChave)
+		oBrw2:Refresh()
+	Endif
+
+Return Nil
+
+/*
+* Validação de lote
+*/
+Static Function ValidLote(cNota, cSerie, cCliente, cLoja, cPedido)
+	Local lValidLote := .F.
+	Local oSql		 := IpSqlObject():newIpSqlObject()
+	Local cQuery	 := ""
+
+	cQuery += "SELECT Z9_COD, Z9_LOTE, C6_PRODUTO, C6_LOTECTL "									+ CRLF
+	cQuery += "FROM %SZ9.SQLNAME% "           													+ CRLF
+
+	cQuery += "INNER JOIN %SC6.SQLNAME% ON "                        							+ CRLF
+	cQuery += "		Z9_COD = C6_PRODUTO AND "                  									+ CRLF
+	cQuery += "		Z9_LOTE = C6_LOTECTL "                  									+ CRLF
+
+	cQuery += "INNER JOIN %SC5.SQLNAME% ON "													+ CRLF
+	cQuery += "		C5_NUM = C6_NUM AND "														+ CRLF
+	cQuery += "		TRIM(Z9_DOC) = SUBSTR(LPAD(TRIM(C5_ZZORDEX), 11, 0), 1, 9) AND "			+ CRLF
+	//cQuery += "		TRIM(Z9_SERIE) = TRIM(SUBSTR(C5_ZZORDEX, 8, 1)) "							+ CRLF
+
+//Emerson Holanda 04/01/23
+	cQuery += "		TRIM(Z9_SERIE) = TRIM(SUBSTR(C5_ZZORDEX, 11, 3)) "							+ CRLF
+
+	cQuery += "INNER JOIN %SB1.SQLNAME% ON "													+ CRLF
+	cQuery += "		Z9_COD = B1_COD AND " 														+ CRLF
+	cQuery += "		C6_PRODUTO = B1_COD " 														+ CRLF
+
+	cQuery += "WHERE Z9_DOC = '" + cNota + "' AND " 											+ CRLF
+	cQuery += "		 Z9_SERIE = '" + cSerie + "' AND " 											+ CRLF
+	cQuery += "		 Z9_CLIENTE = '" + cCliente + "' AND " 										+ CRLF
+	cQuery += "		 Z9_LOJA = '" + cLoja + "'  AND " 											+ CRLF
+	cQuery += "		 C5_NUM = '" + cPedido + "'  AND " 											+ CRLF
+	cQuery += "		 Z9_FILIAL = '%SZ9.FILIAL%' AND " 											+ CRLF
+	cQuery += "		 C6_FILIAL = '%SC6.FILIAL%' AND " 											+ CRLF
+	cQuery += "		 C5_FILIAL = '%SC5.FILIAL%' AND " 											+ CRLF
+	cQuery += "		 B1_FILIAL = '%SB1.FILIAL%' AND " 											+ CRLF
+	cQuery += "		 %SZ9.NOTDEL% AND %SC5.NOTDEL% AND %SC6.NOTDEL% AND %SB1.NOTDEL% "  		+ CRLF
+	oSql:newAlias(cQuery)
+
+	If oSql:hasRecords()
+		lValidLote = .T.
+	EndIf
+
+	oSql:close()
+
+Return lValidLote
+
+/*
+* Definição de série automatica
+*/
+Static Function fSerieAut(cFilSerie)
+	Local cRet := ""
+	Local cSeries := GetAdvFVal("SA1", "A1_ZSERAUT", FWxFilial("SA1")+SC5->(C5_CLIENTE + C5_LOJACLI), 1, "")
+	Local aSeries := {}
+	Local nPosSerie := 0
+	
+	aSeries := StrToKarr2( cSeries, ";" )
+
+	nPosSerie := aScan( aSeries, {|x| cFilSerie $  x })
+
+	If nPosSerie > 0
+		cRet := StrToKarr2( aSeries[nPosSerie], "=" )[2]
+	EndIf
+
+Return (cRet)
+
+/*
+** Desvincula amarracão -- VERIFICAR
+*/
+User Function DesFatTriangular(nOpt) //--- Desvinculo chamado no PE SF2520E
+	Local cTipoNFTer := Alltrim(GetMv("ZZ_TPNFTER"))
+	
+	If Select("QRY") <> 0
+		QRY->(dbCloseArea())
+	Endif
+	
+	//--- Desvincula Nota Fiscal
+	If nOpt == 1
+		BeginSql Alias "QRY"
+			SELECT SZ8.Z8_DOC, SZ8.Z8_SERIE, SZ8.Z8_CLIENTE, SZ8.Z8_LOJA
+			FROM %Table:SZ8% SZ8
+				INNER JOIN %Table:SD2% SD2 ON
+					SD2.D2_FILIAL = %Exp:SF2->F2_FILIAL% AND
+					SD2.D2_DOC = %Exp:SF2->F2_DOC% AND
+					SD2.D2_SERIE = %Exp:SF2->F2_SERIE% AND
+					SD2.D2_CLIENTE = %Exp:SF2->F2_CLIENTE% AND
+					SD2.D2_LOJA = %Exp:SF2->F2_LOJA% AND
+					SD2.D2_PEDIDO = SZ8.Z8_PEDIDO AND	//--- Amarra Pedido de Venda
+					SZ8.%NotDel%
+			WHERE
+				SZ8.Z8_FILIAL = %xFilial:SZ8% AND
+				SZ8.Z8_NFRET = %Exp:SF2->F2_DOC% AND
+				SZ8.Z8_SERRET = %Exp:SF2->F2_SERIE% AND
+				SZ8.Z8_CLIRET = %Exp:SF2->F2_CLIENTE% AND
+				SZ8.Z8_LOJRET = %Exp:SF2->F2_LOJA% AND
+				SZ8.Z8_TPNF = %Exp:cTipoNFTer% AND
+				SZ8.%NotDel%
+			GROUP BY SZ8.Z8_DOC, SZ8.Z8_SERIE, SZ8.Z8_CLIENTE, SZ8.Z8_LOJA
+		EndSql
+		
+		QRY->(dbGoTop())
+		If QRY->(!Eof())
+			SZ8->(dbSetOrder(1))
+			If SZ8->(dbSeek( xFilial("SZ8") + QRY->Z8_DOC + QRY->Z8_SERIE + QRY->Z8_CLIENTE + QRY->Z8_LOJA ))
+				
+				if cFilAnt != AGE_MONDELEZ
+					
+					SC5->(dbSetOrder(1))
+					If SC5->(dbSeek( xFilial("SC5") + SZ8->Z8_PEDIDO ))
+						RecLock("SC5",.F.)
+						SC5->C5_ZZNFTER := ""
+						SC5->C5_ZZSETER := ""
+						SC5->C5_ZZCLTER := ""
+						SC5->C5_ZZLJTER := ""
+						SC5->(MsUnLock())
+					Endif
+					
+				endIf
+				
+				RecLock("SZ8",.F.)
+				SZ8->Z8_NFRET  := ""
+				SZ8->Z8_SERRET := ""
+				SZ8->Z8_CLIRET := ""
+				SZ8->Z8_LOJRET := ""
+				
+				if cFilAnt != AGE_MONDELEZ
+					SZ8->Z8_PEDIDO := ""
+				endIf
+				
+				SZ8->(MsUnLock())
+			Endif
+		Endif
+	
+	//--- Desvincula Pedido de Venda		
+	ElseIf nOpt == 2
+		BeginSql Alias "QRY"
+			SELECT SZ8.Z8_DOC, SZ8.Z8_SERIE, SZ8.Z8_CLIENTE, SZ8.Z8_LOJA
+			FROM %Table:SZ8% SZ8
+			WHERE
+				SZ8.Z8_FILIAL = %xFilial:SZ8% AND
+				SZ8.Z8_PEDIDO = %Exp:SC5->C5_NUM% AND
+				SZ8.%NotDel%
+		EndSql
+		
+		QRY->(dbGoTop())
+		If QRY->(!Eof())
+			SZ8->(dbSetOrder(1))
+			If SZ8->(dbSeek( xFilial("SZ8") + QRY->Z8_DOC + QRY->Z8_SERIE + QRY->Z8_CLIENTE + QRY->Z8_LOJA ))
+				RecLock("SZ8",.F.)
+				SZ8->Z8_PEDIDO  := ""
+				SZ8->(MsUnLock())
+			Endif
+		Endif
+	Endif
+	
+	If Select("QRY") <> 0
+		QRY->(dbCloseArea())
+	Endif
+		
+Return Nil

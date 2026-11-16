@@ -1,0 +1,241 @@
+#Include 'Protheus.ch'
+#Include 'dhl.ch'
+
+/*/{Protheus.doc} ProcNfAut
+Processamento das notas fiscais automáticas
+@author Thiago Meschiatti
+@since 24/05/2016
+@version 1.0
+@return ${return}, ${return_description}
+/*/
+User Function ProcNfAut(cTypeDoc, cDocument, cSeries, cSupplier, cUnit)
+local aAreas 		:= Lj7GetArea({"SC5","SC6","SF1","SF2","SD1","SD2","SA1","SA2","SF4"})
+local oSqlItems		:= nil
+private oControlAut	:= DhlDisControl():newDhlDisControl(cTypeDoc)
+private cItem		:= iif(cTypeDoc == DHL_NFE_INVOICE_OUTFLOW, Replicate("0",TamSx3("C6_ITEM")[1]), Replicate("0",TamSx3("D1_ITEM")[1]))
+
+oSqlItems := oControlAut:getObjItems(cDocument, cSeries, cSupplier, cUnit)
+retCliente(oControlAut)
+mountHeader(oSqlItems, oControlAut)
+
+while oSqlItems:notIsEof()
+	if oControlAut:hasGeneration(oSqlItems:getValue("TES"))
+		cItem := Soma1(cItem)
+		mountDetail(oSqlItems, oControlAut)
+	endif
+	
+	oSqlItems:skip()
+end
+oSqlItems:close()
+
+if len(oControlAut:getItems()) > 0
+	oControlAut:execAuto()
+endif
+
+
+if oControlAut:hasError()
+	oControlAut:showError()
+endif
+
+Lj7RestArea(aAreas)
+
+Return oControlAut:hasError()
+
+
+/*
+**
+*/
+static function mountHeader(oSqlItems, oControlAut)
+local cFromInv	:= ""
+
+if oControlAut:getTypeDoc() == DHL_NFE_INVOICE_OUTFLOW
+	oControlAut:addHeader("C5_TIPO"   , "N")
+	oControlAut:addHeader("C5_CLIENTE", oControlAut:getEntityAuto())
+	oControlAut:addHeader("C5_LOJACLI", oControlAut:getUnitAuto())
+	oControlAut:addHeader("C5_CONDPAG", GetNewPar("ZZ_CONDAUT", "001"))
+	oControlAut:addHeader("C5_TPFRETE", "S")
+else
+	cFromInv	:= getNumDoc(oControlAut:getSeries())
+	oControlAut:addHeader("F1_FILIAL"   , xFilial("SF1"))
+	oControlAut:addHeader("F1_DOC"   	, cFromInv)
+	oControlAut:addHeader("F1_SERIE"   	, oControlAut:getSeries())
+	oControlAut:addHeader("F1_ESPECIE"	, "SPED")
+	oControlAut:addHeader("F1_TIPO"   	, 'B')
+	oControlAut:addHeader("F1_FORNECE"  , oControlAut:getEntityAuto())
+	oControlAut:addHeader("F1_LOJA"     , oControlAut:getUnitAuto())
+	oControlAut:addHeader("F1_EST "     , oControlAut:getState())
+	oControlAut:addHeader("F1_FORMUL"   , 'S')
+	oControlAut:addHeader("F1_COND"     , GetNewPar("ZZ_CONDAUT", "001"))
+	oControlAut:addHeader("F1_EMISSAO"  , dDataBase)
+	oControlAut:addHeader("F1_ZZAUTO"   , 'S')
+endif
+return
+
+
+/*
+**
+*/
+static function mountDetail(oSqlItems, oControlAut)
+local oSql		:= IpSqlObject():newIpSqlObject()
+local nQuant	:= 0
+local nPrice	:= 0
+
+oControlAut:aAuxItems := {}
+
+if oControlAut:getTypeDoc() == DHL_NFE_INVOICE_OUTFLOW
+	nQuant := oSqlItems:getValue("D1_QUANT")
+	nPrice := oSqlItems:getValue("D1_VUNIT")
+	
+	oControlAut:addItems("C6_ITEM"   , cItem                      						)
+	oControlAut:addItems("C6_PRODUTO", oSqlItems:getValue("D1_COD")						)
+	oControlAut:addItems("C6_UM"	 , oSqlItems:getValue("D1_UM")						)
+	oControlAut:addItems("C6_QTDVEN" , nQuant 											)
+	oControlAut:addItems("C6_PRCVEN" , A410Arred(nPrice, "C6_PRCVEN")					)
+	oControlAut:addItems("C6_VALOR"  , A410Arred(nQuant * nPrice,"C6_VALOR")			)
+	oControlAut:addItems("C6_QTDLIB" , oSqlItems:getValue("D1_QUANT")				   	)
+	oControlAut:addItems("C6_TES"    , oControlAut:getTes(oSqlItems:getValue("D1_TES"))	)
+	oControlAut:addItems("C6_LOCAL"  , oSqlItems:getValue("D1_LOCAL")  					)
+	oControlAut:addItems("C6_ZZNFAUT", oSqlItems:getValue("D1_DOC")						)
+	oControlAut:addItems("C6_ZZSEAUT", oSqlItems:getValue("D1_SERIE")  					)
+	oControlAut:addItems("C6_ZZITAUT", oSqlItems:getValue("D1_ITEM")   					)
+	oControlAut:addItems("C6_ZZCLAUT", oSqlItems:getValue("D1_FORNECE")					)
+	oControlAut:addItems("C6_ZZLJAUT", oSqlItems:getValue("D1_LOJA")   					)
+	oControlAut:addItems("C6_IDENTB6", oSqlItems:getValue("D1_IDENTB6")					)
+	If FWUnitBusiness() == DHL_BUSINESSUNIT_DIS  //Validação Pfizer 13/06/19 Emerson Holanda
+		aAreaSF4		:=	SF4->(GetArea())
+		cEst := Posicione("SF4",1,xFilial("SF4")+oControlAut:getTes(oSqlItems:getValue("D1_TES")),"F4_ESTOQUE")
+		If cEst == 'S' //Validação se a TES controla estoque, só podemos passar o lote como parametro caso a TES atualize estoque. 13/06/19 Emerson Holanda
+			oControlAut:addItems("C6_LOTECTL", oSqlItems:getValue("D1_LOTECTL")					)
+			oControlAut:addItems("C6_DTVALID", oSqlItems:getValue("D1_DTVALID")					)
+		EndIf
+		SF4->(RestArea(aAreaSF4))
+	Else
+		oControlAut:addItems("C6_LOTECTL", oSqlItems:getValue("D1_LOTECTL")					)
+		oControlAut:addItems("C6_DTVALID", oSqlItems:getValue("D1_DTVALID")					)
+	EndIf
+	oControlAut:addEndItems()
+else
+	oSql:newTable("SD2", "D2_DOC, D2_SERIE, D2_ITEM", retQryRef(oSqlItems, oControlAut))
+	nPrice := oSqlItems:getValue("D2_PRCVEN")
+	nQuant := oSqlItems:getValue("D2_QUANT")
+	
+	oControlAut:addItems("D1_FILIAL"   	, xFilial("SD1"))
+	oControlAut:addItems("D1_ITEM"   	, cItem)
+	oControlAut:addItems("D1_COD"   	, oSqlItems:getValue("D2_COD"))
+	oControlAut:addItems("D1_UM"   		, oSqlItems:getValue("D2_UM"))
+	oControlAut:addItems("D1_QUANT"   	, oSqlItems:getValue("D2_QUANT"))
+	oControlAut:addItems("D1_VUNIT"   	, A410Arred(nPrice))
+	oControlAut:addItems("D1_TOTAL"   	, A410Arred(nPrice * nQuant ,"D1_VUNIT"))
+	oControlAut:addItems("D1_TES"   	, oControlAut:getTes(oSqlItems:getValue("D2_TES")))
+	oControlAut:addItems("D1_NFORI"   	, oSql:getValue("D2_DOC"))
+	oControlAut:addItems("D1_SERIORI"  	, oSql:getValue("D2_SERIE"))
+	oControlAut:addItems("D1_ITEMORI"  	, oSql:getValue("D2_ITEM"))
+	oControlAut:addItems("D1_ZZNFAUT"	, oSqlItems:getValue("D2_DOC")						)
+	oControlAut:addItems("D1_ZZSEAUT"	, oSqlItems:getValue("D2_SERIE")  					)
+	oControlAut:addItems("D1_ZZITAUT"	, oSqlItems:getValue("D2_ITEM")   					)
+	oControlAut:addItems("D1_ZZCLAUT"	, oSqlItems:getValue("D2_CLIENTE")					)
+	oControlAut:addItems("D1_ZZLJAUT"	, oSqlItems:getValue("D2_LOJA")   					)
+	
+	oSql:close()
+	
+	oControlAut:addEndItems()
+endif
+return
+
+
+/*
+** Retorna cliente DHL
+*/
+static function retCliente(oControlAut)
+local oSql	 := IpSqlObject():newIpSqlObject()
+local cQuery := ""
+
+cQuery += "%SA1.XFILIAL% AND A1_CGC = '"+SM0->M0_CGC+"' "
+
+oSql:newTable("SA1", "A1_COD COD, A1_LOJA LOJA, A1_EST EST" , cQuery)
+
+oControlAut:setEntityAuto(oSql:getValue("COD"))
+oControlAut:setUnitAuto(oSql:getValue("LOJA"))
+oControlAut:setState(oSql:getValue("EST"))
+
+oSql:close()
+return
+
+
+/**
+* Coleta o Tamanho do Número do Documento de acordo com a Serie
+*/
+static function getNumDoc(cSerie)
+
+local cDoc 	 := ""
+local oSql   := IpSqlObject():newIpSqlObject()
+
+oSql:newTable("SX5", "X5_DESCRI DOCATUAL", "%SX5.XFILIAL% AND X5_TABELA = '01' AND X5_CHAVE = '"+cSerie+"'")
+
+if oSql:hasRecords()
+	cDoc := oSql:getValue("AllTrim(DOCATUAL)")
+endIf
+
+oSql:close()
+
+return cDoc
+
+
+/*
+** Where para tabela SD2
+*/
+static function retQryRef(oSqlItems, oControlAut)
+local cQuery	:= ""
+local cDoc		:= oSqlItems:getValue("D2_NFORI")
+local cSer		:= oSqlItems:getValue("D2_SERIORI")
+local cItem		:= oSqlItems:getValue("D2_ITEMORI")
+local cCli		:= oControlAut:getEntityAuto()
+local cLoj		:= oControlAut:getUnitAuto()
+local cChvNf	:= ""
+
+if cSer == DHL_SERIE_ESPELHO
+	cChvNf 	:= retQryEsp(cDoc, cSer, cItem)
+	
+	cDoc	:= left(cChvNf, tamSx3("F2_DOC")[1])
+	cSer	:= substr(cChvNf, tamSx3("F2_DOC")[1] + 1, tamSx3("F2_SERIE")[1])
+	cItem	:= substr(cChvNf, (tamSx3("F2_DOC")[1] + tamSx3("F2_SERIE")[1]) + 1, tamSx3("D2_ITEM")[1])
+	cCli	:= substr(cChvNf, len(cChvNf) - tamSx3("F2_LOJA")[1] - tamSx3("F2_CLIENTE")[1], tamSx3("F2_CLIENTE")[1])
+	cLoj	:= right(cChvNf, tamSx3("F2_LOJA")[1])
+	
+endif
+
+cQuery += "%SD2.XFILIAL% AND D2_ZZNFAUT = '"+cDoc+"' AND D2_ZZSEAUT = '"+cSer+"' AND D2_ZZITAUT = '"+cItem+"'"
+cQuery += " AND D2_CLIENTE = '"+cCli+"' AND D2_LOJA = '"+cLoj+"'
+
+return (cQuery)
+
+
+/*
+** Query para NF ref. Espelho
+*/
+static function retQryEsp(cDoc, cSer, cItem)
+local oSql		:= IpSqlObject():newIpSqlObject()
+local cQuery 	:= ""
+local cRet		:= ""
+
+cQuery += " SELECT D1_ZZCHVNF AS CHAVE_NF "
+cQuery += " FROM %SD1.SQLNAME% "
+cQuery += " INNER JOIN %SB6.SQLNAME% ON B6_FILIAL = D1_FILIAL "
+cQuery += " 	AND B6_IDENT 	= D1_IDENTB6 "
+cQuery += " 	AND B6_PRODUTO 	= D1_COD "
+cQuery += " 	AND B6_TPCF 	= 'C' "
+cQuery += " 	AND B6_PODER3 	= 'r' "
+cQuery += " 	AND %SB6.NOTDEL% "
+cQuery += " WHERE "
+cQuery += " 		D1_DOC 		= '" + cDoc 	+ "' "
+cQuery += " 	AND	D1_SERIE	= '" + cSer		+ "' "
+cQuery += " 	AND D1_ITEM		= '" + cItem	+ "' "
+cQuery += " 	AND %SD1.NOTDEL% " //Emerson Holanda 23/04/24 - Ajustada a query para SD1 inves de SD2
+cQuery += " 	AND %SD1.XFILIAL%  "//Emerson Holanda 23/04/24 - Ajustada a query para SD1 inves de SD2
+
+oSql:newAlias(cQuery)
+if oSql:hasRecords()
+	cRet := oSql:getValue("CHAVE_NF")
+endIf
+oSql:close()
+return (cRet)

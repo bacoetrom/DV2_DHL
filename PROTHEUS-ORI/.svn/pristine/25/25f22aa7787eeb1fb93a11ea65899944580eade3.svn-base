@@ -1,0 +1,579 @@
+#Include 'Protheus.ch'
+#Include 'dhl.ch'
+
+#define DHL_POS_EMPRESA 1
+#define DHL_POS_FILIAL  2
+
+//CAMPOS PARA CONTROLE DA NUMERÇÃO DA NOMENCLATURA DO ARQUIVO 
+#define ARQ_DATA 	1
+#define ARQ_LETRA  	2
+
+
+//TAMANHO DOS CAMPOS - INTERFACE NOVO LAYOUT 
+#define NUM_NOTA	17
+#define CPF_REP		20
+#define DT_ENVIO	08
+#define COD_PROD	20
+#define LOTE		50
+#define DT_VENC		08
+#define QUANTIDADE  08
+#define DESCRICAO	35
+
+/*/{Protheus.doc} CreateCEGEDIM
+Rotina responsável em gerar e enviar os arquivos 
+Sample_Shipment.imp e Sample_Shipment_Detail.imp por e-mail
+
+@author Gustavo Luiz
+@since 19/05/2016
+@version 1.0
+/*/
+User Function CreateCEGEDIM(aParamJob)
+	
+	Local cLog				:= ""
+	Local lStatus			:= .F.
+	Local lCancel			:= .F.
+	Private lJob 			:= preparaAmbiente(aParamJob)
+	private cNomeArqDetail	:= "RS" + substr(strTran(dtoc(dDataBase), "/", ""), 1, 4)
+	private oSql        	:= ipSqlObject():newIpSqlObject()
+	private cQueryAlias 	:= ""
+	private cNomePasta		:= "\CEGEDIM\"
+	Private cDirTemp		:= "\CEGEDIMTMP\"
+	Private oArqCabecalho	:= Nil
+	Private oArqDetails		:= Nil
+	Private cGrupoProd		:= GETMV("ZZ_GRPCEGE")
+	Private cEmailTo		:= GETMV("ZZ_CEGEDIM")
+	Private cEmailCC		:= GETMV("ZZ_CEGEDI1")
+	Private aCtrlArq		:= Separa(GetNewPar("ZZ_ARQCEGE", dtoc(ddatabase)+";A"), ";")
+	Private cEmailFrom		:= alltrim(GetMv("MV_RELFROM"))
+	Private aAnexos			:= {}
+	Private aErros			:= {}
+	Private aRet			:= {}
+	Private aErros			:= {}
+	Private oLog      		:= DHLLogManager():newDHLLogManager()
+	Private cDataInicial	:= ""
+	Private cDataFinal		:= ""
+	Private cCodCEGEDIM		:= GETMV("ZZ_CODCEGE")
+	
+	FWLogMsg("INFO", , "BusinessObject", funName(), "", "01", "[" + DToC(dDataBase) + " - " + Time() + "] - Iniciado processo CEGEDIM.", 0, 0, {})
+	
+	//quando chamado via menu
+	If !lJob
+		If Perguntas()
+			cDataInicial := aRet[1]
+			cDataFinal	 := aRet[2]
+			CreateFolder()
+			
+			cNomeArqDetail += contrArq()
+			
+			CreateArquivos()
+			RunQuery()
+			if oSql:notIsEof()
+				Processa({||lStatus:= SaveDados()})
+				If lStatus
+					SendEmail()
+					sfrename()
+					MsgInfo("Exportação executada com sucesso!","Aviso")
+				Else
+					MsgInfo("Foram encontrados inconsistências" + CRLF + ;
+						"Arquivos não foi criado"		+ CRLF + ;
+						"Consulte a rotina de LOG de integrações","Aviso")
+				EndIf
+			else
+				MsgInfo("Não foram encontrados registros para exportaçao!", "Aviso")
+			EndIf
+			oSql:Close()
+		else
+			lCancel := .t.
+		EndIf
+	//quando chamado via job
+	Else
+		Set Century On  
+		CreateFolder()
+		
+		cNomeArqDetail += contrArq()
+		
+		CreateArquivos()
+		RunQuery()
+		if oSql:notIsEof()
+			lStatus:=SaveDados()
+			If lStatus
+				SendEmail()
+				sfRename()
+				MsgInfo("Importação executada com sucesso!","Aviso")
+			Else
+				MsgInfo("Foram encontrados inconsistências" + CRLF + ;
+					"Arquivos não foram criados"		+ CRLF + ;
+					"Consulte a rotina de LOG de integrações","Aviso")
+			EndIf
+		EndIf
+		oSql:Close()
+		Set Century Off 
+	EndIf
+	//if !lCancel
+	//	DeletArquivos()
+	//endif
+	FWLogMsg("INFO", "LAST", "BusinessObject", funName(), "", "01", "[" + DToC(dDataBase) + " - " + Time() + "] - Finalizado processo CEGEDIM.", 0, 0, {})	
+
+Return
+
+
+/**
+* Função para apagar os arquivos manipulados
+**/
+Static Function DeletArquivos()
+	
+	oArqDetails:Delete()
+    		
+Return
+
+/**
+* Função utilizada para preparação do ambiente.
+**/
+static function preparaAmbiente(aParamJob)
+	
+	local oEnv    := IpEnvironmentObject():newIpEnvironmentObject()
+	local cCodEmp := ""
+	local cCodFil := ""
+	local lJob    := !(oEnv:hasMainWindow())
+	
+	if lJob
+		cCodEmp := aParamJob[DHL_POS_EMPRESA]
+		cCodFil := aParamJob[DHL_POS_FILIAL]
+		 
+		oEnv:setCompany(cCodEmp)
+		oEnv:setBranch(cCodFil)
+		 
+		oEnv:load()
+	endif
+		
+return lJob
+
+
+/**
+* Função que exibe parambox para informar as datas
+**/
+Static Function Perguntas
+
+	Local aPergs 	:= {}
+	aadd(aPergs,{1,"Data de"   				,ctod(""),					,'.T.',		,".T.",60,.F.})
+	aadd(aPergs,{1,"Data Até" 				,ctod(""),					,'.T.',		,".T.",60,.F.})
+	
+Return Parambox(aPergs,"Parametros",aRet,,,,,,,"CEGEDIM",.T.,.T.)
+
+
+/**
+* Função responsável em enviar e-mail
+**/
+Static Function SendEmail()
+	
+	Local lTLS          := .F.
+	Local aArquivos 	:= {}	
+	Local oIpMail       := IPMail():NewIPMail(lTLS)
+	Local cDescrResu 	:= ""	
+	Local cDescrCompl 	:= ""	
+	local cServer     	:= ""   
+	local nPort			:= 0
+	local lAutentic 	:=  .F.
+    local cAccount     	:= alltrim(GetMv("MV_RELAUSR"))	
+    local cPassword 	:= alltrim(GetMv("MV_RELPSW"))   
+	
+	getServerPort(AllTrim(GetMV("MV_RELSERV")), @cServer, @nPort) // Servidor SMTP
+	
+	aAnexos:=GetAnexos()
+	
+	oIpMail:setSMTPServer(cServer)
+    oIpMail:setSMTPUser(cAccount)
+    oIpMail:setAttached(aAnexos)	 
+    oIpMail:setFrom(cEmailFrom)
+    oIpMail:setSMTPPass(cPassword)
+    oIpMail:setTo(cEmailTo)
+    oIpMail:setcCc(cEmailCC)
+    oIpMail:setSMTPPort(nPort)      
+    oIpMail:setAssunto("CEGEDIM " + dToc(dDataBase)) 
+    
+    oIpMail:init()   
+	
+	FWLogMsg("INFO", "LAST", "BusinessObject", funName(), "", "01", "[" + DToC(dDataBase) + " - " + Time() + "] - Envio de e-mail de  "+cEmailFrom, 0, 0, {})	
+	FWLogMsg("INFO", "LAST", "BusinessObject", funName(), "", "01", "[" + DToC(dDataBase) + " - " + Time() + "] - Para: " + cEmailTo, 0, 0, {})	
+	
+	if oIpMail:send("<html><head></head><body>Arquivos em anexos.</body></html>") 
+		FWLogMsg("INFO", "LAST", "BusinessObject", funName(), "", "01", "[" + DToC(dDataBase) + " - " + Time() + "] - Enviado com sucesso.", 0, 0, {})	
+	else
+		cDescrResu	:= "E-mail"
+		cDescrCompl	:= "Não foi possível enviar o e-mail"
+		SaveLog(cDescrResu,cDescrCompl + ". Causa: " + oIpMail:getError())
+		FWLogMsg("ERROR", "LAST", "BusinessObject", funName(), "", "01", "[" + DToC(dDataBase) + " - " + Time() + "] - Falha no envio do e-mail.", 0, 0, {})	
+	endIf
+	
+Return
+
+/**
+* Função pega os arquivos que serão os anexos
+**/
+Static Function GetAnexos()
+
+	Local cExtencao	:= "*.txt"
+	Local aArquivos	:= {}
+	Local nI		:= {}
+	Local aAnexos	:= {}
+	
+	aArquivos:=Directory(cDirTemp+cExtencao) //cNomePasta+cExtencao)
+	
+	For nI := 1 To Len(aArquivos)
+		aAdd(aAnexos, cDirTemp+aArquivos[nI][1])
+		//aAdd(aAnexos, cNomePasta+aArquivos[nI][1])
+	Next nI
+	
+	
+Return aAnexos
+
+
+
+
+/**
+* Função pega os arquivos mover para diretorio do hub - JJ- FIT
+**/
+Static Function sfrename()
+
+	Local cExtencao	:= "*.txt"
+	Local aArquivos	:= {}
+	Local nI		:= {}
+	Local aAnexos	:= {}
+	
+	aArquivos:=Directory(cDirTemp+cExtencao) //cNomePasta+cExtencao)
+	
+	For nI := 1 To Len(aArquivos)
+		fRename( cDirTemp+aArquivos[nI][1] , upper(cNomePasta+aArquivos[nI][1]) , nil , .f. )
+
+		//aAdd(aAnexos, cDirTemp+aArquivos[nI][1])
+		//aAdd(aAnexos, cNomePasta+aArquivos[nI][1])
+	Next nI
+	
+	
+Return(NIL) // aAnexos
+
+
+
+/**
+* Cria os arquivos cabecalho e itens
+**/
+Static Function CreateArquivos()
+	
+	//oArqDetails		:=IpFileObject():newIpFileObject(cNomePasta+cNomeArqDetail)
+	oArqDetails		:=IpFileObject():newIpFileObject(cDirTemp+cNomeArqDetail)
+	
+Return
+
+
+/**
+* Cria a pasta CEGEDIM caso não exista
+**/
+Static Function CreateFolder()
+
+	If !EXISTDIR(cNomePasta)
+		MAKEDIR(cNomePasta)
+	EndIf
+
+	If !EXISTDIR(cDirTemp)
+		MAKEDIR(cDirTemp)
+	EndIf
+
+Return
+
+
+/**
+* Salva os dados da consulta no arquivo específico
+**/
+Static Function SaveDados()
+
+	local nProcRegua   		:= oSql:count()
+	Local aDadosProcessados	:= {}
+	Local cNota				:= ""
+	Local nPos				:= 0
+	Local lStatus			:= .T.
+	
+	ProcRegua(nProcRegua)
+	
+	While oSql:notIsEof()
+		If SaveItens()
+			oSql:Skip()
+			Loop
+		Else
+			lStatus := .F.
+			Exit
+		EndIf
+		
+		IncProc()
+		oSql:Skip()
+	EndDo
+
+Return lStatus
+
+
+/**
+* Função que salva o Log
+**/
+Static Function SaveLog(cDescrResumid, cDescrCompleta)
+	
+	oLog:start(APP_CEGEDIM, DHL_EXPORTACAO)
+	oLog:fail(cDescrResumid,cDescrCompleta)
+	
+Return
+
+/**
+* Função que atualiza o campo F2_ZZDTEXC com a data de execução do JOB (TESTAR)
+**/
+static function updZZStatus()
+
+	local cWhere  := ""
+	local lUpdate := nil
+	
+	Local cDoc 	 	:=  (cQueryAlias)->F2_DOC
+	Local cSerie 	:=  (cQueryAlias)->F2_SERIE
+	Local cCliente 	:= 	(cQueryAlias)->F2_CLIENTE
+	Local cLoja		:=  (cQueryAlias)->F2_LOJA
+
+	cWhere := "F2_FILIAL  = '%SF2.FILIAL%' AND "
+	cWhere += "F2_DOC     = '"+cDoc+"'     AND "
+	cWhere += "F2_SERIE   = '"+cSerie+"'   AND "
+	cWhere += "F2_CLIENTE = '"+cCliente+"' AND "
+	cWhere += "F2_LOJA    = '"+cLoja+"'"
+	
+	lUpdate := oSql:update("SF2","F2_ZZDTEXC = "+dDataBase+"",cWhere)
+	
+	if !(lUpdate)
+		lError := .T.
+		//setFileLog(cFile,"fail","Falha ao atualiza o status da Nota Fiscal"+CRLF+CRLF+oSql:getLastError())
+	endif
+	
+	//Aviso(FunDesc(),oSql:getLastError(),{"OK"},3)
+	//Aviso(FunDesc(),oSql:getLastQuery(),{"OK"},3)
+		
+return
+
+
+/**
+* Função que atualiza o campo F2_ZZDTEXC com a data de execução do JOB
+**/
+Static Function UpdateField()
+
+	Local aArea		:=  GetArea()
+	Local aAreaSF2	:=  SF2->(GetArea())
+	Local cFil		:=  xFilial("SF2")
+	Local cDoc 	 	:=  (cQueryAlias)->F2_DOC
+	Local cSerie 	:=  (cQueryAlias)->F2_SERIE
+	Local cCliente 	:= 	(cQueryAlias)->F2_CLIENTE
+	Local cLoja		:=  (cQueryAlias)->F2_LOJA
+	
+	SF2->(DbSelectArea("SF2"))
+	SF2->(DbSetOrder(1))
+	
+	If SF2->(DbSeek(cFil+cDoc+cSerie+cCliente+cLoja))
+	
+		if empty(SF2->F2_ZZDTEXC)
+			SF2->( recLock("SF2",.f.) )
+			SF2->F2_ZZDTEXC:= dDataBase
+			SF2->(msUnlock())
+		endif
+	
+	EndIf
+	
+	RestArea(aArea)
+	SF2->(RestArea(aAreaSF2))
+	
+Return
+
+
+/**
+* Função que grava no arquivo oArqDetails os itens da nota 
+**/
+Static Function SaveItens()
+	
+	Local cOperacao	:= "I"
+	Local lStatus	:= .T.
+	Local cLinha 	:= ""
+	
+	cCpf := strTran((cQueryAlias)->A1_ZZCEGED,".","")
+	cCpf := strTran(cCpf,"-","") 
+	
+	cLinha	:=	"B |"+;
+				PadR(AllTrim((cQueryAlias)->F2_DOC)+"-"+AllTrim((cQueryAlias)->F2_SERIE), NUM_NOTA)+;
+				PadR(AllTrim(cCpf), CPF_REP)+;
+				strTran(dToc(sTod((cQueryAlias)->F2_EMISSAO)), "/", "")+;
+				PadR(AllTrim((cQueryAlias)->B1_COD), COD_PROD)+;
+				PadR(AllTrim(alltrim((cQueryAlias)->D2_LOTECTL)), LOTE)+;
+				strTran(dToc(sTod((cQueryAlias)->D2_DTVALID)), "/", "")+;
+				PadL(alltrim(str(int((cQueryAlias)->D2_QUANT))), QUANTIDADE, '0')+;
+				PadR(AllTrim(alltrim((cQueryAlias)->B1_DESC)), DESCRICAO)
+				
+	If lStatus:=oArqDetails:WriteLine(cLinha)
+		oArqDetails:Close()
+		UpdateField()
+	Else
+		cDescrResu	:= "Arquivo Itens"
+		cDescrCompl	:=  "Falha ao manipular arquivo: " + cNomeArqDetail + ". Não foi possível gravar o conteúdo"
+		SaveLog(cDescrResu,cDescrCompl)
+		lStatus:=.F.
+	EndIf
+	
+Return lStatus
+
+/**
+* Retorna a string com a data formatada DD/MM/AAAA 00:00
+**/
+static function getDateHDL(cData, cHora)
+	
+	//local cData		:= (cQueryAlias)->F2_EMISSAO
+	
+	local cNewDate  	:= ""
+	Local cAno			:= ""
+	Local cMes 			:= ""
+	Local cDia			:= ""
+	DEFAULT cHora		:= "00:00"
+	
+	If !Empty(cData)
+		cAno	:= Substr(cData,0,4)
+		cMes	:= Substr(cData,5,2)
+		cDia	:= Substr(cData,7,2)
+		cNewDate:= cAno+"-"+cMes+"-"+cDia +" "+chora+":00"
+	EndIf
+	
+return cNewDate
+
+
+/**
+* Executa a query para retornar os campo necessário para a criação dos arquivos
+**/
+Static Function RunQuery()
+
+	Local cQuery 		:= ""
+	
+	cQuery:= " SELECT	"  	                                                                    + CRLF
+	cQuery+= " F2_DOC,      "                                                                   + CRLF
+	cQuery+= " F2_CLIENTE,  "                                                                   + CRLF
+	cQuery+= " F2_LOJA,  "                                                                   	+ CRLF
+	cQuery+= " F2_SERIE,    "                                                                   + CRLF
+	cQuery+= " F2_HORA,     "                                                                   + CRLF
+	cQuery+= " F2_EMISSAO,  "                                                                   + CRLF
+	cQuery+= " B1_COD,      "                                                                   + CRLF
+	cQuery+= " B1_DESC,     "                                                                   + CRLF
+	cQuery+= " D2_QUANT,    "                                                                   + CRLF
+	cQuery+= " D2_LOTECTL,  "                                                                   + CRLF
+	cQuery+= " D2_DOC,      "                                                                   + CRLF
+	cQuery+= " D2_DTVALID,  "                                                                   + CRLF
+	cQuery+= " A1_ZZCEGED,  "                                                                   + CRLF
+	cQuery+= " A1_COD,   	"                                                                   + CRLF
+	cQuery+= " A1_LOJA   	"                                                                   + CRLF
+	cQuery+= " FROM %SF2.SQLNAME%	"                                                           + CRLF
+	
+	cQuery+= " INNER JOIN %SD2.SQLNAME% ON "  			                                        + CRLF
+	cQuery+= " D2_FILIAL=F2_FILIAL AND "  				                                        + CRLF
+	cQuery+= " D2_DOC=F2_DOC AND  "  					                                        + CRLF
+	cQuery+= " D2_SERIE=F2_SERIE AND "  				                                        + CRLF
+	cQuery+= " D2_CLIENTE = F2_CLIENTE AND "  			                                        + CRLF
+	cQuery+= " D2_LOJA=F2_LOJA AND "  					                                        + CRLF
+	cQuery+= " %SD2.NOTDEL% "  							                                        + CRLF
+	
+	cQuery+= " INNER JOIN %SC5.SQLNAME% ON "  			                                        + CRLF
+	cQuery+= " C5_FILIAL=F2_FILIAL AND "  				                                        + CRLF
+	cQuery+= " C5_NUM=D2_PEDIDO AND "  					                                        + CRLF
+	cQuery+= " C5_ZZCEGED IN (" + cCodCEGEDIM + ") AND "										+ CRLF
+	cQuery+= " %SC5.NOTDEL% "  							                                        + CRLF
+	                                                                                            
+	cQuery+= " INNER JOIN %SB1.SQLNAME% ON "  			                                        + CRLF
+	cQuery+= " B1_FILIAL=F2_FILIAL AND "  				                                        + CRLF
+	cQuery+= " B1_COD=D2_COD AND "  					                                        + CRLF
+	cQuery+= " %SB1.NOTDEL% "  							                                        + CRLF
+	                                                                                            
+	cQuery+= " INNER JOIN %SA1.SQLNAME% ON "  			                                        + CRLF
+	cQuery+= " A1_FILIAL=F2_FILIAL AND "  				                                        + CRLF
+	cQuery+= " A1_COD=F2_CLIENTE AND "  				                                        + CRLF
+	cQuery+= " A1_ZZREPRE = 'S' AND "  				                                            + CRLF //Emerson Holanda 08/02/19 -- Apenas registros de representantes
+	cQuery+= " %SA1.NOTDEL% "  													                + CRLF
+	                                                                                            
+	cQuery+= " WHERE "  														                + CRLF
+	cQuery+= " F2_FILIAL='%SF2.FILIAL%' AND "  									                + CRLF
+	cQuery+= " F2_FIMP='S' AND "  												                + CRLF
+	cQuery+= " F2_SERIE!='INV' AND F2_SERIE = '102' AND "						                + CRLF
+	cQuery+= " (C5_ZZSHIP!=' ' OR C5_ZZORDEX!='') AND "							                + CRLF
+	If lJob
+		cQuery+= " D2_EMISSAO <= " + dTos(dDataBase-2) + " AND "				                + CRLF
+		cQuery+= " F2_ZZDTEXC = ' ' AND "										                + CRLF
+	Else
+		cQuery+= " D2_EMISSAO BETWEEN '"+dTos(cDataInicial)+"' AND  '"+dTos(cDataFinal)+"' AND "+ CRLF
+	EndIf
+	cQuery+= " B1_GRUPO IN (" + cGrupoProd + ") AND "							                + CRLF
+	cQuery+= " %SF2.NOTDEL%"  													                + CRLF
+	cQuery+= " ORDER BY F2_EMISSAO "  													        + CRLF
+	
+	oSql:NewAlias(ChangeQuery(cQuery))
+	cQueryAlias := oSql:getAlias()
+	
+Return
+
+
+/*
+** Controle de letra da nomenclatura do arquivo
+*/
+static function contrArq()
+	local cRet		:= "" 
+	local cDataArq 	:= dtoc(dDatabase)
+	
+	if cDataArq == aCtrlArq[ARQ_DATA]
+		cRet := aCtrlArq[ARQ_LETRA]
+		PutMv("ZZ_ARQCEGE", dtoc(dDatabase) + ";" + soma1(aCtrlArq[ARQ_LETRA]))
+	else
+		cRet := "A"
+		PutMv("ZZ_ARQCEGE", dtoc(dDatabase) + ";" + soma1(cRet))
+	endif
+	
+	cRet += ".txt"
+return (cRet)
+
+/**
+* obtém o servidor e a porta < Servidor SMTP >
+**/
+static function getServerPort(cServPar, cServer, nPort)
+	
+	nPort 	:= getPortServer(@cServPar)
+	cServer := cServPar
+	
+return
+
+/**
+* Obtém a porta
+**/
+static function getPortServer(cServPar)
+	
+	local nLenString := len(allTrim(cServPar))
+	local nI		 := 0
+	local nPort		 := 0
+	local xPort		 := 0
+	local cPort		 := ""
+	local aPort		 := {}
+	
+	for nI := nLenString to 1 step -1
+	
+		xPort := substr(cServPar, nI, 1)
+		
+		if isNumeric(xPort)
+			aAdd(aPort, xPort)
+		else
+			//ATUALIZO A VARIÁVEL COM O NOME DO SERVIDOR, SEM A PORTA
+			cServPar := substr(cServPar, 1, len(cServPar) - len(aPort) - 1 )
+			exit
+		endIf
+		
+	next nI
+	
+	if len(aPort) > 0
+		
+		for nI := len(aPort) to 1 step -1
+			cPort += aPort[nI] 
+		next nI
+		
+		nPort := val(cPort)
+		
+	endIf
+	
+return nPort

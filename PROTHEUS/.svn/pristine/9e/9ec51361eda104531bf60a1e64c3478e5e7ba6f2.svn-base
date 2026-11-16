@@ -1,0 +1,108 @@
+#include "totvs.ch"
+#include "rwmake.ch"
+#include "dhl.ch"
+
+#define RETORNO_EFETIVO   "RE"
+#define RETORNO_SIMBOLICO "RS"
+
+/*/{Protheus.doc} AglInvReq
+
+Rotina responsável por ler e processar a interface Invoice Request e atualizar os dados referentes ao documento.
+	
+@author Alberto Diorio
+@since 19/02/2020
+
+@param cFilePath, String, Arquivo a ser processado
+/*/
+user function AglInvReq(cFilePath)
+	local lOk			:= .T.
+	private cFile       := cFilePath
+
+
+	if isRepair()
+		lOk := U_RepInvReq(cFilePath)
+	Elseif isClienteDepositante() .and. !(getTipoNota() == RETORNO_EFETIVO)
+		lOk := U_AglIrTriangular(cFilePath)
+	Else
+		if getTipoNota() == RETORNO_EFETIVO
+			lOk := U_AglRetEfetivo(cFilePath)
+		elseif getTipoNota() != RETORNO_EFETIVO	//<SALES ORDER> contem RE ou o numero da NF de Venda.
+			lOk := U_AglRetSimbolico(cFilePath)
+		endif
+	endif
+
+return lOk
+
+/**
+* Obtém o tipo de nota que o pedido var ser gerado:
+* RETORNO EFETIVO ou RETORNO SIMBÓLICO
+**/
+static function getTipoNota()
+	
+	local cTipoNota := upper(allTrim(oXml:_INV_REQ:_BODY:_FILEHEADER:_SALES_ORDER:TEXT))
+	
+	if cTipoNota == RETORNO_EFETIVO
+		cTipoNota := RETORNO_EFETIVO	
+	endif
+		
+return cTipoNota
+
+/**
+* Verifica se o depositante é do tipo Reparador
+**/
+static function isRepair()
+	local oSqlUtil		:= IpSqlObject():newIpSqlObject()
+	local lRet	 		:= .f.
+	local cDocType		:= getDocType()
+	local cCNPJCustomer := getCnpjCustomer()
+	
+	if cDocType == 'N'
+		oSqlUtil:newTable("SA1", "A1_COD, A1_LOJA, A1_ZZREPAR", "A1_FILIAL = '%SA1.FILIAL%' AND A1_CGC = '" + cCNPJCustomer + "' ")
+		if oSqlUtil:hasRecords()
+			if oSqlUtil:getValue("A1_ZZREPAR") == "S"
+				lRet := .t.
+			endIf
+		endIf
+	else
+		oSqlUtil:newTable("SA2", "A2_COD, A2_LOJA, A2_ZZREPAR", "A2_FILIAL = '%SA2.FILIAL%' AND A2_CGC = '" + cCNPJCustomer + "' ")
+		if oSqlUtil:hasRecords()
+			if oSqlUtil:getValue("A2_ZZREPAR") == "S"
+				lRet := .t.
+			endIf
+		endIf
+	endIf
+	oSqlUtil:close()
+
+return lRet
+
+/**
+* Verifica se o cliente é depositante e faturamento triangular
+**/
+Static Function isClienteDepositante()
+	local oSqlUtil		:= IpSqlObject():newIpSqlObject()
+	local lRet	 		:= .f.
+	local cDocType		:= getDocType()
+	local cCNPJCustomer := getCnpjCustomer()
+
+	if cDocType == 'N'
+		oSqlUtil:newTable("SA1", "A1_COD, A1_LOJA, A1_ZZREPAR", "A1_FILIAL = '%SA1.FILIAL%' AND A1_CGC = '" + cCNPJCustomer + "' ")
+		if oSqlUtil:hasRecords()
+			if Existblock("IsClienteDepositante")
+				lRet := u_IsClienteDepositante(oSqlUtil:getValue("A1_COD"), oSqlUtil:getValue("A1_LOJA"))
+			endif
+		endIf
+	endIf
+	oSqlUtil:close()
+
+return lRet
+/**
+* Coleta o Document Type
+**/
+static function getDocType()
+return oXml:_INV_REQ:_BODY:_FILEHEADER:_DOCUMENT_TYPE:TEXT
+
+/**
+* Coleta o Customer CNPJ
+**/
+static function getCnpjCustomer()
+return oXml:_INV_REQ:_BODY:_FILEHEADER:_CUSTOMER_CNPJ:TEXT

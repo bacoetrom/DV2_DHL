@@ -1,0 +1,156 @@
+#include "protheus.ch"
+#include "dhl.ch"
+
+
+/*/{Protheus.doc} PrcGrvRco
+Realiza processamento final da NF RCO - Referência do Fonte M460FIM
+@author Thiago Meschiatti
+@since 21/05/2017
+@version undefined
+
+@type function
+/*/
+User Function PrcGrvRco()
+	
+	Local oTMsg  	 		:= FswTemplMsg():newTemplMsg("S",SF2->F2_DOC,SF2->F2_SERIE,SF2->F2_CLIENTE,SF2->F2_LOJA,"SZZ")
+	Local oDHLProcValid	:= nil
+	Local oSqlSZB			:= nil
+	Local oSqlGroup		:= nil
+	Local cTipoNf			:= SF2->F2_TIPO
+	Local cNota			:= SF2->F2_DOC
+	Local cSerie			:= SF2->F2_SERIE
+	Local cClieFor		:= SF2->F2_CLIENTE
+	Local cLoja			:= SF2->F2_LOJA
+	Local cNotaOri		:= SF2->F2_NFORI
+	Local cSerieOri		:= SF2->F2_SERIORI
+	Local cTipo			:= DHL_NFE_INVOICE_OUTFLOW
+	Local cKeyScj			:= SZA->ZA_KENFSCJ
+	Local nPLiqui	 		:= 0
+	Local aUpdSZA			:= {}
+	Local aUpdSF2			:= {}
+	Local aIdItens		:= {}
+	Local lSerCont		:= aScan(separa(GetNewPar("ZZ_SERCONT", ""), ";"), {|x| x == upper(alltrim(cSerie))}) > 0
+	Local lOk			:= .t.
+
+	oSqlSZB 		:= oIp040:getItensSZB(cKeyScj)
+	oSqlGroup 	:= oIp040:getGroupSZB(cKeyScj)
+
+	If oIp040:validValues(oSqlSZB, oSqlGroup)
+		
+		oIp040:updateFields("SZA", "ZA_NFRCO"  , cNota)
+		oIp040:updateFields("SZA", "ZA_SERIRCO", cSerie)
+		oIp040:updateFields("SF2", "F2_ZZPLACA", "DHL1234"            )
+		oIp040:updateFields("SF2", "F2_ZZUFPLA", "SP"                 )
+		oIp040:updateFields("SF2", "F2_ZZDTSAI", dDatabase            )
+		oIp040:updateFields("SF2", "F2_ZZHRSAI", Time()               )
+		oIp040:updateFields("SF2", "F2_ZZMARCA", CriaVar("F2_ZZMARCA"))
+		oIp040:updateFields("SF2", "F2_ZZNUMER", CriaVar("F2_ZZNUMER"))
+		oIp040:updateFields("SF2", "F2_ZZTPNF" , REMESSA_CONTA_ORDEM  )
+		oIp040:updateFields("SF2", "F2_TPFRETE", "T")
+		oIp040:updateFields("SF2", "F2_TRANSP" , oIp040:getCarrier(SZA->ZA_CNPJCAR)  )
+		oIp040:updateFields("SF2", "F2_VOLUME1", SZA->ZA_NUMPACK  )
+		oIp040:updateFields("SF2", "F2_ESPECI1", "VOL"  )
+		oIp040:updateFields("SF2", "F2_HORA", SUBSTR(TIME(), 1, 5)  )
+		
+		fGravaMsg(oTMsg, oSqlSZB)
+		
+		fAtuSf3(cNota, cSerie, cClieFor, cLoja)
+	
+		// ATENÇÃO: Esse bloco de código refere-se a Geração do Arquivo de NFe para o Mastersaf e deve
+		// 			SEMPRE SER O ÚLTIMO PROCESSAMENTO do PE.
+		if !IsInCallStack("u_ImpMsaNfe")
+			if ExistBlock("PrcXmlNfe")
+				oDHLProcValid	:= DHLProcessValidator():newDHLProcessValidator()
+				if oDHLProcValid:validDocumentType(cTipo, nil, cSerie)
+					lReturn := U_PrcXmlNfe(cTipo, cSerie, cNota, cClieFor, cLoja, cNotaOri, cSerieOri)
+					if lSerCont
+						u_PrcConti(DHL_NF_SAIDA, DHL_OPC_INCLUSAO,  SF2->(Recno()))
+					endif
+				endIf
+			endif
+		endIf
+	Else
+		oIp040:updateFields("SZA", "ZA_NFRCO"  , cNota)
+		oIp040:updateFields("SZA", "ZA_SERIRCO", cSerie)
+		oIp040:updateFields("SF2", "F2_ZZTPNF" , REMESSA_CONTA_ORDEM  )
+		lOk := .f.
+	EndIf
+		
+Return (lOk)
+
+
+/*
+** Grava informação na tabela de template Mensagens NF (SZZ)
+*/
+static function fGravaMsg(oTMsg, oSqlSZB)
+	Local cMsg 		:= ""
+	Local cNfScj		:= SZA->ZA_DOCSCJ
+	Local cSerNfScj	:= SZA->ZA_SERISCJ
+	Local cDate		:= dToc(SZA->ZA_DUEDATE)
+	Local cMsgAdic	:= AllTrim(SZA->ZA_MSGADIC)
+	Local oSql		:= IpSqlObject():newIpSqlObject()
+	
+	oTMsg:carMsg(.F.)
+	
+	If !Empty(cMsgAdic)
+		aAdd(oTMsg:aMsg, {"", cMsgAdic})
+	EndIf
+	
+	oSql:newTable("SA1", "*", "%SA1.XFILIAL% AND A1_CGC = '" + SZA->ZA_CNPJSCJ + " '")
+	
+	If oSql:hasRecords()
+		cMsg += "RCO conforme NF de venda do depositante n. " + AllTrim(cNfScj) + ", série " + alltrim(cSerNfScj) + ", de " + cDate + ","
+		 			
+		cMsg += " emitida por " + AllTrim(oSql:getValue("A1_NOME")) + " " + AllTrim(oSql:getValue("A1_END")) + " - " + AllTrim(oSql:getValue("A1_BAIRRO"))
+		cMsg += " Cep:" +AllTrim(Transform(oSql:getValue("A1_CEP"), "@R 99999-999")) + " "+  AllTrim(oSql:getValue("A1_MUN")) + "/" + AllTrim(oSql:getValue("A1_EST"))							
+		cMsg += " CNPJ " + AllTrim(Transform(oSql:getValue("A1_CGC"), "@R 99.999.999/9999-99")) + " "
+		cMsg += " I.E. " + AllTrim(oSql:getValue("A1_INSCR")) + "."
+		
+		aAdd(oTMsg:aMsg, {"",cMsg})
+	EndIf
+	
+	oSql:close()
+	
+	cMsg := ""
+	oSqlSZB:goTop()
+	While oSqlSZB:notIsEof()
+		If !Empty(oSqlSZB:getValue("ZB_POCUSTO"))
+			If !(AllTrim(oSqlSZB:getValue("ZB_POCUSTO")) $ cMsg)
+				cMsg += AllTrim(oSqlSZB:getValue("ZB_POCUSTO")) + " / "		
+			EndIf	
+		EndIf
+		oSqlSZB:skip()
+	EndDo
+	
+	If !Empty(cMsg)
+		cMsg := "Pedido(s) do cliente: " + SubStr(cMsg,1,Len(cMsg)-3) + "."
+		aadd(oTMsg:aMsg, {"",cMsg})
+	EndIf
+	
+	If Len(oTMsg:aMsg) > 0 
+		oTMsg:grvMsg()
+	EndIf
+		
+return()
+
+
+/*
+** Atualiza campo de reprocessamento da NF no fiscal
+*/
+Static Function fAtuSf3(cNota, cSerie, cClieFor, cLoja)
+	
+	Local oSql		:= IpSqlObject():newIpSqlObject()
+	Local cWhere	:= ""
+	Local cUpd 		:= "F3_REPROC = 'N'"
+	
+	cWhere += " 1=1                                    "+CRLF
+	cWhere += " AND %SF3.XFILIAL%                      "+CRLF
+	cWhere += " AND F3_NFISCAL	= '" + cNota + "'      "+CRLF
+	cWhere += " AND F3_SERIE	= '" + cSerie + "'     "+CRLF
+	cWhere += " AND F3_CLIEFOR	= '" + cClieFor + "'   "+CRLF
+	cWhere += " AND F3_LOJA		= '" + cLoja + "'      "+CRLF
+	
+	oSql:update("SF3", cUpd, cWhere)
+
+	oSql:close()
+Return 

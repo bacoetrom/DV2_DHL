@@ -1,0 +1,54 @@
+#Include 'Protheus.ch'
+
+/*/{Protheus.doc} VincCobert
+
+Grava vínculo da NF de cobertura
+	
+@author Renato Castro
+@since 06/11/2014
+
+@param xParam, TipoParam, DescricaoDoParam
+
+@return TipoRet DescricaoRet
+/*/
+user function VincCobert()
+
+	if AllTrim(SD1->D1_ZZCFOP) $ getMV("ZZ_CFCOB")
+		gravaVinculo()
+	endif
+
+return
+
+/**
+ * Grava vínculo da NF de cobertura, tabela SZ4
+ */
+static function gravaVinculo()
+
+	local oSql	:= IpSqlObject():newIpSqlObject()
+	local cWhere := "Z4_FILIAL='"+SD1->D1_FILIAL+"' AND Z4_DOC='"+SD1->D1_DOC+;
+			"' AND Z4_SERIE='"+SD1->D1_SERIE+"' AND Z4_CLIFOR='"+SD1->D1_FORNECE+;
+			"' AND Z4_LOJA='"+SD1->D1_LOJA+"' AND Z4_PRODUTO='"+SD1->D1_COD+;
+			"' AND Z4_ITEM='"+SD1->D1_ITEM+"' "
+
+	if oSql:exists("SZ4", cWhere)
+		oSql:update("SZ4","Z4_QUANT = "+cValtoChar(SD1->D1_QUANT)+", Z4_IDENT = '"+SD1->D1_NUMSEQ+"', Z4_SALDO = "+cValtoChar(SD1->D1_QUANT)+" ",cWhere)
+	else
+		RecLock("SZ4",.T.)
+		SZ4->Z4_FILIAL 	:= xFilial("SZ4")
+		SZ4->Z4_DOC 	:= SD1->D1_DOC
+		SZ4->Z4_SERIE 	:= SD1->D1_SERIE
+		SZ4->Z4_CLIFOR 	:= SD1->D1_FORNECE
+		SZ4->Z4_LOJA 	:= SD1->D1_LOJA
+		SZ4->Z4_PRODUTO	:= SD1->D1_COD
+		SZ4->Z4_QUANT	:= SD1->D1_QUANT
+		SZ4->Z4_TIPMOV	:= "1"
+		SZ4->Z4_IDENT	:= SD1->D1_NUMSEQ
+		SZ4->Z4_SALDO	:= SD1->D1_QUANT
+		SZ4->Z4_IDCOB	:= SZ4->(GetSXENum("SZ4","Z4_IDCOB"))
+		SZ4->Z4_ITEM	:= SD1->D1_ITEM
+		SZ4->(MsUnlock())
+		SZ4->(ConfirmSx8())
+	endif
+
+return
+

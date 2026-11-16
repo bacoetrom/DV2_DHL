@@ -1,0 +1,148 @@
+#include 'protheus.ch'
+#include 'dhl.ch'
+
+#define PRODUTO	 	02
+#define LOTE	 	19
+#define INF_ADIC 	25
+
+#define LOTE_MED    1 
+#define QUANT       2
+#define FABRICACAO 	3
+#define VALIDADE   	4
+#define PRECO		5		
+
+
+/*{Protheus.doc} MulInfMed
+Inclusão de informacao de lote nos dados adicionais do produto.
+@author Thiago Meschiatti
+@since 28/07/2016
+@version undefined
+@type function
+*/
+user function MulInfMed(aProd, aInfoItem, aNota, aMed)
+	local oSql 		:= IpSqlObject():newIpSqlObject()
+	local cSeries	:= aNota[01]
+	local cDoc		:= aNota[02]
+	local cTipo		:= aNota[04]
+	local cTipoNF	:= aNota[05]
+	local cMsgMed	:= ""
+	local ni        := 0
+	
+	if cTipo == DHL_NFE_INVOICE_OUTFLOW
+	
+		for nI := 1 to len(aProd)
+			if empty(aProd[nI, LOTE]) .and. retInfoProd(aProd[nI, PRODUTO], "B1_RASTRO") $ "LS"
+				
+				if prcMedMul(cDoc, cSeries, aInfoItem[nI, 4], aMed[nI])
+					
+					cMsgMed := ""
+					
+					cMsgMed += "Lote: " + alltrim(aMed[nI,LOTE_MED]) + " "
+					cMsgMed += "Qtd.: " + alltrim(str(aMed[nI, QUANT])) + " "
+					cMsgMed += "Dt. Valid.: " + dtoc(aMed[nI, VALIDADE]) + " "
+					cMsgMed += "Dt. Fabric.: " + dtoc(aMed[nI, FABRICACAO]) + " "
+					
+					if empty(aProd[nI,INF_ADIC])
+						aProd[nI,INF_ADIC] := cMsgMed
+					else
+						aProd[nI,INF_ADIC] += " / " + cMsgMed
+					endif
+				endif
+				
+			else
+				
+				if !empty(aProd[nI, LOTE])
+					cMsgMed := ""
+					oSql:newTable("CD7", "*", retQrySD2(cDoc, cSeries, aInfoItem[nI, 4]))
+					
+					if oSql:hasRecords()
+						cMsgMed += "Lote: " + alltrim(oSql:getValue("CD7_LOTE")) + " "
+						cMsgMed += "Qtd.: " + alltrim(str(oSql:getValue("CD7_QTDLOT"))) + " "
+						cMsgMed += "Dt. Valid.: " + dtoc(stod(oSql:getValue("CD7_VALID"))) + " "
+						cMsgMed += "Dt. Fabric.: " + dtoc(stod(oSql:getValue("CD7_FABRIC"))) + " "
+					endif
+					
+					
+					if empty(aProd[nI,INF_ADIC])
+						aProd[nI,INF_ADIC] := cMsgMed
+					else
+						aProd[nI,INF_ADIC] += " / " + cMsgMed
+					endif
+					oSql:close()
+				endif
+			endif
+		next nI
+	endif
+return
+
+
+
+/*
+** Where para tabela SD2
+*/
+static function retQrySD2(cDoc, cSeries, cItem)
+	local cQuery := ""
+	
+	cQuery += "%CD7.XFILIAL% AND CD7_TPMOV = 'S' AND CD7_DOC = '" + cDoc + "' AND CD7_SERIE = '" + cSeries + "'"
+	cQuery += " AND CD7_ITEM = '" + cItem + "' "
+	
+return (cQuery)
+
+
+/*
+**
+*/
+static function prcMedMul(cDoc, cSeries, cItemNF, aMed)
+	local oSql 		:= IpSqlObject():newIpSqlObject()
+	local cQuery	:= ""
+	local lMsgLote	:= .f.
+	
+	cQuery += " SELECT 	D1_LOTECTL LOTE                  "+CRLF
+	cQuery += "			, D1_DFABRIC FABRICACAO          "+CRLF
+	cQuery += "			, D1_DTVALID VALIDADE            "+CRLF
+	cQuery += "			, D2_QUANT  QUANT                "+CRLF
+	cQuery += "			, 0 PRECO						 "+CRLF
+	cQuery += " FROM %SD2.SQLNAME%                       "+CRLF
+	cQuery += " INNER JOIN %SD1.SQLNAME% ON              "+CRLF
+	cQuery += " 	D1_FILIAL = D2_FILIAL                "+CRLF
+	cQuery += " 	AND D1_DOC 		= D2_NFORI           "+CRLF
+	cQuery += " 	AND D1_SERIE	= D2_SERIORI         "+CRLF
+	cQuery += " 	AND D1_ITEM		= D2_ITEMORI         "+CRLF
+	cQuery += " 	AND D1_FORNECE	= D2_CLIENTE         "+CRLF
+	cQuery += " 	AND D1_LOJA		= D2_LOJA	         "+CRLF
+	cQuery += " 	AND %SD1.NOTDEL%                     "+CRLF
+	cQuery += " WHERE                                    "+CRLF
+	cQuery += " 	1 = 1                                "+CRLF
+	cQuery += " 	AND %SD2.XFILIAL%                    "+CRLF
+	cQuery += " 	AND D2_DOC		= '" + cDoc + "'     "+CRLF
+	cQuery += " 	AND D2_SERIE	= '" + cSeries + "'  "+CRLF
+	cQuery += " 	AND D2_ITEM		= '" + cItemNF + "'  "+CRLF
+	cQuery += " 	AND %SD2.NOTDEL%                     "+CRLF
+	
+	oSql:newAlias(cQuery)
+	
+	if oSql:hasRecords()
+		aMed[LOTE_MED]	:= oSql:getValue("LOTE")
+		aMed[FABRICACAO]:= stod(oSql:getValue("FABRICACAO"))
+		aMed[VALIDADE]	:= stod(oSql:getValue("VALIDADE"))
+		aMed[QUANT]		:= oSql:getValue("QUANT")
+		aMed[PRECO]		:= oSql:getValue("PRECO")
+		
+		lMsgLote := .t.
+	endif
+	
+	oSql:close()
+return(lMsgLote)
+
+
+/*
+** Verifica se produto é PA
+*/
+static function retInfoProd(cProduct, cField)
+	local oSqlPA	:= IpSqlObject():newIpSqlObject()
+	local cRet	:= ""
+	
+	cRet := oSqlPA:getFieldValue("SB1", cField, " %SB1.XFILIAL% AND B1_COD = '"+cProduct+"' ")
+	
+	oSqlPA:close()
+return (cRet)

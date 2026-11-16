@@ -1,0 +1,1336 @@
+#include "totvs.ch"
+#include "rwmake.ch"
+#include "dhl.ch"
+
+#define CUSTOMER  "C"
+#define SUPPLIER  "F"
+
+#define COMPANY 1
+#define BRANCH  2
+#define CNPJ    3 
+
+/*/{Protheus.doc} DHLSelect
+
+Rotina de Importação dos Arquivos do WMS Select
+
+@author Victor Hugo
+@since 17/11/2014
+/*/
+user function DHLSelect()
+
+	local 	oSql		:= IpSqlObject():newIpSqlObject()	
+	local oConnection 	:= Connection():newConnection(CCONN, CSERVERADDR, NPORT)	
+
+	private lUseDirMan	:= .T.
+	private lShowErrors := .T.
+	private lChangeOne	:= .F.
+	private lErrors		:= .F.
+	private nRead		:= 0
+	private nProcessed	:= 0 
+	private aFiles		:= {}
+	private oEnv 		:= IpEnvironmentObject():newIpEnvironmentObject()
+	private aCompanies  := loadCompanies()	
+	private oLog		:= DHLLogManager():newDHLLogManager()
+	private oDir		:= nil
+	private cEmpDefault := ""
+	private cFilDefault := "" 
+	private cDirectory 	:= oConnection:getDirectory(APP_SELECT)	
+		
+	oDir				:= DHLDirectoryManager():newDHLDirectoryManager(cDirectory)	
+
+	if oEnv:hasMainWindow()		
+		if MsgBox("Confirma Importação dos Arquivos do Select ?", "Atenção", "YESNO")
+			readFiles()
+			if len(aFiles) > 0
+				FWMsgRun(, {|| importFiles()},,"Importando interfaces do Select ...")
+				lErrors := (nProcessed != nRead)
+				MsgBox("Lidos: "+AllTrim(Str(nRead))+CRLF+"Processados: "+AllTrim(Str(nProcessed))+CRLF+CRLF+;
+				if(lErrors .and. lShowErrors, "Consulte o LOG de Integrações para maiores detalhes", ""), "Concluído", if(lErrors, "ALERT", "INFO"))
+				MsgBox("Processamento concluído!", "Aviso", "INFO")
+			else
+				MsgInfo("Não existem arquivos para serem importados.",funName())
+			endIf		
+			
+		endIf
+	else
+	
+		readFiles()
+		
+		if len(aFiles) > 0
+			setCompFirstTime()
+			importFiles()	
+			oEnv:close()
+		endIf
+		
+	endIf	
+	
+	DelClassIntf()	
+
+return
+
+/**
+* Carrega as Empresas da DHL
+*/
+static function loadCompanies()
+
+	local aCompanies := {}
+
+	OpenSm0()
+
+	SM0->(dbGoTop())
+	while SM0->(!eof())
+		if SM0->M0_CODIGO != "99" 
+			if SM0->(!deleted())
+				aAdd(aCompanies, {SM0->M0_CODIGO, SM0->M0_CODFIL, SM0->M0_CGC})
+			endif
+		endif
+		SM0->(dbSkip())
+	endDo
+	
+return aCompanies
+
+/**
+* Importação dos Arquivos
+*/
+static function importFiles()
+
+	local nI 	:= 0
+	local cFile	:= ""
+	local oXml	:= nil
+
+	for nI := 1 to Len(aFiles)
+
+		cFile := aFiles[nI]
+
+		if !validFile(cFile)
+			loop
+		endIf
+
+		cFile := oDir:getProcessingFile(cFile)
+
+		nRead++
+
+		oLog:start(APP_SELECT, DHL_IMPORTACAO, cFile)			
+
+		oXml := IpXmlObject():newIpXmlObject(cFile)
+
+		if !oXml:doParse()
+			oLog:fail("Arquivo inválido", "Falha ao ler arquivo XML")
+			if lUseDirMan
+				oDir:setError(cFile)
+			endIf	
+			loop			
+		endIf
+
+		if !setCompany(oXml, cFile)
+			if lUseDirMan
+				oDir:setError(cFile)
+			endIf	
+			loop
+		endIf
+
+		impSelectFile(oXml, cFile)
+
+	next nI	
+
+return
+
+/**
+* Ordena os arquivos para Processamento da Interface Item Maintenance (Cad. Produtos) primeiro
+*/
+static function readFiles()
+
+	local nI		:= 0
+	local cFile 	:= "" 
+	local aSortList := {}
+
+	if oEnv:hasMainWindow() .and. MsgBox("Deseja importar um arquivo específico ?", "Atenção", "YESNO")
+		lChangeOne := .T.
+		lUseDirMan := .F.
+		cFile 	   := changeFileDlg()
+		if Empty(cFile)
+			return
+		else
+			aAdd(aFiles, cFile)
+		endIf	
+	endIf
+
+	if !lChangeOne
+		aFiles := oDir:getFiles()
+	endIf			
+
+	for nI := 1 to Len(aFiles)
+		cFile   := Upper(AllTrim(aFiles[nI]))
+		cLayout := getFileLayout(cFile)
+		if (cLayout == DHL_SELECT_ITEM_MAINTENANCE)
+			aAdd(aSortList, cFile)
+		endIf
+	next nI
+
+	for nI := 1 to Len(aFiles)
+		cFile   := Upper(AllTrim(aFiles[nI]))
+		cLayout := getFileLayout(cFile)
+		if (cLayout != DHL_SELECT_ITEM_MAINTENANCE)
+			aAdd(aSortList, cFile)
+		endIf
+	next nI
+
+	aFiles := aSortList
+
+return 
+
+/**
+* Possibilita a seleção de um arquivo específico
+*/
+static function changeFileDlg()
+
+	local cFile 	:= ""
+	local oParam	:= nil
+	local oParamBox := IpParamBoxObject():newIpParamBoxObject("DHLSelectFile", "Integração WMS Select")	
+
+	oParam := IpParamObject():newIpParamObject("file", "file", "Arquivo", "C", 80)
+	oParam:setFileStartDirectory("C:\")
+	oParam:setFileTypes("Arquivos XML |*.xml")
+	oParam:setFileParams(GETF_LOCALHARD+GETF_NETWORKDRIVE)      
+	oParamBox:addParam(oParam)
+
+	while oParamBox:show()
+		if vldParamFile(oParamBox)
+			cFile := oParamBox:getValue("file")
+			exit
+		endIf	
+	endDo
+
+return AllTrim(cFile)
+
+/**
+* Valida o arquivo selecionado
+*/
+static function vldParamFile(oParamBox)
+
+	local cFile := oParamBox:getValue("file")
+
+	cFile := AllTrim(Lower(cFile))
+
+	if Empty(cFile)
+		MsgBox("Informe um arquivo para importação", "Atenção", "ALERT")
+		return .F.
+	endIf
+
+	if !File(cFile)
+		MsgBox("Arquivo inválido", "Atenção", "ALERT")
+		return .F. 
+	endIf
+
+	if (Right(cFile, 4) != ".xml")
+		MsgBox("Selecione um arquivo XML", "Atenção", "ALERT")
+		return .F. 
+	endIf
+
+return .T.
+
+/**
+* Verifica se é um arquivo válido para processamento
+*/
+static function validFile(cFile)
+
+	local cLayout := getFileLayout(cFile)	
+
+	if Empty(cLayout)
+		setFileLog(cFile, "fail", "Não foi possível identificar o Layout do arquivo")
+		return .F.
+	endIf
+
+	if lUseDirMan .and. !oDir:startProcess(cFile)
+		return .F.
+	endIf
+
+return .T.
+
+/**
+* Coleta o layout do arquivo
+*/
+static function getFileLayout(cFile)
+
+	local nI	   := 0
+	local cLayout  := ""
+	local aLayouts := {DHL_SELECT_ASN_CONFIRMATION, DHL_SELECT_INVOICE_REQUEST, DHL_SELECT_ITEM_MAINTENANCE, DHL_SELECT_STOCK_ADJUSTMENT}
+
+	cFile := Upper(AllTrim(cFile))
+
+	for nI := 1 to Len(aLayouts)
+		if (aLayouts[nI] $ cFile)
+			cLayout := aLayouts[nI]
+		endIf
+	next nI	
+
+return cLayout
+
+/**
+* Carrega a Empresa/Filial da DHL
+*/
+static function setCompany(oXml, cFile)
+
+	local lOk 		:= .F.
+	local nScan		:= 0
+	local cCompany	:= ""
+	local cBranch	:= ""
+	local cCnpj		:= getCnpj(oXml, cFile)
+
+	if Empty(cCnpj)
+		return .F.
+	endIf	
+
+	nScan := aScan(aCompanies, {|x| x[3] == cCnpj})
+
+	if (nScan == 0)
+		setFileLog(cFile, "fail", "CNPJ não encontrado: "+cCnpj)
+		return .F.
+	endIf
+
+	cCompany := aCompanies[nScan,1]
+	cBranch  := aCompanies[nScan,2]
+
+	oEnv:setCompany(cCompany)
+	oEnv:setBranch(cBranch)
+	oEnv:load()
+
+	lOk := (Type("cEmpAnt") == "C" .and. cEmpAnt+cFilAnt == cCompany+cBranch)
+
+	if !lOk
+		setFileLog(cFile, "fail", "Falha ao carregar Empresa/Filial: "+cCompany+"/"+cBranch)
+		if lUseDirMan
+			oDir:setError(cFile)
+		endIf	
+	endIf
+
+return lOk
+
+/**
+* Coleta o CNPJ do Arquivo
+*/
+static function getCnpj(oXml, cFile)
+
+	local nScan		:= 0
+	local aCnpjs 	:= {}
+	local cCnpj  	:= ""
+	local cTag	 	:= ""
+	local cDhlCode  := ""
+	local cLayout	:= getFileLayout(cFile)
+
+	aAdd(aCnpjs, {"BRBSB01", "02836056006147"})	
+	aAdd(aCnpjs, {"BRBHZ01", "02836056005680"})		
+	aAdd(aCnpjs, {"BRRIO01", "02836056005418"})	
+
+	if (cLayout == DHL_SELECT_ASN_CONFIRMATION) 
+		cTag := "Pip4B2ShipmentReceiptNotification:_"
+		cTag += "ShipmentReceiptInformationResource:_"
+		cTag += "receivedBy:_"
+		cTag += "PartnerDescription:_"
+		cTag += "PhysicalLocation:_"
+		cTag += "PartnerLocationIdentification:_"
+		cTag += "ProprietaryLocationIdentifier:text"		
+	elseIf (cLayout == DHL_SELECT_INVOICE_REQUEST) 
+		cTag := "Pip3B2AdvanceShipmentNotification:_"
+		cTag += "AdvancedShipmentNotification:_"
+		cTag += "OriginatingPartner:_"
+		cTag += "shipFrom:_"
+		cTag += "PartnerDescription:_"
+		cTag += "PhysicalLocation:_"
+		cTag += "PartnerLocationIdentification:_"
+		cTag += "ProprietaryLocationIdentifier:text"
+	elseIf (cLayout == DHL_SELECT_ITEM_MAINTENANCE) 
+		cDhlCode := "BRBSB01"
+	elseIf (cLayout == DHL_SELECT_STOCK_ADJUSTMENT)
+		cTag := "Pip4C1InventoryReportNotification:_"
+		cTag += "InventoryReport:_"
+		cTag += "InventoryReportLineItem:_"
+		cTag += "inventoryLocation:_"
+		cTag += "PartnerDescription:_"
+		cTag += "PhysicalLocation:_"
+		cTag += "PartnerLocationIdentification:_"
+		cTag += "ProprietaryLocationIdentifier:text"
+	endIf
+
+	if Empty(cDhlCode)
+		cDhlCode := oXml:getNodeValue(cTag)
+	endIf
+
+	nScan := aScan(aCnpjs, {|x| x[1] == Upper(AllTrim(cDhlCode)) }) 
+
+	if (nScan > 0)
+		cCnpj := aCnpjs[nScan,2]
+	endIf
+
+	if Empty(cCnpj)
+		setFileLog(cFile, "fail", "Não foi possível encontrar o CNPJ da Empresa/Filial do Protheus", cTag, cDhlCode)
+		if lUseDirMan
+			oDir:setError(cFile)
+		endIf									  
+	endIf	
+
+return cCnpj
+
+/**
+* Importa um Arquivo do Select
+*/
+static function impSelectFile(oXml, cFile)
+
+	local lOk 		:= .F.
+	local cLayout   := getFileLayout(cFile)	
+
+	if (cLayout == DHL_SELECT_ASN_CONFIRMATION) 
+		lOk := impAsnConfirmation(oXml, cFile)
+	elseIf (cLayout == DHL_SELECT_INVOICE_REQUEST) 
+		lOk := impInvoiceRequest(oXml, cFile)
+	elseIf (cLayout == DHL_SELECT_ITEM_MAINTENANCE) 
+		lOk := impItemMaintenance(oXml, cFile)
+	elseIf (cLayout == DHL_SELECT_STOCK_ADJUSTMENT)
+		oLog:success()
+		lOk := u_ImpXmlInv(cFile,APP_SELECT)
+	endIf
+
+	if lOk 
+		if lUseDirMan
+			oDir:setProcessed(cFile)
+		endIf	
+		nProcessed++
+	else
+		if lUseDirMan
+			oDir:setError(cFile)
+		endIf		
+	endIf
+
+return lOk
+
+/**
+* Confirmação de Pre-Notas de Entrada
+*/
+static function impAsnConfirmation(oXml, cFile)
+
+	local lOk		:= .F.	
+	local nRecnoSF1 := 0
+	local oAsnData	:= IpKeyValuesObject():newIpKeyValuesObject()
+
+	if !getAsnDocument(oXml, cFile, @oAsnData)
+		return .F.
+	endIf
+
+	//	if !getAsnEntity(oXml, cFile, @oAsnData)
+	//		return .F.
+	//	endIf
+
+	if !getAsnProducts(oXml, cFile, @oAsnData)
+		return .F.
+	endIf
+
+	if !getAsnRecnoSF1(oAsnData, cFile, @nRecnoSF1)
+		return .F.
+	endIf
+
+	if asnAlreadyConfirmed(cFile, nRecnoSF1)
+		return .F.
+	endIf
+
+	lOk := validAsnProducts(oAsnData, cFile, nRecnoSF1)		
+
+	updateAsnData(oAsnData, nRecnoSF1, cFile, lOk)		
+
+return .T.
+
+/**
+* Coleta o Documento do XML ASN Confirmation
+*/
+static function getAsnDocument(oXml, cFile, oAsnData)
+
+	local nI		  	:= 0
+	local lOk		  	:= .F.
+	local cDocTag		:= ""
+	local cDocument   	:= ""
+	local cRecOrderTag	:= ""
+	local cBusinessId 	:= ""
+	local aBusinessId 	:= {}	
+
+	cDocTag :=  "Pip4B2ShipmentReceiptNotification:_"+;
+	"ShipmentReceiptInformationResource:_"+;
+	"receivedBy:_"+;
+	"PartnerDescription:_"+;
+	"BusinessDescription:_"+;
+	"PartnerBusinessIdentification"
+
+	aBusinessId := oXml:getNodeArray(cDocTag)
+
+	for nI := 1 to Len(aBusinessId)
+		if !existDocumentTag(aBusinessId[nI])
+			loop
+		endIf
+		cBusinessId := AllTrim(Lower(aBusinessId[nI]:_proprietaryBusinessIdentifier:text))
+		if (cBusinessId == "ref6")
+			cDocument := aBusinessId[nI]:_proprietaryDomainIdentifier:text
+			exit
+		endIf
+	next nI
+
+	cDocument := AllTrim(cDocument)
+
+	if Empty(cDocument)
+		setFileLog(cFile, "fail", "Não foi possível encontrar o Número do Documento", cDocTag)
+	else
+		lOk := .T.	
+	endIf
+
+	oAsnData:put("document", cDocument)
+
+	cRecOrderTag := "Pip4B2ShipmentReceiptNotification:_"+;
+	"ShipmentReceiptInformationResource:_"+;
+	"shipmentIdentifier:_"+;
+	"ProprietaryReferenceIdentifier:text"
+
+	oAsnData:put("receiveOrder", oXml:getNodeValue(cRecOrderTag))
+
+return lOk
+
+/**
+* Verifica se existe a Tag com o numero do Documento
+*/
+static function existDocumentTag(oTag)
+
+	local lExists    := .F.
+	private oTestTag := oTag
+
+	lExists := Type("oTestTag:_proprietaryBusinessIdentifier:text") != "U" .and. ;
+	Type("oTestTag:_proprietaryDomainIdentifier:text") != "U" 
+
+return lExists
+
+/**
+* Coleta a Entidade (Cliente/Fornecedor) da ASN Confirmation
+*/
+static function getAsnEntity(oXml, cFile, oAsnData)
+
+	local lOk 		:= .F.
+	local cTag	    := ""
+	local cDhlCode	:= ""
+	local oSql		:= IpSqlObject():newIpSqlObject()
+
+	cEntity := ""
+	cUnit   := ""
+	cType   := ""
+
+	cTag := "Pip4B2ShipmentReceiptNotification:_"+;
+	"toRole:_"+;
+	"PartnerRoleDescription:_"+;
+	"PartnerDescription:_"+;
+	"BusinessDescription:_"+;
+	"GlobalBusinessIdentifier:text"
+
+	cDhlCode := oXml:getNodeValue(cTag)
+
+	if Empty(cDhlCode)
+		setFileLog(cFile, "fail", "Não foi possível ler o código da entidade", cTag)
+		return .F.
+	endIf
+
+	oSql:newAlias(" SELECT A1_COD CODE, A1_LOJA UNIT, A1_NOME NAME, '"+CUSTOMER+"' TYPE "+;
+	" FROM %SA1.SQLNAME% "+;
+	" WHERE %SA1.XFILIAL% AND A1_ZZCDSEL = '"+cDhlCode+"' "+;
+	" UNION ALL "+;
+	" SELECT A2_COD CODE, A2_LOJA UNIT, A2_NOME NAME, '"+SUPPLIER+"' TYPE "+;
+	" FROM %SA2.SQLNAME% "+;
+	" WHERE %SA2.XFILIAL% AND A2_ZZCDSEL = '"+cDhlCode+"' ")
+
+	if !oSql:hasRecords()
+		setFileLog(cFile, "fail", "Não foi possível encontrar a entidade "+cDhlCode+" no Protheus")
+	elseIf (oSql:count() > 1)
+		setFileLog(cFile, "fail", "Existe mais de uma entidade "+cDhlCode+" no Protheus")
+	else
+		lOk	:= .T.
+		oAsnData:put("entityCode", oSql:getValue("CODE"))
+		oAsnData:put("entityUnit", oSql:getValue("UNIT"))
+		oAsnData:put("entityName", oSql:getValue("NAME"))
+		oAsnData:put("entityType", oSql:getValue("TYPE"))
+	endIf
+
+	oSql:close()
+
+return lOk
+
+/**
+* Coleta os Produtos x Quantidades da ASN Confirmation
+*/
+static function getAsnProducts(oXml, cFile, oAsnData)
+
+	local nI	 	:= 0
+	local nQuantity := 0
+	local nScan		:= 0
+	local cTag 	 	:= ""
+	local cProduct  := ""
+	local aItems 	:= {}
+
+	aProducts := {}
+
+	cTag := "Pip4B2ShipmentReceiptNotification:_"+;
+	"ShipmentReceiptInformationResource:_"+;
+	"ShipmentReceiptNotificationLineItem"
+
+	aItems := oXml:getNodeArray(cTag)
+
+	if (Len(aItems) == 0)
+		setFileLog(cFile, "fail", "Não foi possível ler os itens do documento", cTag)
+		return .F.	
+	endIf
+
+	for nI := 1 to Len(aItems)
+		cProduct  := aItems[nI]:_productIdentification:_partnerProductIdentification:_proprietaryProductIdentifier:text
+		nQuantity := Val(aItems[nI]:_quantityInformation:_receivedQuantity:_productQuantity:text)
+		nScan	  := aScan(aProducts, {|x| x[1] == cProduct})
+		if (nScan == 0)
+			aAdd(aProducts, {cProduct,nQuantity})
+		else
+			aProducts[nScan,2] += nQuantity
+		endIf
+	next nI
+
+	oAsnData:put("products", aProducts) 
+
+return .T.
+
+/**
+* Coleta o Recno do Documento da ASN Confirmation
+*/
+static function getAsnRecnoSF1(oAsnData, cFile, nRecnoSF1)
+
+	local lOk  			:= .F.
+	local lNumericDoc	:= .F.
+	local lEquals		:= .F.
+	local nCountDocs	:= 0
+	local cDocType		:= ""
+	local cWhereDoc		:= ""
+	local cEntityType	:= ""
+	local cDocument 	:= AllTrim(oAsnData:get("document")) 
+	local oSql 			:= IpSqlObject():newIpSqlObject() 			
+
+	if (oAsnData:get("entityType") == SUPPLIER)
+		cDocType 	:= "'N'"
+		cEntityType	:= "fornecedor"
+	else
+		cDocType 	:= "'D','B'"
+		cEntityType	:= "cliente"
+	endIf
+
+	if (Len(cDocument) >= 20)
+		cWhereDoc := "F1_CHVNFE = '"+cDocument+"'"
+	elseIf (Val(cDocument) > 0)
+		lNumericDoc := .T.
+		cDocument   := AllTrim(Str(Val(cDocument)))
+		cWhereDoc	:= "F1_DOC LIKE '%"+cDocument+"%'"
+	else
+		cWhereDoc := "F1_DOC = '"+cDocument+"'"	 		
+	endIf
+
+	oSql:newTable("SF1", "R_E_C_N_O_ RECNOSF1, F1_FILIAL BRANCH, F1_DOC DOCUMENT, F1_SERIE SERIES, F1_EMISSAO DOCDATE",; 
+	"%SF1.XFILIAL% AND "+cWhereDoc+" "+;				  
+	" AND F1_ZZSTATU IN ('"+DHL_DOC_AGUARDANDO_CONFIRMACAO+"','"+DHL_DOC_CONFIRMACAO_NEGADA+"','"+DHL_DOC_CONFIRMACAO_PARCIAL+"')")
+
+	oSql:setField("DOCDATE", "D")
+
+	while oSql:notIsEof()
+
+		if lNumericDoc
+			lEquals := (oSql:getValue("AllTrim(Str(Val(DOCUMENT)))") == cDocument)
+		else
+			lEquals := (oSql:getValue("AllTrim(DOCUMENT)") == cDocument)
+		endIf	 
+
+		if lEquals
+			nCountDocs++
+			nRecnoSF1 := oSql:getValue("RECNOSF1")
+		endIf
+
+		oSql:skip()
+	endDo	
+
+	if (nCountDocs == 0)
+		setFileLog(cFile, "fail", "Documento "+AllTrim(oAsnData:get("document"))+" não encontrado para o "+;
+		cEntityType+" "+AllTrim(oAsnData:get("entityCode"))+"/"+AllTrim(oAsnData:get("entityUnit")))
+	elseIf (nCountDocs > 1)
+		if lChangeOne
+			nRecnoSF1 := changeDocDlg(oSql, oAsnData)
+			lOk		  := (nRecnoSF1 > 0)
+		else
+			setFileLog(cFile, "fail", "Foram encontrados "+AllTrim(Str(nCountDocs))+" registros para o Documento "+AllTrim(oAsnData:get("document"))+" ")
+			//								  	  cEntityType+" "+AllTrim(oAsnData:get("entityCode"))+"/"+AllTrim(oAsnData:get("entityUnit")))
+		endIf
+	else
+		lOk := .T.
+	endIf
+
+	oSql:close()
+
+return lOk
+
+/**
+* Exibe Dialogo para seleção de um Documento
+*/
+static function changeDocDlg(oSql, oAsnData)
+
+	local nRecno := 0
+	local oDlg 	 := nil
+	local oGrid	 := nil			
+
+	DEFINE MSDIALOG oDlg TITLE "Selecione o Documento a ser Confirmado" FROM 001,001 TO 250,600 PIXEL OF oMainWnd								
+
+	createDocGrid(@oGrid, oDlg, oSql, oAsnData)		
+
+	@ 105,220 BUTTON "Ok" SIZE 35,12 ACTION {|| getGridRecno(oGrid, @nRecno, @oDlg) } PIXEL OF oDlg
+	@ 105,260 BUTTON "Cancelar" SIZE 35,12 ACTION {|| oDlg:end() } PIXEL OF oDlg
+
+	ACTIVATE MSDIALOG oDlg CENTERED	
+
+	if (nRecno == 0)
+		MsgBox("Abortado pelo operador", "Atenção", "ALERT")
+		oLog:success()
+		nRead 		:= 0
+		nProcessed 	:= 0
+		lShowErrors := .F.
+	endIf	
+
+return nRecno
+
+/**
+* Cria o Grid para Seleção do Documento a ser Confirmado
+*/
+static function createDocGrid(oGrid, oDlg, oSql, oAsnData)
+
+	local nCol		:= 5
+	local nRow		:= 5
+	local nWidth	:= 297
+	local nHeight	:= 100	
+	local oGrid		:= IpGridObject():newIpGridObject(nCol, nRow, nWidth, nHeight, oDlg)
+
+	oGrid:setReadOnly(.T.)
+	oGrid:addMarkColumn()
+	oGrid:setMarkOne(.T.)
+
+	oGrid:addColumn("F1_FILIAL")
+	oGrid:addColumn("F1_DOC")
+	oGrid:addColumn("F1_SERIE")
+	oGrid:addColumn("F1_EMISSAO")
+	oGrid:addColumn("F1_FORNECE")
+	oGrid:addColumn("F1_LOJA")
+	oGrid:addColumn("A2_NOME")  
+	oGrid:addColumn(IpColumnObject():newIpColumnObject("recno", "Recno SF1", "N", 6))
+
+	oSql:goTop()
+
+	while oSql:notIsEof()
+
+		oGrid:newLine()
+		oGrid:setMarkedLine(.F.)
+		oGrid:setValue("F1_FILIAL", oSql:getValue("BRANCH"))
+		oGrid:setValue("F1_DOC", oSql:getValue("DOCUMENT"))
+		oGrid:setValue("F1_SERIE", oSql:getValue("SERIES"))
+		oGrid:setValue("F1_EMISSAO", oSql:getValue("DOCDATE"))
+		oGrid:setValue("F1_FORNECE", oAsnData:get("entityCode"))
+		oGrid:setValue("F1_LOJA", oAsnData:get("entityUnit"))
+		oGrid:setValue("A2_NOME", oAsnData:get("entityName"))
+		oGrid:setValue("recno", oSql:getValue("RECNOSF1"))
+
+		oSql:skip()
+	endDo	
+
+	oGrid:create()
+
+return
+
+/**
+* Coleta o Recno do Documento
+*/
+static function getGridRecno(oGrid, nRecno, oDlg)
+
+	local nI := 0
+
+	if !oGrid:hasMarkedLines()
+		MsgBox("Selecione o Documento a ser confirmado", "Atenção", "ALERT")
+		return
+	endIf
+
+	for nI := 1 to oGrid:length()
+		if oGrid:isMarkedLine(nI)
+			nRecno := oGrid:getValue("recno")
+			exit
+		endIf
+	next nI
+
+	oDlg:end()
+
+return
+
+/**
+* Valida as Quantidades dos Produtos da ASN Confirmation	
+*/
+static function validAsnProducts(oAsnData, cFile, nRecnoSF1)
+
+	local lOk		:= .F.
+	local nI		:= 0
+	local nScan		:= 0
+	local nQuant	:= 0
+	local nSaldo	:= 0
+	local cProduct  := ""
+	local cErrors	:= "" 
+	local aErpProds := {}
+	local aXmlProds	:= oAsnData:get("products")
+	local oSql 	 	:= IpSqlObject():newIpSqlObject() 	
+
+	oSql:newAlias(" SELECT D1_COD PRODUCT, SUM(D1_QUANT) QUANT, SUM(D1_ZZQCONF) QTDCONF "+;
+	" FROM %SF1.SQLNAME% "+;
+	" 	INNER JOIN %SD1.SQLNAME% ON "+;
+	" 		D1_FILIAL = F1_FILIAL AND D1_DOC = F1_DOC AND D1_SERIE = F1_SERIE AND "+;
+	"			D1_FORNECE = F1_FORNECE AND D1_LOJA = F1_LOJA AND %SD1.NOTDEL% "+;
+	" WHERE SF1.R_E_C_N_O_ = "+AllTrim(Str(nRecnoSF1))+" "+;
+	" GROUP BY D1_COD "+;
+	" ORDER BY D1_COD ")
+
+	while oSql:notIsEof()		
+		aAdd(aErpProds, {oSql:getValue("PRODUCT"), oSql:getValue("QUANT"), oSql:getValue("QTDCONF")})		
+		oSql:skip()
+	endDo
+
+	oSql:close()	
+
+	for nI := 1 to Len(aXmlProds)
+		cProduct := AllTrim(aXmlProds[nI,1])
+		nQuant   := aXmlProds[nI,2]
+		nScan 	 := aScan(aErpProds, {|x| AllTrim(x[1]) == cProduct })
+		if (nScan == 0)
+			cErrors += "- Produto não encontrado no Documento do Protheus: "+cProduct+CRLF+CRLF
+		else
+			nSaldo := (aErpProds[nScan,2] - aErpProds[nScan,3]) 
+			if (nQuant > nSaldo)
+				cErrors += "- Quantidade do Produto "+cProduct+" maior que o Saldo a Confirmar. Quantidade no Arquivo do Select: "+AllTrim(Str(nQuant))+". Saldo no Doc. do Protheus: "+AllTrim(Str(nSaldo))+CRLF+CRLF
+			endIf				
+		endIf	 
+	next nI
+
+	//	for nI := 1 to Len(aErpProds)
+	//		cProduct := AllTrim(aErpProds[nI,1])
+	//		nScan 	 := aScan(aXmlProds, {|x| AllTrim(x[1]) == cProduct })
+	//		if (nScan == 0)
+	//			cErrors += "- Produto não encontrado no arquivo do Select: "+cProduct+CRLF+CRLF			
+	//		endIf	 
+	//	next nI
+
+	if Empty(cErrors)
+		lOk := .T.
+	else
+		setFileLog(cFile, "warn", "Divergências entre Select e Protheus"+CRLF+CRLF+cErrors)
+	endIf					
+
+return lOk
+
+/**
+* Verifica se a Pre-Nota já foi classificada
+*/
+static function asnAlreadyConfirmed(cFile, nRecnoSF1)
+
+	local lAlreadyConfirmed := .F.
+	local oSql 				:= IpSqlObject():newIpSqlObject()
+
+	oSql:newAlias(" SELECT 1 FROM %SF1.SQLNAME% "+;
+	" 	INNER JOIN %SD1.SQLNAME% ON "+;
+	" 		D1_FILIAL = F1_FILIAL AND D1_DOC = F1_DOC AND D1_SERIE = F1_SERIE AND "+;
+	"			D1_FORNECE = F1_FORNECE AND D1_LOJA = F1_LOJA AND D1_TES != ' ' AND %SD1.NOTDEL% "+;
+	" WHERE SF1.R_E_C_N_O_ = "+AllTrim(Str(nRecnoSF1)))
+
+	if oSql:hasRecords()
+		lAlreadyConfirmed := .T.
+		setFileLog(cFile, "warn", "Documento já classificado")
+	endIf	
+
+	oSql:close()
+
+return lAlreadyConfirmed
+
+/**
+* Atualiza os dados do Documento da ASN Confirmation 	
+*/
+static function updateAsnData(oAsnData, nRecnoSF1, cFile, lStatusOk)
+
+	local lUpdOk	:= .F.
+	local cStatus 	:= if(lStatusOk, updAsnItems(oAsnData, nRecnoSF1), DHL_DOC_CONFIRMACAO_NEGADA)
+	local oSql    	:= IpSqlObject():newIpSqlObject()
+	local cRecOrder	:= oAsnData:get("receiveOrder")
+
+	if Empty(cRecOrder)
+		cRecOrder := Space(1)
+	else
+		cRecOrder := Left(AllTrim(cRecOrder), Len(SF1->F1_ZZRORD))
+	endIf
+
+	lUpdOk := oSql:update("SF1", "F1_ZZSTATU = '"+cStatus+"', F1_ZZRORD = '"+cRecOrder+"' ",; 
+	"R_E_C_N_O_ = "+AllTrim(Str(nRecnoSF1)))
+
+	if !lUpdOk
+		setFileLog(cFile, "fail", "Falha interna ao atualizar Doc. de Entrada: "+oSql:getLastError())	
+	endIf
+
+	if (lUpdOk .and. lStatusOk)
+		oLog:success()
+	endIf			
+
+return lUpdOk
+
+/**
+* Atualiza os Itens da ASN Confirmation
+*/
+static function updAsnItems(oAsnData, nRecnoSF1)
+
+	local nI		:= 0
+	local cStatus 	:= ""
+	local aXmlProds	:= aClone(oAsnData:get("products"))
+	local oSql    	:= IpSqlObject():newIpSqlObject()
+
+	for nI := 1 to Len(aXmlProds)
+		putAsnQuantConf(nRecnoSF1, aXmlProds[nI,1], aXmlProds[nI,2])
+	next nI	
+
+	oSql:newAlias(" SELECT SUM(D1_QUANT - D1_ZZQCONF) SLDCONF "+;
+	" FROM %SD1.SQLNAME% "+;
+	" 	INNER JOIN %SF1.SQLNAME% ON " +;
+	"			F1_FILIAL = D1_FILIAL AND F1_DOC = D1_DOC AND "+;
+	"			F1_SERIE = D1_SERIE AND F1_FORNECE = D1_FORNECE AND "+;
+	"			F1_LOJA = D1_LOJA AND SF1.R_E_C_N_O_ = "+AllTrim(Str(nRecnoSF1)))
+
+	if (oSql:getValue("SLDCONF") == 0)
+		cStatus := DHL_DOC_LIMPAR_STATUS
+	else
+		cStatus := DHL_DOC_CONFIRMACAO_PARCIAL
+	endIf
+
+	oSql:close()
+
+return cStatus
+
+/**
+* Grava a Quantidade Confirma de um item da ASN Confirmation
+*/
+static function putAsnQuantConf(nRecnoSF1, cProduct, nQuant)
+
+	local nRecno    := 0
+	local nSldConf  := 0
+	local nPutSld	:= 0
+	local aErpProds	:= {}
+	local oSql    	:= IpSqlObject():newIpSqlObject()
+
+	oSql:newAlias(" SELECT SD1.R_E_C_N_O_ RECSD1, (D1_QUANT - D1_ZZQCONF) SLDCONF "+;
+	" FROM %SD1.SQLNAME% "+;
+	" 	INNER JOIN %SF1.SQLNAME% ON "+;
+	"			F1_FILIAL = D1_FILIAL AND F1_DOC = D1_DOC AND "+;
+	"			F1_SERIE = D1_SERIE AND F1_FORNECE = D1_FORNECE AND "+;
+	"			F1_LOJA = D1_LOJA AND SF1.R_E_C_N_O_ = "+AllTrim(Str(nRecnoSF1))+;
+	" WHERE D1_COD = '"+cProduct+"' AND %SD1.NOTDEL% ")
+
+	while oSql:notIsEof()		
+		aAdd(aErpProds, {oSql:getValue("RECSD1"),oSql:getValue("SLDCONF")})			
+		oSql:skip()
+	endDo
+
+	oSql:close()
+
+	for nI := 1 to Len(aErpProds)		
+
+		nRecno   := aErpProds[nI,1]
+		nSldConf := aErpProds[nI,2]
+		nPutSld  := if(nQuant > nSldConf, nSldConf, nQuant)
+		nQuant   -= nPutSld
+
+		oSql:update("SD1", "D1_ZZQCONF = (D1_ZZQCONF + "+AllTrim(Str(nPutSld))+")", "R_E_C_N_O_ = "+AllTrim(Str(nRecno)))
+
+		if (nQuant == 0)
+			exit
+		endIf
+
+	next nI
+
+return
+
+/**
+* Cadastro de Produtos
+*/
+static function impItemMaintenance(oXml, cFile)
+
+	local lOk 			:= .F.
+	local aItem			:= {}
+	local oItemData		:= IpKeyValuesObject():newIpKeyValuesObject()
+	local oSql	 		:= IpSqlObject():newIpSqlObject()
+	local oUtils		:= IpUtilsObject():newIpUtilsObject()
+
+	private lMsErroAuto	:= .F.
+	private lMsHelpAuto := .T.
+
+	if !(getItemData(oXml, cFile, @oItemData))
+		lMsHelpAuto := .F.
+		return .F.
+	endIf
+
+	if oSql:exists("SB1", "B1_COD = '"+oItemData:get("code")+"'")	
+		setFileLog(cFile, "warn", "Produto já cadastrado: "+oItemData:get("code"))
+		lMsHelpAuto := .F.	
+		return .T.
+	endIf
+
+	aAdd(aItem, {"B1_FILIAL",xFilial("SB1")              ,nil})
+	aAdd(aItem, {"B1_COD",   oItemData:get("code")       ,nil})
+	aAdd(aItem, {"B1_DESC",  oItemData:get("description"),nil})
+	aAdd(aItem, {"B1_TIPO",  oItemData:get("type")       ,nil})
+	aAdd(aItem, {"B1_UM",    oItemData:get("unit")       ,nil})
+	aAdd(aItem, {"B1_LOCPAD",oItemData:get("warehouse")  ,nil})
+	aAdd(aItem, {"B1_MSBLQL","1"                         ,nil})
+	aAdd(aItem, {"B1_POSIPI","99999999"                  ,nil})
+	aAdd(aItem, {"B1_ORIGEM","0"                         ,nil})	
+
+	MsExecAuto({|x,y| MATA010(x,y)}, aItem, 3)
+
+	if lMsErroAuto
+		setFileLog(cFile, "fail", "Falha ao incluir produto"+CRLF+CRLF+oUtils:getErroAuto())
+	else
+		lOk := .T.
+		oLog:success()	
+	endIf
+
+	lMsHelpAuto := .F.
+
+return lOk
+
+/**
+* Coleta os dados para Cadastro dos Produtos
+*/
+static function getItemData(oXml, cFile, oItemData)
+
+	local cCodeTag		:= ""
+	local cDescTag		:= ""
+	local cCode			:= ""
+	local cDescription	:= ""
+	local cType			:= "PA"
+	local cUnit			:= "ZZ"
+	local cWarehouse	:= "01"	
+
+	cCodeTag := "Pip2A1ProductCatalogInformationNotification:_"
+	cCodeTag += "ProductCatalog:_"
+	cCodeTag += "ProductLineItem:_"
+	cCodeTag += "ProductIdentificationInformation:_"
+	cCodeTag += "ProprietaryProductIdentification:_"
+	cCodeTag += "PartnerProductIdentification:_"
+	cCodeTag += "ProprietaryProductIdentifier:text"	
+	cCode    := oXml:getNodeValue(cCodeTag) 
+
+	if Empty(cCode)
+		setFileLog(cFile, "fail", "Não foi possível ler o código do produto", cCodeTag)
+		return .F.
+	endIf
+
+	cDescTag := "Pip2A1ProductCatalogInformationNotification:_"
+	cDescTag += "ProductCatalog:_"
+	cDescTag += "ProductLineItem:_"
+	cDescTag += "ProductIdentificationInformation:_"
+	cDescTag += "ProductDescription:_"
+	cDescTag += "TextualDescription:_"
+	cDescTag += "detail:_"
+	cDescTag += "FreeFormText:text"
+	cDescription := oXml:getNodeValue(cDescTag)
+
+	if Empty(cDescription)
+		setFileLog(cFile, "fail", "Não foi possível ler a descrição do produto", cCodeTag)
+		return .F.
+	endIf
+
+	oItemData:put("code", cCode)
+	oItemData:put("description", cDescription)
+	oItemData:put("type", cType)
+	oItemData:put("unit", cUnit)
+	oItemData:put("warehouse", cWarehouse)
+
+return .T.
+
+/**
+* Geração de Pedidos de Vendas	
+*/
+static function impInvoiceRequest(oXml, cFile)
+
+	local lOk 			:= .F.
+	local aHeader		:= {}
+	local aItems		:= {}
+	local aProducts		:= {}
+	local cShipNumber 	:= getShipmentNumber(oXml, cFile)
+	local cTypeDoc		:= "N"
+	local cParam		:= "ZZ_CLINTEG"
+	local oUtils		:= IpUtilsObject():newIpUtilsObject()	
+	private lMsErroAuto	:= .F.
+	private lMsHelpAuto := .T.
+
+	if !getInvRequestProducts(oXml, cFile, @aProducts)
+		lMsHelpAuto := .F.
+		return .F.
+	endIf
+
+	if getTypeDocument(oXml)
+		cTypeDoc	:= "D"
+		cParam		:= "ZZ_FOINTEG"
+	endif
+
+	fillInvRequestItems(aProducts, @aItems, cTypeDoc)
+
+	aAdd(aHeader, {"C5_FILIAL", xFilial("SC5"), nil})
+	aAdd(aHeader, {"C5_NUM", getNextSalesOrderNumber(), nil})
+	aAdd(aHeader, {"C5_TIPO", cTypeDoc, nil})
+	aAdd(aHeader, {"C5_CLIENTE", Left(GetMv(cParam), 6), nil})
+	aAdd(aHeader, {"C5_LOJACLI", Right(GetMv(cParam), 2), nil})
+	aAdd(aHeader, {"C5_CONDPAG", GetMv("ZZ_CONDINT"), nil})	
+	aAdd(aHeader, {"C5_ZZSTATU", DHL_PV_PENDENTE_INFORMACAO, nil})
+	aAdd(aHeader, {"C5_ZZSHIP", cShipNumber, nil})		
+
+	MsExecAuto({|x,y,z| MATA410(x,y,z)}, aHeader, aItems, 3)
+
+	if lMsErroAuto
+		setFileLog(cFile, "fail", "Falha ao gerar Pedido de Vendas"+CRLF+CRLF+oUtils:getErroAuto())
+	else
+		lOk := .T.
+		oLog:success()	
+	endIf
+
+	lMsHelpAuto := .F.	
+
+return lOk
+
+/**
+* Coleta o Número do Shipment
+*/
+static function getShipmentNumber(oXml, cFile)
+
+	local nI	      		:= 0
+	local cTag		  		:= ""
+	local cShipNumber 		:= ""
+	local cGlobalTracking	:= ""
+	local aTracking	  		:= {}
+
+	cTag := "Pip3B2AdvanceShipmentNotification:_"
+	cTag += "AdvancedShipmentNotification:_"
+	cTag += "Shipment:_"
+	cTag += "TrackingReference"
+
+	aTracking := oXml:getNodeArray(cTag)
+
+	for nI := 1 to Len(aTracking)
+		cGlobalTracking := aTracking[nI]:_globalTrackingReferenceTypeCode:text
+		cGlobalTracking := Lower(AllTrim(cGlobalTracking))
+		if ("shipper" $ cGlobalTracking .and. "reference" $ cGlobalTracking .and. "number" $ cGlobalTracking)
+			cShipNumber := aTracking[nI]:_proprietaryShipmentTrackingIdentifier:text
+			exit
+		endIf 
+	next nI
+
+return cShipNumber
+
+/**
+* Coleta o próximo número de pedidos de vendas
+*/
+static function getNextSalesOrderNumber()
+
+	local cMaxNumber  := ""
+	local cNextNumber := ""
+	local oSql		  := IpSqlObject():newIpSqlObject()
+
+	oSql:newAlias(" SELECT MAX(C5_NUM) MAXNUMBER "+;
+	" FROM %SC5.SQLNAME% "+;
+	" WHERE %SC5.XFILIAL% ")
+
+	cMaxNumber := oSql:getValue("MAXNUMBER")
+
+	if Empty(cMaxNumber)
+		cNextNumber := StrZero(1, Len(SC5->C5_NUM))
+	else
+		cNextNumber := Soma1(cMaxNumber)
+	endIf
+
+	oSql:close()
+
+return cNextNumber
+
+/**
+* Coleta os itens da Invoice Request
+*/ 
+static function getInvRequestProducts(oXml, cFile, aProducts)
+
+	local nI	 	:= 0
+	local nQuantity := 0
+	local nScan		:= 0
+	local cTag 	 	:= ""
+	local cProduct  := ""
+	local cNotExists:= ""
+	local aItems 	:= {}
+	local oSql		:= IpSqlObject():newIpSqlObject()
+
+	aProducts := {}
+
+	cTag := "Pip3B2AdvanceShipmentNotification:_"
+	cTag += "AdvancedShipmentNotification:_"
+	cTag += "Shipment:_"
+	cTag += "ShippingContainer"
+
+	aItems := oXml:getNodeArray(cTag)
+
+	if (Len(aItems) == 0)
+		setFileLog(cFile, "fail", "Não foi possível ler os itens da Invoice Request", cTag)
+		return .F.	
+	endIf
+
+	for nI := 1 to Len(aItems)
+		cProduct  := aItems[nI]:_shippingContainerItem:_productIdentification:_partnerProductIdentification:_proprietaryProductIdentifier:text
+		nQuantity := Val(aItems[nI]:_shippingContainerItem:_shippedQuantity:_productQuantity:text)
+		nScan	  := aScan(aProducts, {|x| x[1] == cProduct})
+		if (nScan == 0)
+			aAdd(aProducts, {cProduct,nQuantity})
+		else
+			aProducts[nScan,2] += nQuantity
+		endIf
+	next nI	
+
+	for nI := 1 to Len(aProducts)
+		if !oSql:exists("SB1", "B1_COD = '"+aProducts[nI,1]+"'")
+			cNotExists += if(Empty(cNotExists), "", ", ")	
+			cNotExists += AllTrim(aProducts[nI,1])		
+		endIf
+	next nI
+
+	if !Empty(cNotExists)
+		setFileLog(cFile, "fail", "Os seguintes produtos não estão cadastrados no Protheus: "+CRLF+CRLF+cNotExists)
+		return .F.	
+	endIf
+
+return .T.
+
+/**
+* Preenche o array de items do Pedido de Vendas da Invoice Request
+*/ 
+static function fillInvRequestItems(aProducts, aItems, cTypeDoc)
+
+	local nI 		:= 0
+	local nY 		:= 0
+	local nQuant	:= 0
+	local nItem		:= 0
+	local aItem		:= {}
+	local cProduct	:= ""
+	local cTes		:= GetMv("ZZ_TESSAI")
+
+	default cTypeDoc := "N"
+
+	aItems := {}
+
+	for nI := 1 to Len(aProducts)		
+		cProduct := aProducts[nI,1]
+		nQuant	 := aProducts[nI,2]		
+		for nY := 1 to nQuant	
+			aItem := {}		
+			aAdd(aItem, {"C6_ITEM", StrZero(++nItem, Len(SC6->C6_ITEM)), nil})
+			aAdd(aItem, {"C6_PRODUTO", cProduct, nil})
+			aAdd(aItem, {"C6_QTDVEN", 1, nil})
+			aAdd(aItem, {"C6_PRCVEN", 1, nil})
+			aAdd(aItem, {"C6_VALOR", 1, nil})
+			aAdd(aItem, {"C6_TES", cTes, nil})			
+			if cTypeDoc $ "D"
+				aAdd(aItem, {"C6_NFORI", "X", nil})		
+			endif
+			aAdd(aItems, aItem)				
+		next nY		
+	next nI
+
+return
+
+/**
+* Define os Logs de acordo com os tipos de arquivos
+*/
+static function setFileLog(cFile, cLogType, cLogText, cTag, cValue)
+
+	local cInterface := ""
+	local cLayout    := getFileLayout(cFile)
+
+	if (cLayout == DHL_SELECT_ASN_CONFIRMATION) 
+		cInterface := "ASN Confirmation"
+	elseIf (cLayout == DHL_SELECT_INVOICE_REQUEST) 
+		cInterface := "Invoice Request"
+	elseIf (cLayout == DHL_SELECT_ITEM_MAINTENANCE) 
+		cInterface := "Item Maintenance"
+	elseIf (cLayout == DHL_SELECT_STOCK_ADJUSTMENT)
+		cInterface := "Stock Adjustment"
+	endIf
+
+	if !Empty(cTag)
+		cLogText += CRLF+CRLF+"Tag: "+cTag
+	endIf
+
+	if !Empty(cValue)
+		cLogText += CRLF+CRLF+"Valor: "+cValue
+	endIf
+
+	if (cLogType == "fail")
+		oLog:fail(cInterface, cLogText)
+	elseIf (cLogType == "warn")
+		oLog:warn(cInterface, cLogText)
+	endIf	
+
+return
+
+
+/**
+* Verifica se o documento é do tipo de devolução
+*/
+static function getTypeDocument(oXml)
+
+	local nI		  	:= 0
+	local lOk		  	:= .F.
+	local cDocTag		:= ""
+	local cText			:= ""
+	local cBusinessId 	:= ""
+	local aBusinessId 	:= {}	
+
+	cDocTag :=  "Pip3B2AdvanceShipmentNotification:_"+;
+	"AdvancedShipmentNotification:_"+;
+	"OriginatingPartner:_"+;
+	"shipFrom:_"+;
+	"PartnerDescription:_"+;
+	"BusinessDescription:_"+;
+	"PartnerBusinessIdentification"
+
+	aBusinessId := oXml:getNodeArray(cDocTag)
+
+	for nI := 1 to Len(aBusinessId)
+		if !existDocumentTag(aBusinessId[nI])
+			loop
+		endIf
+		cBusinessId := AllTrim(Lower(aBusinessId[nI]:_proprietaryBusinessIdentifier:text))
+		if (cBusinessId == "ref2")
+			cText := aBusinessId[nI]:_proprietaryDomainIdentifier:text
+			exit
+		endIf
+	next nI
+
+	if "IRISO" $ alltrim(upper(cText))
+		lOk := .t.		 
+	endif
+
+return lOk
+
+/**
+* Loga na empresa/filial pela primeira vez. Necessário para abrir as tabelas
+**/
+static function setCompFirstTime()
+	
+	if type("cFilAnt") == "U"
+		cEmpDefault := aCompanies[1][COMPANY]
+		cFilDefault := aCompanies[1][BRANCH]
+		oEnv:setCompany(cEmpDefault)
+		oEnv:setBranch(cFilDefault)
+		oEnv:load()
+	endIf
+
+return

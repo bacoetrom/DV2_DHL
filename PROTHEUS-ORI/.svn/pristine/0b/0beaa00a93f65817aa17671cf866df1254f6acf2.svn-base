@@ -1,0 +1,712 @@
+#include "totvs.ch"
+#include "dhl.ch"
+
+
+/*/{Protheus.doc} DHLProductId
+
+Objeto que representa os IDs de Produtos da DHL
+	
+@author Victor Hugo
+@since 30/10/2014
+/*/
+class DHLProductId	
+	
+	data nRecno
+	data cBranch
+	data cId
+	data cProduct
+	data cDescription
+	data nUnitValue
+	data dDate
+	data cTime
+	data cType
+	data cDocument
+	data cSeries
+	data cEntity
+	data cUnit
+	data cItem
+	data cStatus
+	data cIdentB6
+	data cSequence
+	data nIcmsValue
+	data nIpiValue
+	data cSituation
+	data cTypeDoc
+	
+	method newDHLProductId() constructor
+	
+	method getRecno()
+	method setRecno() 
+	method getBranch()
+	method setBranch()
+	method getId()
+	method setId()
+	method getProduct()
+	method setProduct()
+	method getDescription()
+	method setDescription()
+	method getUnitValue()
+	method setUnitValue() 
+	method getDate()
+	method setDate()
+	method getTime()
+	method setTime()
+	method getType()
+	method setType()
+	method getDocument()
+	method setDocument()
+	method getSeries()
+	method setSeries()
+	method getEntity()
+	method setEntity()
+	method getUnit()
+	method setUnit()	
+	method getItem()
+	method setItem()
+	method getStatus()
+	method setStatus()
+	method getIdentB6()
+	method setIdentB6()
+	method getSequence()
+	method setSequence()
+	method getIcmsValue()
+	method setIcmsValue()
+	method getIpiValue()
+	method setIpiValue()
+	method getSituation()
+	method setSituation()
+	method getTypeDoc()
+	method setTypeDoc()
+	
+endClass
+
+
+/*/{Protheus.doc} newDHLProductId
+
+Construtor
+	
+@author Victor Hugo
+@since 03/11/2014
+
+@param nRecno, Numerico, Recno da Tabela SZ3 (Opcional. Se informado carrega os atributos do objeto)
+/*/
+method newDHLProductId(nRecno) class DHLProductId	
+	
+	if Empty(nRecno)
+		::setBranch(xFilial("SZ3"))
+		::setUnitValue(0)
+		::setDate(dDataBase)
+		::setTime(Time())
+		::setIdentB6("")
+		::setIcmsValue(0)
+		::setIpiValue(0)
+		::setSituation(DHL_ID_SITUACAO_NORMAL)		 
+	else	
+		loadData(@self, nRecno)	
+	endIf
+	
+return self
+
+/**
+ * Carrega os dados do objeto
+ */
+static function loadData(oSelf, nRecno)
+	
+	local oSql := IpSqlObject():newIpSqlObject()
+	
+	oSql:newTable("SZ3", "*", "Z3_FILIAL = '%SZ3.FILIAL%' AND R_E_C_N_O_ = "+AllTrim(Str(nRecno)))
+	
+	oSelf:setRecno(nRecno)
+	oSelf:setBranch(oSql:getValue("Z3_FILIAL"))
+	oSelf:setId(oSql:getValue("Z3_ID"))
+	oSelf:setProduct(oSql:getValue("Z3_PRODUTO"))
+	oSelf:setUnitValue(oSql:getValue("Z3_VUNIT"))
+	oSelf:setDate(oSql:getValue("Z3_DTMOV"))
+	oSelf:setTime(oSql:getValue("Z3_HRMOV"))
+	oSelf:setType(oSql:getValue("Z3_TPMOV"))
+	oSelf:setDocument(oSql:getValue("Z3_DOC"))
+	oSelf:setSeries(oSql:getValue("Z3_SERIE"))
+	oSelf:setEntity(oSql:getValue("Z3_CLIFOR"))
+	oSelf:setUnit(oSql:getValue("Z3_LOJA"))
+	oSelf:setItem(oSql:getValue("Z3_ITEM"))
+	oSelf:setStatus(oSql:getValue("Z3_STATUS"))
+	oSelf:setIdentB6(oSql:getValue("Z3_IDENTB6"))
+	oSelf:setSequence(oSql:getValue("Z3_SEQUEN"))
+	oSelf:setIcmsValue(oSql:getValue("Z3_VALICM"))
+	oSelf:setIpiValue(oSql:getValue("Z3_VALIPI"))
+	oSelf:setSituation(oSql:getValue("Z3_SITUACA")) 
+	
+	oSql:close()
+	
+return
+
+
+/*/{Protheus.doc} getRecno
+
+Coleta o Recno do registro no BD
+	
+@author Victor Hugo
+@since 05/11/2014
+
+@return Numerico Recno do registro no BD
+/*/
+method getRecno() class DHLProductId
+return ::nRecno
+
+
+/*/{Protheus.doc} setRecno
+
+Define o Recno do registro no BD
+	
+@author Victor Hugo
+@since 05/11/2014
+
+@param nRecno, Numerico, Recno do registro no BD
+/*/
+method setRecno(nRecno) class DHLProductId
+	::nRecno := nRecno
+return
+
+
+/*/{Protheus.doc} getBranch
+
+Coleta o Código da Filial
+	
+@author Victor Hugo
+@since 03/11/2014
+
+@return String Código da Filial
+/*/
+method getBranch() class DHLProductId
+return ::cBranch
+
+
+/*/{Protheus.doc} setBranch
+
+Define o Código da Filial
+	
+@author Victor Hugo
+@since 03/11/2014
+
+@param cBranch, String, Código da Filial
+/*/
+method setBranch(cBranch) class DHLProductId
+	::cBranch := cBranch
+return
+
+
+/*/{Protheus.doc} getId
+
+Coleta o ID do Produto
+	
+@author Victor Hugo
+@since 03/11/2014
+
+@return String ID do Produto
+/*/
+method getId() class DHLProductId
+return ::cId
+
+
+/*/{Protheus.doc} setId
+
+Define o ID do Produto
+	
+@author Victor Hugo
+@since 03/11/2014
+
+@param cId, String, ID do Produto
+/*/
+method setId(cId) class DHLProductId
+	::cId := cId
+return
+
+
+/*/{Protheus.doc} getProduct
+
+Coleta o Código do Produto
+	
+@author Victor Hugo
+@since 03/11/2014
+
+@return String Código do Produto
+/*/
+method getProduct() class DHLProductId
+return ::cProduct
+
+
+/*/{Protheus.doc} setProduct
+
+Define o Código do Produto
+	
+@author Victor Hugo
+@since 03/11/2014
+
+@param cProduct, String, Código do Produto
+/*/
+method setProduct(cProduct) class DHLProductId
+	local oSql    := IpSqlObject():newIpSqlObject()
+	::cProduct    := cProduct
+	if !Empty(cProduct)
+		::cDescription := oSql:getFieldValue("SB1", "B1_DESC", "B1_FILIAL = '%SB1.FILIAL%' AND B1_COD = '"+cProduct+"'")
+	endIf	
+return
+
+
+/*/{Protheus.doc} getDescription
+
+Coleta a Descrição do Produto
+	
+@author Victor Hugo
+@since 03/11/2014
+
+@return String Descrição do Produto
+/*/
+method getDescription() class DHLProductId
+return ::cDescription
+
+
+/*/{Protheus.doc} setDescription
+
+Define a Descrição do Produto
+	
+@author Victor Hugo
+@since 03/11/2014
+
+@param cDescription, String, Descrição do Produto
+/*/
+method setDescription(cDescription) class DHLProductId
+	::cDescription := cDescription
+return
+
+
+/*/{Protheus.doc} getUnitValue
+
+Coleta o Valor Unitário do Item do Documento
+	
+@author Victor Hugo
+@since 03/11/2014
+
+@return Numerico Valor Unitário do Item do Documento
+/*/
+method getUnitValue() class DHLProductId
+return ::nUnitValue
+
+
+/*/{Protheus.doc} setUnitValue
+
+Define o Valor Unitário do Item do Documento
+	
+@author Victor Hugo
+@since 03/11/2014
+
+@param nUnitValue, Numerico, Valor Unitário do Item do Documento
+/*/
+method setUnitValue(nUnitValue) class DHLProductId
+	::nUnitValue := nUnitValue
+return
+
+
+/*/{Protheus.doc} getDate
+
+Coleta a Data da Geração do ID
+	
+@author Victor Hugo
+@since 03/11/2014
+
+@return Data Data da Geração do ID
+/*/
+method getDate() class DHLProductId
+return ::dDate
+
+
+/*/{Protheus.doc} setDate
+
+Define a Data da Geração do ID
+	
+@author Victor Hugo
+@since 03/11/2014
+
+@param dDate, Data, Data da Geração do ID
+/*/
+method setDate(dDate) class DHLProductId
+	::dDate := dDate
+return
+
+
+/*/{Protheus.doc} getTime
+
+Coleta a Hora da geração do ID
+	
+@author Victor Hugo
+@since 03/11/2014
+
+@return String Hora da geração do ID
+/*/
+method getTime() class DHLProductId
+return ::cTime
+
+
+/*/{Protheus.doc} setTime
+
+Define a Hora da geração do ID
+	
+@author Victor Hugo
+@since 03/11/2014
+
+@param cTime, String, Hora da geração do ID
+/*/
+method setTime(cTime) class DHLProductId
+	::cTime := cTime
+return
+
+
+/*/{Protheus.doc} getType
+
+Coleta o Tipo do Movimento (E=Entrada ou S=Saida)
+	
+@author Victor Hugo
+@since 03/11/2014
+
+@return String Tipo do Movimento (E=Entrada ou S=Saida)
+/*/
+method getType() class DHLProductId
+return ::cType
+
+
+/*/{Protheus.doc} setType
+
+Define o Tipo do Movimento (E=Entrada ou S=Saida)
+	
+@author Victor Hugo
+@since 03/11/2014
+
+@param cType, String, Tipo do Movimento (E=Entrada ou S=Saida)
+/*/
+method setType(cType) class DHLProductId
+	::cType := cType
+return
+
+
+/*/{Protheus.doc} getDocument
+
+Coleta o Número do Documento
+	
+@author Victor Hugo
+@since 03/11/2014
+
+@return String Número do Documento
+/*/
+method getDocument() class DHLProductId
+return ::cDocument
+
+
+/*/{Protheus.doc} setDocument
+
+Define o Número do Documento
+	
+@author Victor Hugo
+@since 03/11/2014
+
+@param cDocument, String, Número do Documento
+/*/
+method setDocument(cDocument) class DHLProductId
+	::cDocument := cDocument
+return
+
+
+/*/{Protheus.doc} getSeries
+
+Coleta a Série do Documento
+	
+@author Victor Hugo
+@since 03/11/2014
+
+@return String Série do Documento
+/*/
+method getSeries() class DHLProductId
+return ::cSeries
+
+
+/*/{Protheus.doc} setSeries
+
+Define a Série do Documento
+	
+@author Victor Hugo
+@since 03/11/2014
+
+@param cSeries, String, Série do Documento
+/*/
+method setSeries(cSeries) class DHLProductId
+	::cSeries := cSeries
+return
+
+
+/*/{Protheus.doc} getEntity
+
+Coleta o Código do Cliente/Fornecedor
+	
+@author Victor Hugo
+@since 03/11/2014
+
+@return String Código do Cliente/Fornecedor
+/*/
+method getEntity() class DHLProductId
+return ::cEntity
+
+
+/*/{Protheus.doc} setEntity
+
+Define o Código do Cliente/Fornecedor
+	
+@author Victor Hugo
+@since 03/11/2014
+
+@param cEntity, String, Código do Cliente/Fornecedor
+/*/
+method setEntity(cEntity) class DHLProductId
+	::cEntity := cEntity
+return
+
+
+/*/{Protheus.doc} getUnit
+
+Coleta a Loja do Cliente/Fornecedor
+	
+@author Victor Hugo
+@since 03/11/2014
+
+@return String Loja do Cliente/Fornecedor
+/*/
+method getUnit() class DHLProductId
+return ::cUnit
+
+
+/*/{Protheus.doc} setUnit
+
+Define a Loja do Cliente/Fornecedor
+	
+@author Victor Hugo
+@since 03/11/2014
+
+@param cUnit, String, Loja do Cliente/Fornecedor
+/*/
+method setUnit(cUnit) class DHLProductId
+	::cUnit := cUnit
+return
+
+
+/*/{Protheus.doc} getItem
+
+Coleta o Item do Documento
+	
+@author Victor Hugo
+@since 03/11/2014
+
+@return String Item do Documento
+/*/
+method getItem() class DHLProductId
+return ::cItem
+
+
+/*/{Protheus.doc} setItem
+
+Define o Item do Documento
+	
+@author Victor Hugo
+@since 03/11/2014
+
+@param cItem, String, Item do Documento
+/*/
+method setItem(cItem) class DHLProductId
+	::cItem := cItem
+return
+
+
+/*/{Protheus.doc} getStatus
+
+Coleta o Status do Item do Documento (DHL_ID_GOOD ou DHL_ID_BAD)
+	
+@author Victor Hugo
+@since 03/11/2014
+
+@return String Status do Item do Documento (DHL_ID_GOOD ou DHL_ID_BAD)
+/*/
+method getStatus() class DHLProductId
+return ::cStatus
+
+
+/*/{Protheus.doc} setStatus
+
+Define o Status do Item do Documento (DHL_ID_GOOD ou DHL_ID_BAD)
+	
+@author Victor Hugo
+@since 03/11/2014
+
+@param cStatus, String, Status do Item do Documento (DHL_ID_GOOD ou DHL_ID_BAD)
+/*/
+method setStatus(cStatus) class DHLProductId
+	::cStatus := cStatus
+return
+
+
+/*/{Protheus.doc} getIdentB6
+
+Coleta o Identificador do Poder de Terceiros (SB6)
+	
+@author Victor Hugo
+@since 03/11/2014
+
+@return String Identificador do Poder de Terceiros (SB6)
+/*/
+method getIdentB6() class DHLProductId
+return ::cIdentB6
+
+
+/*/{Protheus.doc} setIdentB6
+
+Define o Identificador do Poder de Terceiros (SB6)
+	
+@author Victor Hugo
+@since 03/11/2014
+
+@param cIdentB6, String, Identificador do Poder de Terceiros (SB6)
+/*/
+method setIdentB6(cIdentB6) class DHLProductId
+	::cIdentB6 := cIdentB6
+return
+
+
+/*/{Protheus.doc} getSequence
+
+Coleta a Sequencia do Movimento
+	
+@author Victor Hugo
+@since 03/11/2014
+
+@return String Sequencia do Movimento
+/*/
+method getSequence() class DHLProductId
+return ::cSequence
+
+
+/*/{Protheus.doc} setSequence
+
+Define a Sequencia do Movimento
+	
+@author Victor Hugo
+@since 03/11/2014
+
+@param cSequence, String, Sequencia do Movimento
+/*/
+method setSequence(cSequence) class DHLProductId
+	::cSequence := cSequence
+return
+
+
+/*/{Protheus.doc} getIcmsValue
+
+Coleta o Valor do ICMS do Item do Documento
+	
+@author Victor Hugo
+@since 03/11/2014
+
+@return Numerico Valor do ICMS do Item do Documento
+/*/
+method getIcmsValue() class DHLProductId
+return ::nIcmsValue
+
+
+/*/{Protheus.doc} setIcmsValue
+
+Define o Valor do ICMS do Item do Documento
+	
+@author Victor Hugo
+@since 03/11/2014
+
+@param nIcmsValue, Numerico, Valor do ICMS do Item do Documento
+/*/
+method setIcmsValue(nIcmsValue) class DHLProductId
+	::nIcmsValue := nIcmsValue
+return
+
+
+/*/{Protheus.doc} getIpiValue
+
+Coleta o Valor do IPI do Item do Documento
+	
+@author Victor Hugo
+@since 03/11/2014
+
+@return Numerico Valor do IPI do Item do Documento
+/*/
+method getIpiValue() class DHLProductId
+return ::nIpiValue
+
+
+/*/{Protheus.doc} setIpiValue
+
+Define o Valor do IPI do Item do Documento
+	
+@author Victor Hugo
+@since 03/11/2014
+
+@param nIpiValue, Numerico, Valor do IPI do Item do Documento
+/*/
+method setIpiValue(nIpiValue) class DHLProductId
+	::nIpiValue := nIpiValue
+return
+
+
+/*/{Protheus.doc} getSituation
+
+Coleta a Situação do registro (DHL_ID_SITUATION_NORMAL ou DHL_ID_SITUATION_DELETED)
+	
+@author Victor Hugo
+@since 03/11/2014
+
+@return String Situação do registro (DHL_ID_SITUATION_NORMAL ou DHL_ID_SITUATION_DELETED)
+/*/
+method getSituation() class DHLProductId
+return ::cSituation
+
+
+/*/{Protheus.doc} setSituation
+
+Define a Situação do registro (DHL_ID_SITUATION_NORMAL ou DHL_ID_SITUATION_DELETED)
+	
+@author Victor Hugo
+@since 03/11/2014
+
+@param cSituation, String, Situação do registro (DHL_ID_SITUATION_NORMAL ou DHL_ID_SITUATION_DELETED)
+/*/
+method setSituation(cSituation) class DHLProductId
+	::cSituation := cSituation
+return
+
+
+/*/{Protheus.doc} getTypeDoc
+
+Coleta o tipo do documento
+	
+@author Thiago Meschiatti
+@since 12/01/2016
+
+@return String Tipo do documento
+/*/
+method getTypeDoc() class DHLProductId
+return ::cTypeDoc
+
+
+/*/{Protheus.doc} setTypeDoc
+
+Define o tipo do documento
+	
+@author Thiago Meschiatti
+@since 12/01/2016
+
+@param cTypeDoc, String, Tipo do documento
+/*/
+method setTypeDoc(cTypeDoc) class DHLProductId
+	::cTypeDoc := cTypeDoc
+return

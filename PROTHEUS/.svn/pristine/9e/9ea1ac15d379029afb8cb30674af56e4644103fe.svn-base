@@ -1,0 +1,50 @@
+#include "protheus.ch"
+#include "dhl.ch"
+
+/*/{Protheus.doc} MA410MNU
+
+Ponto de entrada para adicionar botões na tela de pedido de venda
+	
+@author Renato Castro
+@since 22/10/2014
+
+/*/
+User Function MA410MNU()
+
+	local cDescription := getDescription()
+	
+	if FWUnitBusiness() == DHL_BUSINESSUNIT_PKG
+		aAdd(aRotina,{cDescription,"U_AltCliPed()",0,4})
+	elseif (FWUnitBusiness() == DHL_BUSINESSUNIT_AGE) 
+		aAdd(aRotina,{cDescription,"U_AgeAltCli()",0,4})
+		aAdd(aRotina,{"Vinc. NF Terceiro","U_AgeVincNFTer()",0,4})
+	elseIf (FWUnitBusiness() == DHL_BUSINESSUNIT_AG2)
+		aAdd(aRotina,{cDescription,"U_Ag2AltCli()",0,4})
+		aAdd(aRotina,{"Vinc. NF Terceiro","U_AgeVincNFTer()",0,4})
+	elseIf (FWUnitBusiness() == DHL_BUSINESSUNIT_AGL)
+		aAdd(aRotina,{cDescription,"U_AglAltCli()",0,4})
+		aAdd(aRotina,{"Vinc. NF Terceiro","U_AglVincNFTer()",0,4})
+		aAdd(aRotina,{"Triangulação Saída","U_AglControleFaturamento()",0,2})
+	elseif FWUnitBusiness() == DHL_BUSINESSUNIT_MUL
+		aAdd(aRotina,{"Alt.Cli/For","U_MulAltCliPed()",0,4})
+	elseif FWUnitBusiness() == DHL_BUSINESSUNIT_REP //adicionado para atender AGE dentro da filial 082 que é REP		
+		aAdd(aRotina,{"Vinc. NF Terceiro","U_RepVincNFTer()",0,4})
+	endif
+
+return
+
+
+/**
+* Retorna a descrição da rotina
+**/
+static function getDescription()
+
+	local cDescription := ""
+	
+	if FWUnitBusiness() == DHL_BUSINESSUNIT_PKG
+		cDescription := "Alt.Cli/For"
+	else
+		cDescription := "Alt.Cli/For(Aj.Inv)"
+	endif
+
+return cDescription

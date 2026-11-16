@@ -1,0 +1,82 @@
+#Include 'Protheus.ch'
+#Include 'FWMVCDEF.ch'
+   
+#Define CAMPOSITENS 'Z9_ITEM|Z9_COD|Z9_DESCRIC|Z9_QUANT|Z9_PRCVEN|Z9_TOTAL|Z9_CF|Z9_LOTE|Z9_DTVALID|Z9_DTFABR|'
+
+/*/{Protheus.doc} CADSZ8
+		@author 	Cassandra J. Silva 
+		@version 	1.0
+		@since 		22/08/2016	
+/*/
+******************************************************************************************************************
+User Function CADSZ8()
+******************************************************************************************************************
+	Local oBrowse := Nil
+	Local cUnidade:= Alltrim(GetMv("ZZ_CNPJAG"))
+	
+	If Alltrim(SM0->M0_CGC) == cUnidade
+		oBrowse := FWMBrowse():New()
+		oBrowse:SetAlias('SZ8')
+		oBrowse:AddLegend( "Z8_TPNF == 'L'", "YELLOW", "Locação" )
+		oBrowse:AddLegend( "Z8_TPNF == 'C'", "BLUE"  , "Comodato" )
+		oBrowse:SetFilterDefault( "Z8_TPNF <> ' '")
+		oBrowse:SetDescription('Histórico de Notas Fiscais Locação/Comodato')
+		oBrowse:Activate() 
+	Else
+	   Aviso("CNPJ "+cUnidade,"Rotina específica da unidade HP AGE.",{"OK"})		
+	Endif                                   
+	
+Return Nil
+
+******************************************************************************************************************
+Static Function MenuDef()
+******************************************************************************************************************
+	Local aRotina := {}
+	
+	ADD OPTION aRotina Title 'Visualizar' 	Action 'VIEWDEF.CADSZ8' OPERATION 2 ACCESS 0
+	ADD OPTION aRotina Title 'Incluir' 		Action 'VIEWDEF.CADSZ8' OPERATION 3 ACCESS 0
+	ADD OPTION aRotina Title 'Excluir' 		Action 'VIEWDEF.CADSZ8' OPERATION 5 ACCESS 0
+	ADD OPTION aRotina Title 'Imprimir' 	Action 'VIEWDEF.CADSZ8' OPERATION 8 ACCESS 0
+
+Return aRotina
+
+******************************************************************************************************************
+Static Function ModelDef()
+******************************************************************************************************************
+	Local oStruSZ8 	:= FWFormStruct( 1, 'SZ8' )
+	Local oStruSZ9 	:= FWFormStruct( 1, 'SZ9' )
+	Local oModel	:= Nil
+	
+	oModel:= MPFormModel():New( 'SZ8FORM', , , /*{|oModel| U_GeraPedido(2,{},oModel)}*/ )
+	oModel:AddFields( 'SZ8MASTER', /*cOwner*/, oStruSZ8 )
+	oModel:AddGrid( 'SZ9DETAIL', 'SZ8MASTER', oStruSZ9 )
+	oModel:SetRelation( 'SZ9DETAIL', { {'Z9_FILIAL', 'xFilial("SZ9")'},{'Z9_DOC', 'Z8_DOC'},{'Z9_SERIE', 'Z8_SERIE'},{'Z9_CLIENTE', 'Z8_CLIENTE'},{'Z9_LOJA', 'Z8_LOJA'} }, SZ9->(IndexKey(1)) )
+	oModel:SetDescription( 'XML Terceiro - Locação/Comodato' )
+	oModel:GetModel( 'SZ8MASTER' ):SetDescription( 'Cabeçalho XML Terceiro' )
+	oModel:GetModel( 'SZ9DETAIL' ):SetDescription( 'Item XML Terceiro' )
+	oModel:SetPrimaryKey({})
+	
+Return oModel
+
+******************************************************************************************************************
+Static Function ViewDef()
+******************************************************************************************************************
+	Local oModel 	:= FWLoadModel( 'CADSZ8' )
+	Local oStruSZ8 	:= FWFormStruct( 2, 'SZ8' )
+	Local oStruSZ9 	:= FWFormStruct( 2, 'SZ9',   { | cCampo |  AllTrim( cCampo ) + '|' $ CAMPOSITENS })
+	Local oView		:= Nil
+	
+	oView := FWFormView():New()
+	oView:SetModel( oModel )
+		
+	oView:AddField( 'VIEW_SZ8', oStruSZ8, 'SZ8MASTER' )
+	oView:AddGrid( 'VIEW_SZ9', oStruSZ9, 'SZ9DETAIL' )
+	
+	oView:AddIncrementField( 'VIEW_SZ9', 'Z9_ITEM' ) //--- Campo Incremental	           
+	
+	oView:CreateHorizontalBox( 'SUPERIOR', 45 )
+	oView:CreateHorizontalBox( 'INFERIOR', 55 )
+	oView:SetOwnerView( 'VIEW_SZ8', 'SUPERIOR' )
+	oView:SetOwnerView( 'VIEW_SZ9', 'INFERIOR' )
+	
+Return oView

@@ -1,0 +1,326 @@
+#include "totvs.ch"
+#include "dhl.ch"
+
+/*/{Protheus.doc} AglControleFaturamento
+
+Tela para controle de notas fiscais RCO e Ret. Simbolico do processo de
+faturamento triangular AGL.
+
+@author TOTVS IP
+@since 15/11/2023
+@version 1.0
+
+@type function
+/*/
+user Function AglControleFaturamento()
+
+	local oGetFilter    := nil
+	local cPedido		:= ""
+	local cNfTerceiro	:= ""
+	local cSerTerceiro	:= ""
+	local cCliTerceiro	:= ""
+	local cLjTerceiro	:= ""
+	local cNome			:= ""
+	local oSql		    := IpSqlObject():newIpSqlObject()
+
+	private oUtils      := IpUtilsObject():newIpUtilsObject()
+	private cIdents     := ""
+	private oGrid       := nil
+	private oDlg        := nil
+	private lMsErroAuto := .F.
+	Private lMsHelpAuto := .F.
+	private aDetail     := {}
+	private aHeader     := {}
+
+	cPedido 	:= SC5->C5_NUM
+	cNfTerceiro := SC5->C5_ZZNFTER
+	cSerTerceiro:= SC5->C5_ZZSETER
+	cCliTerceiro:= SC5->C5_ZZCLTER
+	cLjTerceiro	:= SC5->C5_ZZLJTER
+
+	oSql:newTable("SZ8", "Z8_CLIEMIT, Z8_LOJEMIT", " %SZ8.XFILIAL% "+;
+		" AND ((Z8_CLIENTE = '" + cCliTerceiro + "' AND Z8_LOJA = '" + cLjTerceiro + "') OR "+;
+		" (Z8_CLIEMIT = '" + cCliTerceiro + "' AND Z8_LOJEMIT = '" + cLjTerceiro + "')) ")
+
+	if oSql:hasRecords()
+		cCliTerceiro := oSql:getValue("Z8_CLIEMIT")
+		cLjTerceiro := oSql:getValue("Z8_LOJEMIT")
+	else
+		cCliTerceiro := ""
+		cLjTerceiro := ""
+	endif
+	if Existblock("IsClienteDepositante")
+		lRet := u_IsClienteDepositante(cCliTerceiro, cLjTerceiro)
+	endif
+
+	if lRet
+		oSql:close()
+
+		if SC5->C5_TIPO $ "B|D|"
+			cNome := AllTrim(Posicione("SA2",1,xFilial("SA2")+cCliTerceiro+cLjTerceiro,"A2_NOME"))
+		else
+			cNome := AllTrim(Posicione("SA1",1,xFilial("SA1")+cCliTerceiro+cLjTerceiro,"A1_NOME"))
+		endif
+
+		DEFINE MSDIALOG oDlg TITLE "Triangulação de Saída" FROM 001,001 TO 300,800 PIXEL OF oMainWnd
+
+		createFromSql(@oGrid, oDlg, cNfTerceiro, cSerTerceiro, cCliTerceiro, cLjTerceiro)
+
+		@ 010,007 SAY LabelDoc   PROMPT "NF de Venda" 	SIZE 060, 010 OF oDlg COLORS 0, 16777215 PIXEL
+		@ 010,080 SAY LabelSerie PROMPT "Série"         SIZE 030, 010 OF oDlg COLORS 0, 16777215 PIXEL
+		@ 010,150 SAY LabelLoja  PROMPT "Código"       	SIZE 030, 010 OF oDlg COLORS 0, 16777215 PIXEL
+		@ 010,190 SAY LabelLoja  PROMPT "Loja"          SIZE 030, 010 OF oDlg COLORS 0, 16777215 PIXEL
+		@ 010,250 SAY LabelForn  PROMPT "Cliente Emit."      	SIZE 150, 010 OF oDlg COLORS 0, 16777215 PIXEL
+
+		ltela := .f.
+
+		@ 020,007 MSGET oGetNF   VAR cNfTerceiro    SIZE 060,010 PIXEL OF oDlg WHEN .F.
+		@ 020,080 MSGET oGetNF   VAR cSerTerceiro  	SIZE 030,010 PIXEL OF oDlg WHEN .F.
+		@ 020,150 MSGET oGetNF   VAR cCliTerceiro 	SIZE 030,010 PIXEL OF oDlg WHEN .F.
+		@ 020,190 MSGET oGetNF   VAR cLjTerceiro   	SIZE 030,010 PIXEL OF oDlg WHEN .F.
+		@ 020,250 MSGET oGetForn VAR cNome   		SIZE 150,010 PIXEL OF oDlg WHEN .F.
+
+		// @ 125,264 BUTTON "Visualizar" SIZE 35,12 ACTION {|| visualiza() } PIXEL OF oDlg
+		@ 125,281 BUTTON "Reproc. Ret. Simbólico" SIZE 65,12 ACTION {|| FWMsgRun(, {|| processamento(), oDlg:end()},,"Aguarde realizando a processametno...") }  WHEN {|| validBut() } PIXEL OF oDlg
+		@ 125,358 BUTTON "Fechar"   SIZE 35,12 ACTION {|| oDlg:end()  } PIXEL OF oDlg
+
+		ACTIVATE MSDIALOG oDlg CENTERED
+	else
+		MsgAlert("Menu apenas para clientes depositantes e triangulação de faturamento", "Atenção!")
+	endif
+
+return
+
+
+/**
+* Criação do grid
+*/
+static function createFromSql(oGrid, oDlg, cNfTerceiro, cSerTerceiro, cCliTerceiro, cLjTerceiro)
+
+	local nI    := 0
+	local nCol    := 5
+	local nRow    := 40
+	local nWidth  := 400
+	local nHeight := 110
+	local oGrid   := IpGridObject():newIpGridObject(nCol,nRow,nWidth,nHeight,oDlg)
+	local cQuery  := getSql()
+
+	// oGrid:addMarkColumn({|| vldMark(oGrid),oDlg:refresh() })
+
+	oGrid:addSqlColumns(cQuery)
+
+	// for nI := 1 to oGrid:length()
+	// 	oGrid:setMarkedLine(.F.,nI)
+	// next
+
+	oGrid:setReadOnly(.T.)
+	oGrid:create()
+
+return
+
+
+/**
+* Query dos dados da Grid
+*/
+static function getSql()
+
+	local cQuery := ""
+
+	cQuery += " SELECT " + CRLF
+	cQuery += " 	'VENDA' TIPO_NF " + CRLF
+	cQuery += " 	, CASE  " + CRLF
+	cQuery += " 		WHEN NVL(SZ8.Z8_DOC, '') = '' THEN 'NÃO IMPORTADA' ELSE 'IMPORTADA' " + CRLF
+	cQuery += " 	END AS STATUS " + CRLF
+	cQuery += " 	, SZ8.Z8_DOC AS NF " + CRLF
+	cQuery += " 	, SZ8.Z8_SERIE AS SERIE " + CRLF
+	cQuery += " 	, SZ8.Z8_CLIENTE AS CLIENTE " + CRLF
+	cQuery += " 	, SZ8.Z8_LOJA AS LOJA	 " + CRLF
+	cQuery += " 	, A1_NOME AS NOME " + CRLF
+	cQuery += " 	, SZ8.Z8_PEDIDO AS PEDIDO " + CRLF
+	cQuery += " FROM " + RetSqlName("SC5") + " SC5  " + CRLF
+	cQuery += " LEFT JOIN " + RetSqlName("SZ8") + " SZ8 ON 1=1 " + CRLF
+	cQuery += " 	AND Z8_DOC = C5_ZZNFTER " + CRLF
+	cQuery += " 	AND Z8_SERIE = C5_ZZSETER " + CRLF
+	cQuery += " 	AND ((Z8_CLIENTE = C5_ZZCLTER AND Z8_LOJA = C5_ZZLJTER) OR (Z8_CLIEMIT = C5_ZZCLTER AND Z8_LOJEMIT = C5_ZZLJTER)) " + CRLF
+	cQuery += " 	AND SZ8.D_E_L_E_T_ = ' ' " + CRLF
+	cQuery += " LEFT JOIN " + RetSqlName("SA1") + " SA1 	ON 1=1 " + CRLF
+	cQuery += " 	AND A1_FILIAL = SZ8.Z8_FILIAL " + CRLF
+	cQuery += " 	AND A1_COD 	= SZ8.Z8_CLIENTE " + CRLF
+	cQuery += " 	AND A1_LOJA = SZ8.Z8_LOJA " + CRLF
+	cQuery += " 	AND SA1.D_E_L_E_T_ = ' '  " + CRLF
+	cQuery += " WHERE " + CRLF
+	cQuery += " 	C5_FILIAL = '" + FWxFilial("SC5") + "' " + CRLF
+	cQuery += " 	AND C5_NUM = '" + SC5->C5_NUM + "' " + CRLF
+	cQuery += " 	AND SC5.D_E_L_E_T_ = ' ' " + CRLF
+	cQuery += " UNION ALL " + CRLF
+	cQuery += " SELECT " + CRLF
+	cQuery += " 	CASE WHEN SF2RCO.F2_ZZTPNF = '4' THEN 'RETORNO SIMBOLICO' ELSE 'RCO' END TIPO_NF " + CRLF
+	cQuery += " 	, CASE  " + CRLF
+	cQuery += " 		WHEN SF2RCO.F2_FIMP = 'S' THEN 'APROVADA' " + CRLF
+	cQuery += " 		WHEN SF2RCO.F2_FIMP = 'T' THEN 'TRANSMITIDA'  " + CRLF
+	cQuery += " 		WHEN SF2RCO.F2_FIMP = 'C' THEN 'CANCELADA'  " + CRLF
+	cQuery += " 		WHEN SF2RCO.F2_FIMP = 'N' THEN 'REJEITADA'  " + CRLF
+	cQuery += " 	END AS STATUS " + CRLF
+	cQuery += " 	, NVL(SF2RCO.F2_DOC,'') AS NF " + CRLF
+	cQuery += " 	, NVL(SF2RCO.F2_SERIE,'') AS SERIE " + CRLF
+	cQuery += " 	, NVL(SF2RCO.F2_CLIENTE,'') AS CLIENTE " + CRLF
+	cQuery += " 	, NVL(SF2RCO.F2_LOJA,'') AS LOJA	 " + CRLF
+	cQuery += " 	, NVL(A1_NOME,'') AS NOME " + CRLF
+	cQuery += " 	, NVL(SD2.D2_PEDIDO,'') AS PEDIDO " + CRLF
+	cQuery += " FROM " + RetSqlName("SC5") + " SC5 " + CRLF
+	cQuery += " LEFT JOIN " + RetSqlName("SZ8") + " SZ8 ON 1=1 " + CRLF
+	cQuery += " 	AND Z8_DOC = C5_ZZNFTER " + CRLF
+	cQuery += " 	AND Z8_SERIE = C5_ZZSETER " + CRLF
+	cQuery += " 	AND ((Z8_CLIENTE = C5_ZZCLTER AND Z8_LOJA = C5_ZZLJTER) OR (Z8_CLIEMIT = C5_ZZCLTER AND Z8_LOJEMIT = C5_ZZLJTER)) " + CRLF
+	cQuery += " 	AND SZ8.D_E_L_E_T_ = ' ' " + CRLF
+	cQuery += " LEFT JOIN " + RetSqlName("SF2") + " SF2RCO ON 1=1 " + CRLF
+	cQuery += " 	AND SF2RCO.F2_FILIAL = Z8_FILIAL " + CRLF
+	cQuery += " 	AND SF2RCO.F2_DOC = Z8_NFRCO " + CRLF
+	cQuery += " 	AND SF2RCO.F2_SERIE = Z8_SERRCO " + CRLF
+	cQuery += " 	AND SF2RCO.F2_CLIENTE = Z8_CLIRCO " + CRLF
+	cQuery += " 	AND SF2RCO.F2_LOJA = Z8_LOJRCO " + CRLF
+	cQuery += " 	AND SF2RCO.D_E_L_E_T_ = ' '	 " + CRLF
+	cQuery += " LEFT JOIN " + RetSqlName("SA1") + " SA1 	ON 1=1 " + CRLF
+	cQuery += " 	AND A1_FILIAL = SF2RCO.F2_FILIAL " + CRLF
+	cQuery += " 	AND A1_COD 	= SF2RCO.F2_CLIENTE " + CRLF
+	cQuery += " 	AND A1_LOJA = SF2RCO.F2_LOJA " + CRLF
+	cQuery += " 	AND SA1.D_E_L_E_T_ = ' '  " + CRLF
+	cQuery += " OUTER APPLY ( " + CRLF
+	cQuery += " 	SELECT D2_PEDIDO " + CRLF
+	cQuery += " 	FROM " + RetSqlName("SD2") + " SD2 " + CRLF
+	cQuery += " 	WHERE " + CRLF
+	cQuery += " 		SD2.D2_FILIAL = SF2RCO.F2_FILIAL " + CRLF
+	cQuery += " 		AND SD2.D2_DOC = SF2RCO.F2_DOC " + CRLF
+	cQuery += " 		AND SD2.D2_SERIE = SF2RCO.F2_SERIE " + CRLF
+	cQuery += " 		AND SD2.D_E_L_E_T_ = ' '		 " + CRLF
+	cQuery += " ) SD2 " + CRLF
+	cQuery += " WHERE " + CRLF
+	cQuery += " 	C5_FILIAL = '" + FWxFilial("SC5") + "' " + CRLF
+	cQuery += " 	AND C5_NUM = '" + SC5->C5_NUM + "' " + CRLF
+	cQuery += " 	AND SC5.D_E_L_E_T_ = ' ' " + CRLF
+	cQuery += " UNION ALL " + CRLF
+	cQuery += " SELECT  " + CRLF
+	cQuery += " 	CASE WHEN SF2RET.F2_ZZTPNF = '3' THEN 'RCO' ELSE 'RETORNO SIMBOLICO' END TIPO_NF " + CRLF
+	cQuery += " 	, CASE  " + CRLF
+	cQuery += " 		WHEN SF2RET.F2_FIMP = 'S' THEN 'APROVADA' " + CRLF
+	cQuery += " 		WHEN SF2RET.F2_FIMP = 'T' THEN 'TRANSMITIDA'  " + CRLF
+	cQuery += " 		WHEN SF2RET.F2_FIMP = 'C' THEN 'CANCELADA'  " + CRLF
+	cQuery += " 		WHEN SF2RET.F2_FIMP = 'N' THEN 'REJEITADA'  " + CRLF
+	cQuery += " 	END AS STATUS " + CRLF
+	cQuery += " 	, NVL(SF2RET.F2_DOC,'') AS NF_RET " + CRLF
+	cQuery += " 	, NVL(SF2RET.F2_SERIE,'') AS SERIE_RET " + CRLF
+	cQuery += " 	, NVL(SF2RET.F2_CLIENTE,'') AS CLIENTE_RET " + CRLF
+	cQuery += " 	, NVL(SF2RET.F2_LOJA,'') AS LOJA_RET	 " + CRLF
+	cQuery += " 	, NVL(A1_NOME,'') AS NOME " + CRLF
+	// cQuery += " 	, CASE WHEN Z8_DOC IS NULL THEN C5_NUM ELSE NVL(SD22.D2_PEDIDO,'') END AS PEDIDO " + CRLF
+	cQuery += " 	,CASE WHEN C5_ZZTPPV = '4' THEN SC5.C5_NUM ELSE (SELECT SC5X.C5_NUM  " + CRLF
+ 	cQuery += " 		FROM " + RetSqlName("SC5") + " C5  " + CRLF
+ 	cQuery += " 		LEFT JOIN " + RetSqlName("SZ8") + " SZ8 ON 1=1   " + CRLF
+ 	cQuery += " 			AND Z8_DOC = C5_ZZNFTER   " + CRLF
+ 	cQuery += " 			AND Z8_SERIE = C5_ZZSETER   " + CRLF
+ 	cQuery += " 			AND ((Z8_CLIENTE = C5_ZZCLTER AND Z8_LOJA = C5_ZZLJTER) OR (Z8_CLIEMIT = C5_ZZCLTER AND Z8_LOJEMIT = C5_ZZLJTER))   " + CRLF
+ 	cQuery += " 			AND SZ8.D_E_L_E_T_ = ' '   " + CRLF
+ 	cQuery += " 		LEFT JOIN " + RetSqlName("SC5") + " SC5X ON 1=1  " + CRLF
+ 	cQuery += " 		  AND SC5X.C5_ZZNFTER = C5.C5_ZZNFTER  " + CRLF
+ 	cQuery += " 		  AND SC5X.C5_ZZSETER = C5.C5_ZZSETER  " + CRLF
+ 	cQuery += " 		  AND SC5X.C5_ZZCLTER = (CASE WHEN C5.C5_ZZTPPV = '3' THEN Z8_CLIEMIT ELSE Z8_CLIENTE END)  " + CRLF
+ 	cQuery += " 		  AND SC5X.C5_ZZLJTER = (CASE WHEN C5.C5_ZZTPPV = '3' THEN Z8_LOJEMIT ELSE Z8_LOJA END)  " + CRLF
+ 	cQuery += " 		  AND SC5X.D_E_L_E_T_ = ' '  " + CRLF
+ 	cQuery += " 		WHERE  " + CRLF
+ 	cQuery += " 			C5.C5_FILIAL = '" + FWxFilial("SC5") + "'   " + CRLF
+ 	cQuery += " 			AND C5.C5_NUM = '" + SC5->C5_NUM + "'   " + CRLF
+ 	cQuery += " 			AND C5.D_E_L_E_T_ = ' ' ) END PEDIDO  " + CRLF
+	cQuery += " FROM " + RetSqlName("SC5") + " SC5 " + CRLF
+	cQuery += " LEFT JOIN " + RetSqlName("SZ8") + " SZ8 ON 1=1 " + CRLF
+	cQuery += " 	AND Z8_DOC = C5_ZZNFTER " + CRLF
+	cQuery += " 	AND Z8_SERIE = C5_ZZSETER " + CRLF
+	cQuery += " 	AND ((Z8_CLIENTE = C5_ZZCLTER AND Z8_LOJA = C5_ZZLJTER) OR (Z8_CLIEMIT = C5_ZZCLTER AND Z8_LOJEMIT = C5_ZZLJTER)) " + CRLF
+	cQuery += " 	AND SZ8.D_E_L_E_T_ = ' ' " + CRLF
+	cQuery += " LEFT JOIN " + RetSqlName("SF2") + " SF2RET ON 1=1 " + CRLF
+	cQuery += " 	AND SF2RET.F2_FILIAL = Z8_FILIAL " + CRLF
+	cQuery += " 	AND SF2RET.F2_DOC = Z8_NFRET " + CRLF
+	cQuery += " 	AND SF2RET.F2_SERIE = Z8_SERRET " + CRLF
+	cQuery += " 	AND SF2RET.F2_CLIENTE = Z8_CLIRET " + CRLF
+	cQuery += " 	AND SF2RET.F2_LOJA = Z8_LOJRET " + CRLF
+	cQuery += " 	AND SF2RET.D_E_L_E_T_ = ' '	 " + CRLF
+	cQuery += " LEFT JOIN " + RetSqlName("SA1") + " SA1 	ON 1=1 " + CRLF
+	cQuery += " 	AND A1_FILIAL = SF2RET.F2_FILIAL " + CRLF
+	cQuery += " 	AND A1_COD 	= SF2RET.F2_CLIENTE " + CRLF
+	cQuery += " 	AND A1_LOJA = SF2RET.F2_LOJA " + CRLF
+	cQuery += " 	AND SA1.D_E_L_E_T_ = ' '	 " + CRLF
+	cQuery += " OUTER APPLY ( " + CRLF
+	cQuery += " 	SELECT D2_PEDIDO " + CRLF
+	cQuery += " 	FROM " + RetSqlName("SD2") + " SD21 " + CRLF
+	cQuery += " 	WHERE " + CRLF
+	cQuery += " 		SD21.D2_FILIAL = SF2RET.F2_FILIAL " + CRLF
+	cQuery += " 		AND SD21.D2_DOC = SF2RET.F2_DOC " + CRLF
+	cQuery += " 		AND SD21.D2_SERIE = SF2RET.F2_SERIE " + CRLF
+	cQuery += " 		AND SD21.D_E_L_E_T_ = ' '	 " + CRLF
+	cQuery += " ) SD22	 " + CRLF
+	cQuery += " WHERE " + CRLF
+	cQuery += " 	C5_FILIAL = '" + FWxFilial("SC5") + "' " + CRLF
+	cQuery += " 	AND C5_NUM = '" + SC5->C5_NUM + "' " + CRLF
+	cQuery += " 	AND SC5.D_E_L_E_T_ = ' ' " + CRLF
+
+return cQuery
+
+/**/
+static function processamento()
+	Local cDocRCO := ""
+	Local cSerieRCO := ""
+
+	if valid(@cDocRCO, @cSerieRCO)
+		u_AglNfRetSimbolico(, , cDocRCO, cSerieRCO)
+	endif
+
+return
+
+/*
+** Valida se possuí itens marcado no grid e/ou grid vazio.
+*/
+static function valid(cDocRCO, cSerieRCO)
+
+	local nLine := 0
+	local lRet	:= .t.
+
+	for nLine := 1 to oGrid:length()
+		if AllTrim(oGrid:getValue("TIPO_NF", nLine)) ==  "RCO"
+			if Empty(oGrid:getValue("NF", nLine)) .and. Empty(oGrid:getValue("NF", nLine))
+				lRet := .f.
+				MsgAlert("Vinculo de Pedido x NF de Venda não realizado. Reprocessamento não permitido.", "Triângulação Faturametno")
+				exit
+			else
+				cDocRCO := oGrid:getValue("NF", nLine)
+				cSerieRCO := oGrid:getValue("SERIE", nLine)
+			endIf
+		endIf
+	next nLine
+
+return lRet
+
+/*
+** Valida se botão reprocessar
+*/
+static function validBut()
+	local cNfRet := ""
+	local cSerieRet := ""
+	local cNfRco := ""
+	local cSerieRco := ""
+	local nLine := 0
+	local lRet	:= .f.
+
+	for nLine := 1 to oGrid:length()
+		if AllTrim(oGrid:getValue("TIPO_NF", nLine)) ==  "RCO"
+			cNfRco := oGrid:getValue("NF", nLine)
+			cSerieRco := oGrid:getValue("SERIE", nLine)
+		elseif AllTrim(oGrid:getValue("TIPO_NF", nLine)) ==  "RETORNO SIMBOLICO"
+			cNfRet := oGrid:getValue("NF", nLine)
+			cSerieRet := oGrid:getValue("SERIE", nLine)
+		endIf
+	next nLine
+
+	if  (Empty(cNfRet) .and. Empty(cSerieRet)) .and. (!Empty(cNfRco) .and. !Empty(cSerieRco))
+		lRet := .t.
+	endif
+
+return lRet

@@ -1,0 +1,67 @@
+#include "totvs.ch"
+#include "dhl.ch"
+
+/*/{Protheus.doc} MT103COR
+
+Ponto de entrada para adicionar cores nas legendas do doc.entrada
+	
+@author Renato Castro
+@since 27/10/2014
+
+@return Array Novas cores
+/*/
+User Function MT103COR()
+
+	local aCores := aClone(Paramixb[1])
+	local nI     := 0
+	local nQtdLeg := 0
+	local lSelect_new	   := SuperGetMV("ZZ_SELECTN",,.F.,xFilial("SD1"))  //RONI SILVA
+	
+	if 	(FWUnitBusiness() == DHL_BUSINESSUNIT_PKG) .or. ;
+		(FWUnitBusiness() == DHL_BUSINESSUNIT_REP) .or. ;
+		(FWUnitBusiness() == DHL_BUSINESSUNIT_DIS) .or. ;
+		(FWUnitBusiness() == DHL_BUSINESSUNIT_AGE) .or. ;
+		(FWUnitBusiness() == DHL_BUSINESSUNIT_MUL) .or. ;
+		(FWUnitBusiness() == DHL_BUSINESSUNIT_AGL) .or. ;
+		(FWUnitBusiness() == DHL_BUSINESSUNIT_AG2) .or. ;
+		(FWUnitBusiness() == DHL_BUSINESSUNIT_SPL .AND. lSelect_new) .or. ; //RONI SILVA
+		(FWUnitBusiness() == DHL_BUSINESSUNIT_DI2)
+		
+		nQtdLeg := 6
+	elseif (FWUnitBusiness() == DHL_BUSINESSUNIT_SPL .AND. !lSelect_new) //RONI SILVA
+		nQtdLeg := 4
+	elseif (FWUnitBusiness() == DHL_BUSINESSUNIT_REV)
+		nQtdLeg := 1
+	endif
+		
+	for nI := 1 to nQtdLeg
+		aAdd(aCores,{"",""})
+		aIns(aCores,1)
+	next nI
+	
+	if nQtdLeg > 0
+		aCores[1] := {"allTrim(F1_ESPECIE) == '" + DHL_ESPECIE_INVENTARIO         + "'","PMSEDT4" }
+		if FWUnitBusiness() != DHL_BUSINESSUNIT_REV
+			aCores[2] := {"allTrim(F1_ZZSTATU) == '" + DHL_DOC_AGUARDANDO_CONFIRMACAO + "'","BR_BRANCO"}
+			aCores[3] := {"allTrim(F1_ZZSTATU) == '" + DHL_DOC_CONFIRMACAO_NEGADA     + "'","BR_CANCEL"}
+		endif
+		if (FWUnitBusiness() == DHL_BUSINESSUNIT_SPL .AND. !lSelect_new) //RONI SILVA
+			aCores[4]	:= {"allTrim(F1_ZZSTATU) == '" + DHL_DOC_CONFIRMACAO_PARCIAL     + "'","PMSEDT2"}
+		endIf
+		if 	(FWUnitBusiness() == DHL_BUSINESSUNIT_PKG) .or. ;
+			(FWUnitBusiness() == DHL_BUSINESSUNIT_REP) .or. ;
+			(FWUnitBusiness() == DHL_BUSINESSUNIT_DIS) .or. ;
+			(FWUnitBusiness() == DHL_BUSINESSUNIT_AGE) .or. ;
+			(FWUnitBusiness() == DHL_BUSINESSUNIT_MUL) .or. ;
+			(FWUnitBusiness() == DHL_BUSINESSUNIT_AGL) .or. ;
+			(FWUnitBusiness() == DHL_BUSINESSUNIT_AG2) .or. ;
+			(FWUnitBusiness() == DHL_BUSINESSUNIT_SPL .AND. lSelect_new) .or. ; //RONI SILVA
+			(FWUnitBusiness() == DHL_BUSINESSUNIT_DI2)
+			
+			aCores[4] := {"allTrim(F1_ZZSTATU) == '" + DHL_DOC_PENDENTE_ACAO          + "'","PMSEDT3"  }
+			aCores[5] := {"allTrim(F1_ZZSTATU) == '" + DHL_DOC_CANCELADO              + "'","PMSEDT1"  }
+			aCores[6] := {"allTrim(F1_ESPECIE) == '" + DHL_ESPECIE_ESPELHO            + "'","BR_MARRON_OCEAN"  }
+		endIf
+	endif
+	
+return aCores

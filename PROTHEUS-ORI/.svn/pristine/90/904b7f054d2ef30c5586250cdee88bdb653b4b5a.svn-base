@@ -1,0 +1,180 @@
+#Include 'Totvs.ch'
+#Include 'DHL.ch'
+
+/*/{Protheus.doc} AGLMVMAIL
+		@author     iVan de Oliveira - Totvs IP
+		@version 	1.0
+		@since 		28/06/2021	
+/*/
+******************************************************************************************************************
+User Function AGLMVMAIL(cParam1,cParam2)
+******************************************************************************************************************
+ 
+ 
+   if EMPTY(cParam1) .OR. EMPTY(cParam2)
+      cParam1 := "10" 
+      cParam2 := "A82AGL008271"
+   ENDIF
+
+    RpcSetEnv(cParam1,cParam2)
+
+    Private cCNPJDest := ""
+    Private _cTipo    := ''
+
+    Private _cDirectory := "\" + alltrim(Posicione("SZ1",1, xFilial("SZ1") + APP_BAIXA_XML, "Z1_DIRIMP"))
+    Private _cDirectory := if(substr(_cDirectory, len(_cDirectory),1) == "\", _cDirectory, _cDirectory+"\")
+//  \automacao\anexos\
+
+    Private _cDestTrf   := alltrim(Posicione("SZ1",1, xFilial("SZ1") + APP_IMPORTADOR_XML, "Z1_DIRIMP"))
+//	Private _cDestTrf   := "\sdi\sdi_to_protheus\"
+    Private _cDestTrf   := if(substr(_cDestTrf, len(_cDestTrf),1) == "\", _cDestTrf, _cDestTrf+"\")
+
+    Private _cDestTer   := "\" + alltrim(Posicione("SZ1",1, xFilial("SZ1") + APP_AUT, "Z1_DIRIMP"))
+//	Private _cDestTer   := "\automacao\terceiros\"	
+    Private _cDestTer   := if(substr(_cDestTer, len(_cDestTer),1) == "\", _cDestTer, _cDestTer+"\")
+
+    FWLogMsg("INFO", , "BusinessObject", funName(), "", "01", "Iniciando JOB", 0, 0, {})
+  
+	oDir 	:= DHLDirectoryManager():newDHLDirectoryManager(_cDirectory)
+	aFiles	:= oDir:getFiles()
+		
+	for nJ:= 1 to len(aFiles)
+
+	   cXML		    := aFiles[nJ]
+	   oXMLUtil		:= ipXmlObject():newIpXmlObject(cXML)
+	   oXMLUtil:doParseFile(cXML)
+	   cCnpjDest	:= getCnpj(oXMLUtil, @_cTipo)
+      if !Empty(cCnpjDest)
+         FWLogMsg("INFO", , "BusinessObject", funName(), "", "01", "CNPJ Destino: " + cCNPJDest, 0, 0, {})
+         ClassXML(cXML,cCNPJDest,_cTipo)
+      Endif
+       
+	next nJ
+		
+    FWLogMsg("INFO", , "BusinessObject", funName(), "", "01", "Finalizando JOB", 0, 0, {})
+    
+    RpcClearEnv()
+
+return
+
+***********************************************
+Static Function ClassXML(cXML,cCNPJDest, __cTipo  )
+***********************************************
+
+Local _lTerceiro := .F.
+Local _lNFTransf := .F.
+Local lRet       := .F.
+
+//FWLogMsg("INFO", , "BusinessObject", funName(), "", "01", "CNPJ Destino: " + cCNPJDest, 0, 0, {})
+//FWLogMsg("INFO","LAST", "BusinessObject", funName(), "", "01", "CNPJ Depositante: " + _cCNPJ, 0, 0, {})
+ 
+If __cTipo == 'IN'  
+   _lNFTransf := .T.
+elseif __cTipo == 'OUT'
+   _lTerceiro := .T.
+EndIf
+
+_cNomeArq := ""
+
+For _nX := Len(allTrim(cXML)) to 1 Step -1
+
+   If Substr(cXML,_nX,1) == "\"
+     
+      _cNomeArq := Substr(cXML,_nX+1,Len(Alltrim(cXML))-_nX)
+      
+      Exit
+   
+   EndIf
+
+Next _nX
+
+If _lTerceiro
+   FWLogMsg("INFO", , "BusinessObject", funName(), "", "01", "Transferência para Terceiros: " + AllTrim(cXML) + " para " + (_cDestTer+_cNomeArq), 0, 0, {})
+//   lRet := __CopyFile(&(cXML) , &(_cDestTer+_cNomeArq) )
+   Copy File &(cXML) to &(_cDestTer+_cNomeArq) //RONI SILVA 29/09/2021
+   _lTerceiro := .F.
+   IF fErase(cXML) <> -1
+      Conout("Arquivo deletado")
+   ELSE
+      Conout("Arquivo não deletado"+str(ferror()))
+   ENDIF
+EndIf
+
+If _lNFTransf
+   FWLogMsg("INFO", , "BusinessObject", funName(), "", "01", "Transferência para Transferências: " + AllTrim(cXML) + " para " + (_cDestTrf+_cNomeArq), 0, 0, {})
+//   lRet := __CopyFile(&(cXML) , &(_cDestTer+_cNomeArq) )
+   Copy File &(cXML) to &(_cDestTrf+_cNomeArq)  //RONI SILVA 29/09/2021
+   _lNFTransf := .F.
+   IF fErase(cXML) <> -1
+      FWLogMsg("INFO", , "BusinessObject", funName(), "", "01", "Arquivo deletado: " +str(ferror()) +" - " + AllTrim(cXML) + " para " + (_cDestTrf+_cNomeArq), 0, 0, {})
+      Conout("Arquivo deletado")
+   ELSE
+      FWLogMsg("INFO", , "BusinessObject", funName(), "", "01", "Arquivo não deletado: " +str(ferror()) +" - " + AllTrim(cXML) + " para " + (_cDestTrf+_cNomeArq), 0, 0, {})
+      Conout("Arquivo não deletado"+str(ferror()))
+   ENDIF
+EndIf
+
+Return
+
+*********************************
+static function getCnpj(oXmlUtil, __cTipo)
+*********************************
+	local cStrXml	:= ""
+   Local _cCnpjEmit:= _cCnpjDest := cStrXml := '' 
+   Local _cCliSA5 	:= SuperGetMv( "ZZ_SA5XML" , .F. , " " ,  )
+   Local _lRet := .F.
+	
+   /*
+	If !empty(oXmlUtil:getNodeValue("nfeproc:_nfe:_infnfe:_dest:_cnpj:text"))
+		cStrXml := "nfeproc:_nfe:_infnfe:_dest:_cnpj:text"
+	elseIf !empty(oXmlUtil:getNodeValue("infnfe:_dest:_cnpj:text"))
+		cStrXml	:= "infnfe:_dest:_cnpj:text"
+	elseif !empty(oXmlUtil:getNodeValue("envinfe:_nfe:_infnfe:_dest:_cnpj:text"))
+		cStrXml	:= "envinfe:_nfe:_infnfe:_dest:_cnpj:text"
+	ElseIf !empty(oXmlUtil:getNodeValue("nfe:_infnfe:_dest:_cnpj:text"))
+		cStrXml	:= "nfe:_infnfe:_dest:_cnpj:text"
+	ElseIf !empty(oXmlUtil:getNodeValue("cteproc:_cte:_infcte:_dest:_cnpj:text"))
+		cStrXml := "cteproc:_cte:_infcte:_dest:_cnpj:text"
+	EndIF
+   */
+
+// Outbound – Emitente Mahle Limeira > Importador XML Terceiro
+If !empty(oXmlUtil:getNodeValue("nfeproc:_nfe:_infnfe:_emit:_cnpj:text"))
+	_cCnpjEmit	:=oXmlUtil:getNodeValue("nfeproc:_nfe:_infnfe:_emit:_cnpj:text")
+EndIF
+// Inbound  – Destinatário Mahle Limeira > Importador XML
+If !empty(oXmlUtil:getNodeValue("nfeproc:_nfe:_infnfe:_dest:_cnpj:text"))
+	_cCnpjDest  := oXmlUtil:getNodeValue("nfeproc:_nfe:_infnfe:_dest:_cnpj:text")
+EndIF
+
+Conout("_cCnpjEmit " + _cCnpjEmit + " _cCnpjDest " + _cCnpjDest )
+
+// Se encontrou CNPJ, pegar código cliente para verificar se consta parâmetro: ZZ_SA5XML 
+if !Empty(_cCnpjEmit) .or. !Empty(_cCnpjDest)
+
+	// Verificando Outbound
+	SA1->(dbSetOrder(3))
+	If SA1->(dbSeek( xFilial("SA1") + Padr(_cCnpjEmit,Len(SA1->A1_CGC)) ))		
+		_lRet := Alltrim(SA1->A1_COD) + Alltrim(SA1->A1_LOJA) $ Alltrim(_cCliSA5)
+   EndIF
+
+	// Verificando Inbound
+	if !_lRet
+
+		If SA1->(dbSeek( xFilial("SA1") + Padr(_cCnpjDest,Len(SA1->A1_CGC)) ))		
+			_lRet := Alltrim(SA1->A1_COD) + Alltrim(SA1->A1_LOJA)  $ Alltrim(_cCliSA5)
+		Endif
+
+      if _lRet
+         cStrXml := _cCnpjDest
+         __cTipo := 'IN'
+      Endif
+
+   Else
+      cStrXml := _cCnpjEmit
+      __cTipo := 'OUT'
+	Endif
+ 
+Endif
+	
+return  cStrXml

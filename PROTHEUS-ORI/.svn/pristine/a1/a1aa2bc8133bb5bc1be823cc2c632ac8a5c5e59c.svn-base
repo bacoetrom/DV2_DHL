@@ -1,0 +1,928 @@
+#include "totvs.ch"
+#include "rwmake.ch"
+#include "dhl.ch"
+
+#define PRODUCT_BOM  1
+#define QUANTITY_BOM 2
+#define WORK_ORDER   3
+#define FILEITEM     4
+
+#define PRODUCT      1
+#define QUANTITY     2
+
+//Para modelo 2 de faturamento
+#define OPS     	3
+#define UNIT_PRICE  4
+#define TOT_PRICE	5
+
+ 
+/*/{Protheus.doc} InvRequest
+
+Rotina responsável por ler e processar a interface Invoice Request e atualizar os dados referentes ao documento.
+	
+@author Winston Dellano de Castro
+@since 13/11/2014
+
+@param cFilePath, String, Arquivo a ser processado
+/*/
+user function InvRequest(cFilePath)
+
+	local lValid        := .T.
+	local nBom          := 0
+	local cPallet       := ""
+	local lIsBom		:= .F.
+	local nItem			:= 0
+	
+	private cShipping   := getShipping()
+	private aBoms       := getBoms()
+	private lMsErroAuto := .F.
+	private cFile       := cFilePath
+	
+	private aProducts		 := {}
+	private aDetail          := {}
+	private aDetails         := {}
+	private cProductionOrder := ""
+	private cIdOp			 := ""
+	private cItem            := ""
+	
+	private oDHLModelo3		:= DHLModelo3():NewDHLModelo3()
+	
+	BEGIN TRANSACTION
+		BEGIN SEQUENCE
+			for nBom := 1 to Len(aBoms)
+				lIsBom := isBom(@nBom)
+				if lIsBom
+						
+					incProductionOrders(@nBom)
+						
+					if lMsErroAuto
+						lError := .T.
+						BREAK
+					else
+						for nItem := 1 to Len(aBoms[nBom][FILEITEM])
+							incAllocatedReq(aBoms[nBom][FILEITEM][nItem][PRODUCT],aBoms[nBom][FILEITEM][nItem][QUANTITY])
+								
+							if lMsErroAuto
+								lError := .T.
+								BREAK
+							else
+								aAdd(aProducts, {aBoms[nBom][FILEITEM][nItem][PRODUCT], aBoms[nBom][FILEITEM][nItem][QUANTITY], ""})
+							endif
+						next
+					endif
+						
+					if lMsErroAuto
+						lError := .T.
+						BREAK
+					else
+						incRegisterProductn(@nBom)
+					endif
+				else
+					for nItem := 1 to Len(aBoms[nBom][FILEITEM])
+						aAdd(aProducts, {aBoms[nBom][FILEITEM][nItem][PRODUCT], aBoms[nBom][FILEITEM][nItem][QUANTITY], ""})
+					next
+						
+				endif
+				
+				if lMsErroAuto
+					lError := .T.
+					BREAK
+				else
+					if !(empty(aBoms[nBom][PRODUCT_BOM]))
+						aAdd(aProducts, {aBoms[nBom][PRODUCT_BOM], aBoms[nBom][QUANTITY], cProductionOrder})
+					endif
+				endif
+				
+				lMsErroAuto := .F.
+			next
+			
+			if lMsErroAuto
+				lError := .T.
+				BREAK
+			else
+				if alltrim(GetNewPar("ZZ_MODEFAT", "1")) $ "3" .and. lIsBom
+					incModelo3OutFlow(@nBom)
+					
+					if oDHLModelo3:HasErro()
+						lError := .T.
+					endIf
+					
+				else
+					incOutflowOrder(@nBom)
+				endIf
+				
+				if lMsErroAuto
+					lError := .T.
+					BREAK
+				endif
+			endif
+		RECOVER
+			DisarmTransaction()
+		END SEQUENCE
+	END TRANSACTION
+	
+	if oDHLModelo3:HasErro()
+		setFileLog(cFile,"fail","Falha ao incluir o pedido de vendas"+CRLF+CRLF+oDHLModelo3:GetMsgErro())
+	endiF
+
+return
+
+/**
+* Coleta o Shipping Number
+**/
+static function getShipping()
+return oXml:_INV_REQ:_BODY:_FILEHEADER:_SHIPPING_NUMBER:TEXT
+
+/**
+* Coleta o Document Type
+**/
+static function getDocType()
+return oXml:_INV_REQ:_BODY:_FILEHEADER:_DOCUMENT_TYPE:TEXT
+
+/**
+* Coleta os Items da interface Invoice Request
+**/
+static function getBoms()
+	
+	local aItems       := {}
+	local aBoms        := {}
+	local nItem        := 1
+	local nPallet      := 1
+	local nLenPallet   := 0
+	local nLenItem     := 0
+	local nBomQuantity := 0
+	local cBomProduct  := ""
+	local cWorkOrder   := ""
+	
+	if ValType(oXml:_INV_REQ:_BODY:_FILEPALLET) <> nil
+	
+		if ValType(oXml:_INV_REQ:_BODY:_FILEPALLET) == "A"
+		
+			nLenPallet := Len(oXml:_INV_REQ:_BODY:_FILEPALLET)
+			
+			for nPallet := 1 to nLenPallet
+			
+				cBomProduct  := getBomProduct(@nPallet)
+				nBomQuantity := getBomQuantity(@nPallet)
+				cWorkOrder   := getWorkOrder(@nPallet)
+				
+				if ValType(oXml:_INV_REQ:_BODY:_FILEPALLET[nPallet]:_FILEBOM:_FILEITEM) == "A"
+				
+					nLenItem := Len(oXml:_INV_REQ:_BODY:_FILEPALLET[nPallet]:_FILEBOM:_FILEITEM)
+					aItems   := {}
+					
+					for nItem := 1 to nLenItem
+						aAdd(aItems,{getProduct(@nPallet,@nItem),getQuantity(@nPallet,@nItem)})
+					next
+					
+				elseif ValType(oXml:_INV_REQ:_BODY:_FILEPALLET[nPallet]:_FILEBOM:_FILEITEM) == "O"
+			
+					nItem	:= 0
+					aItems  := {}
+					aAdd(aItems,{getProduct(@nPallet,@nItem),getQuantity(@nPallet,@nItem)})
+					
+				endif
+				
+				aAdd(aBoms,{cBomProduct,nBomQuantity,cWorkOrder,aItems})
+			next
+		else
+		
+			cBomProduct  := getBomProduct(0)
+			nBomQuantity := getBomQuantity(0)
+			cWorkOrder   := getWorkOrder(0)
+			
+			if ValType(oXml:_INV_REQ:_BODY:_FILEPALLET:_FILEBOM:_FILEITEM) == "A"
+			
+				nLenItem := Len(oXml:_INV_REQ:_BODY:_FILEPALLET:_FILEBOM:_FILEITEM)
+				aItems   := {}
+				
+				for nItem := 1 to nLenItem
+					aAdd(aItems,{getProduct(0,@nItem),getQuantity(0,@nItem)})
+				next
+				
+			elseif ValType(oXml:_INV_REQ:_BODY:_FILEPALLET:_FILEBOM:_FILEITEM) == "O"
+			
+				nItem	:= 0
+				aItems  := {}
+				aAdd(aItems,{getProduct(0,@nItem),getQuantity(0,@nItem)})
+				
+			endif
+			
+			aAdd(aBoms,{cBomProduct,nBomQuantity,cWorkOrder,aItems})
+		endif
+			
+	else
+		aAdd(aBoms,{})
+	endif
+	
+return aBoms
+
+
+/**
+* Coleta o produto acabado (BOM)
+**/
+static function getBomProduct(nPallet)
+	local xRet	:= ""
+	
+	if nPallet > 0
+		xRet := AllTrim(oXml:_INV_REQ:_BODY:_FILEPALLET[nPallet]:_FILEBOM:_BOM:TEXT)
+	else
+		xRet := AllTrim(oXml:_INV_REQ:_BODY:_FILEPALLET:_FILEBOM:_BOM:TEXT)
+	endif
+	
+return (xRet)
+
+
+/**
+* Coleta a quantidade do BOM
+**/
+static function getBomQuantity(nPallet)
+	local xRet := ""
+	
+	if nPallet > 0
+		xRet := Val(oXml:_INV_REQ:_BODY:_FILEPALLET[nPallet]:_FILEBOM:_QUANTITY:TEXT)
+	else
+		xRet := Val(oXml:_INV_REQ:_BODY:_FILEPALLET:_FILEBOM:_QUANTITY:TEXT)
+	endif
+
+return (xRet)
+
+
+/**
+* Coleta o Work Order
+**/
+static function getWorkOrder(nPallet)
+	local xRet := ""
+	
+	if nPallet > 0
+		xRet := AllTrim(oXml:_INV_REQ:_BODY:_FILEPALLET[nPallet]:_WORK_ORDER:TEXT)
+	else
+		xRet := AllTrim(oXml:_INV_REQ:_BODY:_FILEPALLET:_WORK_ORDER:TEXT)
+	endif
+return (xRet)
+
+
+/**
+* Coleta o Produto
+**/
+static function getProduct(nPallet,nItem)
+	local xRet := ""
+	
+	if nPallet > 0
+		if nItem > 0
+			xRet := AllTrim(oXml:_INV_REQ:_BODY:_FILEPALLET[nPallet]:_FILEBOM:_FILEITEM[nItem]:_ITEM:TEXT)
+		else
+			xRet := AllTrim(oXml:_INV_REQ:_BODY:_FILEPALLET[nPallet]:_FILEBOM:_FILEITEM:_ITEM:TEXT)
+		endif
+	else
+		if nItem > 0
+			xRet := AllTrim(oXml:_INV_REQ:_BODY:_FILEPALLET:_FILEBOM:_FILEITEM[nItem]:_ITEM:TEXT)
+		else
+			xRet := AllTrim(oXml:_INV_REQ:_BODY:_FILEPALLET:_FILEBOM:_FILEITEM:_ITEM:TEXT)
+		endif
+	endif
+return (xRet)
+
+
+/**
+* Coleta a Quantidade
+**/
+static function getQuantity(nPallet,nItem)
+	local xRet := ""
+	
+	if nPallet > 0
+		if nItem > 0
+			xRet := Val(oXml:_INV_REQ:_BODY:_FILEPALLET[nPallet]:_FILEBOM:_FILEITEM[nItem]:_QUANTITY:TEXT)
+		else
+			xRet := Val(oXml:_INV_REQ:_BODY:_FILEPALLET[nPallet]:_FILEBOM:_FILEITEM:_QUANTITY:TEXT)
+		endif
+	else
+		if nItem > 0
+			xRet := Val(oXml:_INV_REQ:_BODY:_FILEPALLET:_FILEBOM:_FILEITEM[nItem]:_QUANTITY:TEXT)
+		else
+			xRet := Val(oXml:_INV_REQ:_BODY:_FILEPALLET:_FILEBOM:_FILEITEM:_QUANTITY:TEXT)
+		endif
+	endif
+return (xRet)
+
+/**
+* Inclui a Ordem de Produção para o BOM
+**/
+static function incProductionOrders(nBom)
+
+	local aOrders    := {}
+	local cItemOrdem := "01"
+	local cSequencia := "001"
+	local cArmazem   := "01"
+	
+	setNumOP()
+	
+	dbSelectArea("BAT")
+	dbSetOrder(1)
+	
+	dbSelectArea("SD4")
+	dbSetOrder(1)
+				
+	dbSelectArea("SB1")
+	dbSetOrder(1)
+	dbSeek(xFilial("SB1")+aBoms[nBom][PRODUCT_BOM])
+		
+	aOrders := {{"C2_NUM"		,cProductionOrder                      ,nil},;
+		{"C2_ITEM"		,cItemOrdem                            ,nil},;
+		{"C2_SEQUEN"	,cSequencia                            ,nil},;
+		{"C2_PRODUTO"	,aBoms[nBom][PRODUCT_BOM]              ,nil},;
+		{"C2_LOCAL"		,cArmazem                              ,nil},;
+		{"C2_QUANT"		,aBoms[nBom][QUANTITY]                 ,nil},;
+		{"C2_UM"		,UnitMeasure(aBoms[nBom][PRODUCT_BOM]) ,nil},;
+		{"C2_DATPRI"	,dDataBase                             ,nil},;
+		{"C2_DATPRF"	,dDataBase                             ,nil},;
+		{"C2_TPOP"      ,"F"                                   ,nil},;
+		{"C2_EMISSAO"	,dDataBase                             ,nil},;
+		{"C2_ZZSHIP"	,cShipping                             ,nil},;
+		{"C2_ZZWKOR"	,aBoms[nBom][WORK_ORDER]               ,nil}}
+				
+	dbSelectArea("SC2")
+	dbSetOrder(1)
+		
+	MSExecAuto({|x,y| Mata650(x,y)}, aOrders, 3)
+	
+	if lMsErroAuto
+		DisarmTransaction()
+		setFileLog(cFile,"fail","Falha ao incluir a Ordem de Produção"+CRLF+CRLF+oUtils:getErroAuto())
+	else
+		cIdOp := SC2->(C2_NUM+C2_ITEM+C2_SEQUEN)
+	endIf
+
+return
+
+
+/**
+* Coleta a unidade de medida do Produto
+**/
+static function UnitMeasure(cProduct)
+return AllTrim(oSql:getFieldValue("SB1","B1_UM","B1_FILIAL = '%SB1.FILIAL%' AND B1_COD = '" + cProduct + "'"))
+
+
+/**
+* Define o número da Ordem de Produção
+**/
+static function setNumOP()
+	
+	local cQuery  := " SELECT MAX(C2_NUM) MAXNUM FROM %SC2.SQLNAME% WHERE %SC2.XFILIAL% AND %SC2.NOTDEL% "
+	local cMaxNum := ""
+	
+	if !Empty(cProductionOrder)
+		cProductionOrder := Soma1(cProductionOrder)
+		return
+	endIf
+	
+	oSql:newAlias(cQuery)
+	cMaxNum := oSql:getValue("MAXNUM")
+	oSql:close()
+	
+	if Empty(cMaxNum)
+		cProductionOrder := StrZero(1, Len(SC2->C2_NUM))
+	else
+		cProductionOrder := Soma1(cMaxNum)
+	endIf
+	
+return
+
+
+/**
+* Verifica se é produto acabado (BOM)
+**/
+static function isBom(nBom)
+return if(Empty(aBoms[nBom][PRODUCT_BOM]),.F.,.T.)
+
+/**
+* Inclui o Empenho
+**/
+static function incAllocatedReq(cProduct,nQuantity)
+
+	local aVetor := {}
+	local cLocal := "01"
+	
+	aAdd(aVetor,{"D4_FILIAL" ,xFilial("SD4"), nil})
+	aAdd(aVetor,{"D4_OP"     ,cIdOp, nil})
+	aAdd(aVetor,{"D4_COD"    ,PADR(cProduct, tamsx3("D4_COD")[1], " ")  ,nil})
+	aAdd(aVetor,{"D4_LOCAL"  ,cLocal           							,nil})
+	aAdd(aVetor,{"D4_DATA"   ,dDatabase        							,nil})
+	aAdd(aVetor,{"D4_QTDEORI",nQuantity        							,nil})
+	aAdd(aVetor,{"D4_QUANT"  ,nQuantity        							,nil})
+		
+	//MSExecAuto({|x,y,z| Mata380(x,y,z)}, aVetor, 3)
+	MSExecAuto({|x,y,z| Mata381(x,y,z)}, aVetor, 3)
+	
+	if lMsErroAuto
+		DisarmTransaction()
+		setFileLog(cFile,"fail","Falha ao realizar o empenho"+CRLF+CRLF+oUtils:getErroAuto())
+	endIf
+	
+return
+
+
+/**
+* Aponta a Produção
+**/
+static function incRegisterProductn(nBom)
+
+	local aVetor := {}
+	
+	aAdd(aVetor,{"D3_TM"    ,GetMV("MV_TMPAD")      									,nil})
+	aAdd(aVetor,{"D3_OP"    ,PADR(cProductionOrder+"01001", TAMSX3("D3_OP")[1], " ")    ,nil})
+	aAdd(aVetor,{"D3_QUANT" ,aBoms[nBom][QUANTITY]  									,nil})
+	
+	abreTabelas()
+		
+	MSExecAuto({|x,y| Mata250(x,y)}, aVetor, 3)
+	
+	if lMsErroAuto
+		DisarmTransaction()
+		setFileLog(cFile,"fail","Falha ao apontar a produção"+CRLF+CRLF+oUtils:getErroAuto())
+	endIf
+							
+return
+
+/**
+* Inclui o Pedido de Venda modelo 3
+**/
+static function incModelo3OutFlow(nBom)
+	
+	local aHeader := {}
+	local cPriceMO	 := ""
+	local cPriceIns	 := ""
+	local cPriceTot	 := ""
+
+	if FWUnitBusiness() == DHL_BUSINESSUNIT_PKG .and. getDocType() == "N"
+		
+		groupProducts()
+		
+		aRetorno := agglutModel3Prods(@cPriceMO, @cPriceIns, @cPriceTot)
+		aKit	 := aRetorno[1]
+		aProdCust:= aRetorno[2]
+		
+		if geraPedPV(aKit		, cPriceMO, cPriceIns, cPriceTot, COBRANCA_KIT)	 			 	 // GERA PEDIDO DE VENDAS PV1: COBRANÇA KIT
+			oDHLModelo3:SetRecnPV1(SC5->(Recno()))
+			oDHLModelo3:SetPV1(SC5->C5_NUM)
+			if geraPedPV(aProdCust	, cPriceMO, cPriceIns, cPriceTot, RETORNO_INDUSTRIALIZACAO)	 // GERA PEDIDO DE VENDAS PV2: RETORNO DE INDUSTRIALIZAÇÃO
+				oDHLModelo3:SetPV2(SC5->C5_NUM)
+				oDHLModelo3:SetRecnPV2(SC5->(Recno()))
+				
+				oDHLModelo3:GravaSC5Amarracao()
+				
+			endIf
+		endIf
+	endIf
+
+return
+
+/**
+* Inclui o Pedido de Venda
+**/
+static function incOutflowOrder(nBom)
+
+	local aHeader := {}
+	local cPriceMO	 := ""
+	local cPriceIns	 := ""
+	local cPriceTot	 := ""
+	
+	mountDetail(@cPriceMO, @cPriceIns, @cPriceTot)
+	
+	aAdd(aHeader,{"C5_TIPO"   , "N"                          ,nil})
+	aAdd(aHeader,{"C5_CLIENTE", Left(GetMV("ZZ_CLINTEG"),6)  ,nil})
+	aAdd(aHeader,{"C5_LOJACLI", Right(GetMV("ZZ_CLINTEG"),2) ,nil})
+	aAdd(aHeader,{"C5_CONDPAG", GetMV("ZZ_CONDINT")          ,nil})
+	aAdd(aHeader,{"C5_ZZSHIP" , cShipping                    ,nil})
+	aAdd(aHeader,{"C5_ZZSTATU", DHL_PV_PENDENTE_INFORMACAO   ,nil})
+	aAdd(aHeader,{"C5_ZZTIPO" , getDocType()   				 ,nil})
+	if !empty(cPriceMO) .and. !empty(cPriceIns) .and. !empty(cPriceTot)
+		aAdd(aHeader,{"C5_ZZMSGIN" , "Valor total cobrado: R$ "+cPriceTot+" (insumos empregados: R$ "+cPriceIns+" e mão-de-obra aplicada: R$"+cPriceMO+").", nil})
+	endif
+	
+	MSExecAuto({|x, y, z| Mata410(x, y, z)}, aHeader, aDetails, 3)
+	
+	if lMsErroAuto
+		DisarmTransaction()
+		setFileLog(cFile,"fail","Falha ao incluir o pedido de vendas"+CRLF+CRLF+oUtils:getErroAuto())
+	endIf
+return
+
+
+/**
+* Monta os Itens do Pedido de Venda
+**/
+static function mountDetail(cPriceMO, cPriceIns, cPriceTot)
+
+	local nI		 := 0
+	local nUnitPrice := 0
+	local nQuantity  := 0
+	local nTotPrice	 := 0
+	local cProduct   := ""
+	local cOP		 := ""
+	local cTesSaida	 := GetMV("ZZ_TESSAI")
+	local lModelo2	 := alltrim(GetNewPar("ZZ_MODEFAT", "1")) $ "2"	
+	local aKit		 := {}
+	local aProdCust	 := {}
+	local aRetorno	 := {}	
+	
+	aDetails := {}
+	cItem    := Replicate("0",Len(SC6->C6_ITEM))
+	
+	groupProducts()
+	
+	if FWUnitBusiness() == DHL_BUSINESSUNIT_PKG .and. lModelo2 .and. getDocType() == "N"
+	
+		agglutProds(@cPriceMO, @cPriceIns, @cPriceTot)
+		
+		for nI := 1 to Len(aProducts)
+		
+			aDetail   := {}
+			cItem     := Soma1(cItem)
+			cProduct  := aProducts[nI,PRODUCT]
+			nQuantity := aProducts[nI,QUANTITY]
+			cOP       := aProducts[nI,OPS]
+			nUnitPrice:= aProducts[nI,UNIT_PRICE]
+			nTotPrice := aProducts[nI,TOT_PRICE]
+				
+			aAdd(aDetail, {"C6_ITEM"   , cItem                  ,nil})
+			aAdd(aDetail, {"C6_PRODUTO", cProduct               ,nil})
+			aAdd(aDetail, {"C6_UM"     , UnitMeasure(cProduct)  ,nil})
+			aAdd(aDetail, {"C6_QTDVEN" , nQuantity              ,nil})
+			aAdd(aDetail, {"C6_PRCVEN" , if(nI == 1, nTotPrice/nQuantity, nUnitPrice) ,nil})
+			aAdd(aDetail, {"C6_VALOR"  , nTotPrice				,nil})
+			aAdd(aDetail, {"C6_TES"    , cTesSaida			    ,nil})
+			aAdd(aDetail, {"C6_ZZOP"   , cOP, nil})
+			if nI == 1
+				aAdd(aDetail, {"C6_PRUNIT"   , nTotPrice/nQuantity, nil})
+			endif
+			
+			aAdd(aDetails,aDetail)
+		
+		next nI
+			
+	else
+	
+		for nI := 1 to Len(aProducts)
+		
+			aDetail   := {}
+			cItem     := Soma1(cItem)
+			cProduct  := aProducts[nI,1]
+			nQuantity := aProducts[nI,2]
+			cOP       := aProducts[nI,3]
+			getUnitPrice(cProduct,@nUnitPrice)
+			
+			nTotPrice := A410Arred(nQuantity * nUnitPrice ,"C6_VALOR")
+				
+			aAdd(aDetail, {"C6_ITEM"   , cItem                  ,nil})
+			aAdd(aDetail, {"C6_PRODUTO", cProduct               ,nil})
+			aAdd(aDetail, {"C6_UM"     , UnitMeasure(cProduct)  ,nil})
+			aAdd(aDetail, {"C6_QTDVEN" , nQuantity              ,nil})
+			aAdd(aDetail, {"C6_PRCVEN" , nUnitPrice             ,nil})
+			aAdd(aDetail, {"C6_VALOR"  , nTotPrice				,nil})
+			aAdd(aDetail, {"C6_TES"    , cTesSaida			    ,nil})
+			aAdd(aDetail, {"C6_ZZOP"    , cOP, nil})
+			
+			aAdd(aDetails,aDetail)
+		
+		next nI
+		
+	endif
+	
+return
+
+/**
+ * Gera pedido de vendas modelo 3
+ */
+static function geraPedPV(aProduto, cPriceMO, cPriceIns, cPriceTot, cTipo)
+	
+	local aDetails	:= GetDetail(aProduto)
+	local aHeader	:= GetHeader(cPriceMO, cPriceIns, cPriceTot, cTipo)
+	local lStatus	:= .t.
+	
+	MSExecAuto({|x, y, z| Mata410(x, y, z)}, aHeader, aDetails, 3)
+	
+	if lMsErroAuto
+		DisarmTransaction()
+		setFileLog(cFile,"fail","Falha ao incluir o pedido de vendas"+CRLF+CRLF+oUtils:getErroAuto())
+		lStatus := .f.
+	endIf
+	
+return lStatus
+
+/**
+ * Obtém o aHeader do pedido de vendas modelo 3
+ */
+static function GetHeader(cPriceMO, cPriceIns, cPriceTot, cTipo)
+	
+	local aHeader := {}
+	
+	aAdd(aHeader,{"C5_TIPO"   , "N"                          ,nil})
+	aAdd(aHeader,{"C5_CLIENTE", Left(GetMV("ZZ_CLINTEG"),6)  ,nil})
+	aAdd(aHeader,{"C5_LOJACLI", Right(GetMV("ZZ_CLINTEG"),2) ,nil})
+	aAdd(aHeader,{"C5_CONDPAG", GetMV("ZZ_CONDINT")          ,nil})
+	aAdd(aHeader,{"C5_ZZSHIP" , cShipping                    ,nil})
+	aAdd(aHeader,{"C5_ZZSTATU", DHL_PV_PENDENTE_INFORMACAO   ,nil})
+	aAdd(aHeader,{"C5_ZZTIPO" , getDocType()   				 ,nil})
+	aAdd(aHeader,{"C5_ZZTPPV" , cTipo   				 	,nil})
+	
+	//GRAVAÇÃO NO CAMPO C5_ZZMSGIN SOMENTE PARA O PV1
+	if cTipo == COBRANCA_KIT 
+	
+		if !empty(cPriceMO) .and. !empty(cPriceIns) .and. !empty(cPriceTot)
+			aAdd(aHeader,{"C5_ZZMSGIN" , "Valor total cobrado: R$ "+cPriceTot+" (insumos empregados: R$ "+cPriceIns+" e mão-de-obra aplicada: R$"+cPriceMO+").", nil})
+		endif
+	
+	endIf
+
+return aHeader
+
+/**
+ * Obtém os itens do pedido de vendas para o MODELO 3
+**/
+static function getDetail(aProduto)
+	
+	local nI		:= 0
+	local cItem     := Replicate("0",Len(SC6->C6_ITEM))
+	local cProduct 	:= ""
+	local cOP		:= "" 
+	local cTesSaida	:= GetMV("ZZ_TESSAI")
+	local nQuantity	:= 0
+	local nUnitPrice:= 0
+	local nTotPrice	:= 0
+	local aDetails	:= {}
+	local aDetail	:= {}
+	
+	for nI := 1 to Len(aProduto)
+		
+		aDetail   := {}
+		cItem     := Soma1(cItem)
+		cProduct  := aProduto[nI,PRODUCT]
+		nQuantity := aProduto[nI,QUANTITY]
+		cOP       := aProduto[nI,OPS]
+		nUnitPrice:= aProduto[nI,UNIT_PRICE]
+		nTotPrice := aProduto[nI,TOT_PRICE]
+				
+		aAdd(aDetail, {"C6_ITEM"   , cItem                  ,nil})
+		aAdd(aDetail, {"C6_PRODUTO", cProduct               ,nil})
+		aAdd(aDetail, {"C6_UM"     , UnitMeasure(cProduct)  ,nil})
+		aAdd(aDetail, {"C6_QTDVEN" , nQuantity              ,nil})
+		aAdd(aDetail, {"C6_PRCVEN" , nUnitPrice 			,nil})
+		aAdd(aDetail, {"C6_VALOR"  , nTotPrice				,nil})
+		aAdd(aDetail, {"C6_TES"    , cTesSaida			    ,nil})
+		aAdd(aDetail, {"C6_ZZOP"   , cOP, nil})
+		//if nI == 1
+			aAdd(aDetail, {"C6_PRUNIT"   , nTotPrice/nQuantity, nil})
+		//endif
+			
+		aAdd(aDetails,aDetail)
+		
+	next nI
+
+return aDetails
+
+/**
+ * Agrupa os Produtos do Pedido de Vendas
+ */
+static function groupProducts()
+	
+	local nI	   	 := 0
+	local nScan		 := 0
+	local nQuantity  := 0
+	local cProduct   := ""
+	local cOP		 := ""
+	local aGroupProd := {}
+	
+	for nI := 1 to Len(aProducts)
+		
+		cProduct  := aProducts[nI,1]
+		nQuantity := aProducts[nI,2]
+		cOP 	  := AllTrim(aProducts[nI,3])
+		nScan	  := aScan(aGroupProd, {|x| x[1] == cProduct })
+		
+		if (nScan > 0)
+			aGroupProd[nScan,2] += nQuantity
+			if !Empty(cOP) .and. !(cOP $ aGroupProd[nScan,3])
+				aGroupProd[nScan,3] += "; "+cOP
+			endIf
+		else
+			aAdd(aGroupProd, {cProduct, nQuantity, cOP})
+		endIf
+		
+	next nI
+	
+	aProducts := aClone(aGroupProd)
+	
+return
+
+/**
+* Coleta o preço de Venda
+**/
+static function getUnitPrice(cProduct,nUnitPrice)
+
+	local cQuery := ""
+	
+	cQuery += "SELECT B1_PRV1,B2_CM1"                +CRLF
+	cQuery += "FROM %SB1.SQLNAME%"                   +CRLF
+	cQuery += "LEFT JOIN %SB2.SQLNAME%"              +CRLF
+	cQuery += "ON B2_FILIAL = B1_FILIAL AND"         +CRLF
+	cQuery += "   B2_COD = B1_COD AND"               +CRLF
+	cQuery += "   B2_LOCAL = B1_LOCPAD AND"          +CRLF
+	cQuery += "   %SB2.NOTDEL%"                      +CRLF
+	cQuery += "WHERE B1_FILIAL = '%SB1.FILIAL%' AND" +CRLF
+	cQuery += "      B1_COD = '"+cProduct+"' AND"    +CRLF
+	cQuery += "      %SB1.NOTDEL%"                   +CRLF
+		
+	oSql:newAlias(cQuery)
+	
+	nUnitPrice := oSql:getValue("B1_PRV1")
+	
+	if nUnitPrice == 0
+		nUnitPrice := oSql:getValue("B2_CM1")
+	endif
+		
+	oSql:close()
+	
+return
+
+
+/**
+ * Define os Logs de acordo com os tipos de arquivos
+ */
+static function setFileLog(cFile,cLogType,cLogText,cTag,cValue)
+	
+	local cInterface := "Invoice Request"
+	
+	oLog:start(APP_NULOGY,DHL_IMPORTACAO,cFile)
+	
+	if !(Empty(cTag))
+		cLogText += CRLF+CRLF+"Tag: "+cTag
+	endIf
+	
+	if !(Empty(cValue))
+		cLogText += CRLF+CRLF+"Valor: "+cValue
+	endIf
+	
+	if (cLogType == "fail")
+		oLog:fail(cInterface, cLogText)
+	elseIf (cLogType == "warn")
+		oLog:warn(cInterface, cLogText)
+	endIf
+	
+return
+
+/*
+** Aglutina conforme faturamento Modelo 3
+*/
+static function agglutModel3Prods(cPriceMO, cPriceIns, cPriceTot)
+	
+	local aKit		:= {}
+	local aProdCust	:= {}
+	local aProdDHL	:= {}
+	local nJ		:= 0
+	local nTotDHL	:= 0
+	local cOPs		:= ""
+	
+	dividProds(@aKit, @aProdCust, @aProdDHL)
+	aglutInsProprio(aProdDHL, aKit)
+	
+	for nJ:=1 to len(aProdDHL)
+		cOPs	+= aProdDHL[nJ, OPS]
+		nTotDHL += aProdDHL[nJ, TOT_PRICE]
+	next nJ
+	
+	cPriceMO 	:= alltrim(Transform( oDHLModelo3:GetVlrKIT()			, "@E 9,999,999,999,999.99"))
+	cPriceIns 	:= alltrim(Transform( oDHLModelo3:GetVlrTotInsumoDHL()	, "@E 9,999,999,999,999.99"))
+	cPriceTot	:= alltrim(Transform( oDHLModelo3:GetVlrTot()			, "@E 9,999,999,999,999.99"))
+	
+return {aKit, aProdCust}
+
+/*
+** Aglutina os produtos DHL com o KIT
+*/
+static function aglutInsProprio(aProdDHL, aKit)
+	
+	local nI 			:= 0
+	local cProduto 		:= ""
+	local aNewProdDHL 	:= {}
+	local cBom			:= aKit[1][1]
+	local nQuantPA		:= aKit[1][2]
+	local nPrecoUnit	:= aKit[1][4]
+	local nTotalPa		:= aKit[1][5]
+	local nTotalItem	:= 0
+	local nPrecoUnitItem:= 0
+	
+	//SOMA TOTAL INSUMO PROPRIO
+	for nI := 1 to len(aProdDHL)
+	
+		nTotalItem += aProdDHL[nI][5]
+		
+	next nI
+	
+	//SALVA O TOTAL DOS INSUMOS
+	oDHLModelo3:SetVlrTotInsumoDHL(nTotalItem)
+	
+	//SOMA O TOTAL INSUMO PROPRIO COM O PA	
+	nTotalItem += nTotalPa
+	
+	//DIVIDE TOTAL PELA QTD PA 
+	nPrecoUnitItem := nTotalItem / nQuantPA
+	
+	//ATUALIZA O PRECO UNITÁRIO E TOTAL DO KIT
+	aKit[1][4] :=  nPrecoUnitItem
+	aKit[1][5] :=  nTotalItem
+	
+	//SALVA O VALOR DO PA
+	oDHLModelo3:SetVlrKIT(nTotalPa)
+	
+	//SALVA O VALOR TOTAO COBRADO
+	oDHLModelo3:SetVlrTot(nTotalItem)
+
+return
+
+/*
+** Aglutina conforme faturamento Modelo 2
+*/
+static function agglutProds(cPriceMO, cPriceIns, cPriceTot)
+	local aKit		:= {}
+	local aProdCust	:= {}
+	local aProdDHL	:= {}
+	local nJ		:= 0
+	local nTotDHL	:= 0
+	local cOPs		:= ""
+	
+	dividProds(@aKit, @aProdCust, @aProdDHL)
+	
+	for nJ:=1 to len(aProdDHL)
+		cOPs	+= aProdDHL[nJ, OPS]
+		nTotDHL += aProdDHL[nJ, TOT_PRICE]
+	next nJ
+	
+	cPriceMO 	:= alltrim(Transform( aKit[1, TOT_PRICE], "@E 9,999,999,999,999.99"))
+	cPriceIns 	:= alltrim(Transform( nTotDHL, "@E 9,999,999,999,999.99"))
+	cPriceTot	:= alltrim(Transform( aKit[1, TOT_PRICE] + nTotDHL, "@E 9,999,999,999,999.99"))
+	
+	aKit[1,OPS] := aKit[1,OPS] + cOPs
+	aKit[1,TOT_PRICE] += nTotDHL
+	aKit[1,UNIT_PRICE]  := aKit[1,TOT_PRICE] / aKit[1,QUANTITY]
+	
+	for nJ:=1 to len(aProdCust)
+		aadd(aKit, {aProdCust[nJ,PRODUCT], aProdCust[nJ,QUANTITY], aProdCust[nJ,OPS], aProdCust[nJ,UNIT_PRICE], aProdCust[nJ,TOT_PRICE]})
+	next nJ
+	
+	aProducts := aClone(aKit)
+return
+
+
+/*
+** Divide os produtos de acordo com as regras
+*/
+static function dividProds(aKit, aProdCust, aProdDHL)
+	local oSql		:= IpSqlObject():newIpSqlObject()
+	local nI 		:= 0
+	local nUnitPrice:= 0
+	local nTotPrice	:= 0
+	
+	for nI:=1 to len(aProducts)
+		nUnitPrice := 0
+		
+		if oSql:getFieldValue("SB1", "B1_TIPO", " %SB1.XFILIAL% AND B1_COD = '"+aProducts[nI,PRODUCT]+"' ") $ 'PA'
+			getUnitPrice(aProducts[nI,PRODUCT],@nUnitPrice)
+			nTotPrice := A410Arred(aProducts[nI,QUANTITY] * nUnitPrice ,"C6_VALOR")
+			
+			aadd(aKit, {aProducts[nI,PRODUCT], aProducts[nI,2], aProducts[nI,OPS], nUnitPrice, nTotPrice})
+		elseif oSql:getFieldValue("SB1", "B1_AGREGCU", " %SB1.XFILIAL% AND B1_COD = '"+aProducts[nI,PRODUCT]+"' ") $ '2'
+			getUnitPrice(aProducts[nI,PRODUCT],@nUnitPrice)
+			nTotPrice := A410Arred(aProducts[nI,QUANTITY] * nUnitPrice ,"C6_VALOR")
+			
+			aadd(aProdDHL, {aProducts[nI,PRODUCT], aProducts[nI,QUANTITY], aProducts[nI,OPS], nUnitPrice, nTotPrice})
+		else
+			getUnitPrice(aProducts[nI,PRODUCT],@nUnitPrice)
+			nTotPrice := A410Arred(aProducts[nI,QUANTITY] * nUnitPrice ,"C6_VALOR")
+			
+			aadd(aProdCust, {aProducts[nI,PRODUCT], aProducts[nI,QUANTITY], aProducts[nI,OPS], nUnitPrice, nTotPrice})
+		endif
+	Next nI
+return
+
+/**
+* Abre as tabelas. Necessário, pois na segunda iteração da nota estava dando ajustar DOC_SEQ.
+* É necessário abrir as 3 tabelas
+**/
+static function abreTabelas()
+	
+	local lStatus := .F.
+	
+	If Select('SD1') <= 0
+		dbSelectArea('SD1')
+	EndIf
+	If Select('SD2') <= 0
+		dbSelectArea('SD2')
+	EndIf
+	If Select('SD3') <= 0
+		dbSelectArea('SD3')
+	EndIf
+	
+	lStatus := (Select('SD1')>0) .And. (Select('SD2')>0) .And. (Select('SD3')>0)
+	
+return

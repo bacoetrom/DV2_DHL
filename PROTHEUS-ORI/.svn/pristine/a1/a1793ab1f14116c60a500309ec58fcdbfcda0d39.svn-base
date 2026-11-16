@@ -1,0 +1,91 @@
+#Include "protheus.ch"
+#Include "dhl.ch"
+
+
+/*/{Protheus.doc} IPNFECAB
+
+PE (Importador XML) para adicionar itens no array aItens para execução da rotina automática MATA140
+
+@author Thiago Meschiatti
+@since 27/10/2014
+
+@param PARAMIXB[1], objeto, Objeto com informações da TAG ide do arquivo XML NFE
+@param PARAMIXB[2], objeto, Objeto com informações da TAG Det do arquivo XML NFE
+@param PARAMIXB[3], objeto, Objeto com informações da TAG Total do arquivo XML NFE
+@param PARAMIXB[4], objeto, Objeto com informações totais da TAG Det do arquivo XML NFE
+
+@return array Array com campos de cabeçalho para execução da rotina automática MATA140.
+/*/
+User Function IPNFECAB()
+	
+	local aCabAux	   := {}
+	local oIdent	   := PARAMIXB[1]
+	local oDet		   := PARAMIXB[2]
+	local oTotal	   := PARAMIXB[3]
+	local cUnit		   := FWUnitBusiness()
+	local lSelectnew   := iif(cUnit == DHL_BUSINESSUNIT_SPL,isSelectnew(aCab[3][2],aCab[4][2],aCab[7][2]),.f.)
+	 //SuperGetMV("ZZ_SELECTN",,.F.,xFilial("SD1"))  //RONI SILVA
+	
+	if (cUnit == DHL_BUSINESSUNIT_SPL .AND. !lSelectnew) 
+		aAdd(aCabAux,{"F1_ZZSTATU",DHL_DOC_AGUARDANDO_CONFIRMACAO,nil})
+	elseif 	(cUnit == DHL_BUSINESSUNIT_PKG) .or. ;
+			(cUnit == DHL_BUSINESSUNIT_REP) .or. ;
+			(cUnit == DHL_BUSINESSUNIT_DIS) .or. ;
+			(cUnit == DHL_BUSINESSUNIT_AGE) .or. ;
+			(cUnit == DHL_BUSINESSUNIT_MUL) .or. ;
+			(cUnit == DHL_BUSINESSUNIT_AGL) .or. ;
+			(cUnit == DHL_BUSINESSUNIT_AG2) .or. ;
+			(cUnit == DHL_BUSINESSUNIT_SPL .AND. lSelectnew)
+		
+		If FWUnitBusiness() == DHL_BUSINESSUNIT_DIS
+			AlterTipoNFRepr()
+		EndIf
+		
+		aAdd(aCabAux,{"F1_ZZSTATU",DHL_DOC_PENDENTE_ACAO,nil})
+		
+	endIf
+	
+Return(aCabAux)
+
+
+/**
+* Função responsável em alterar F1_FORNECE, F1_LOJA, F1_EST, F1_TIPO com as informações quando nota fiscal for de representante
+**/
+Static Function AlterTipoNFRepr()
+	
+	Local oSql:= ipSqlObject():newIpSqlObject()
+	Local cFornecedor := aCab[3][2]
+	Local cCliente		:= AllTrim(oSql:getFieldValue("SA2","A2_ZZCODRE","A2_FILIAL = '%SA2.FILIAL%' AND A2_COD = 		'" + cFornecedor + "'"))
+	Local cLoja			:= AllTrim(oSql:getFieldValue("SA2","A2_ZZLOJRE","A2_FILIAL = '%SA2.FILIAL%' AND A2_COD = 		'" + cFornecedor + "'"))
+	Local cUF			:= AllTrim(oSql:getFieldValue("SA1","A1_EST"	,"A1_FILIAL = '%SA1.FILIAL%' AND A1_COD = 		'" + cCliente + "' AND A1_LOJA = '"+cLoja+"'"))
+	
+	If !Empty(cCLiente)
+		aCab[3][2]:=cCliente	//FORNECEDOR
+		aCab[4][2]:=cLoja		//LOJA
+		aCab[6][2]:=cUF			//UF
+		aCab[7][2]:="D"			//TIPO
+	EndIF
+	
+Return
+
+/**
+* Verifica se o cliente/fornecedor utiliza interface SELECT NEW
+**/
+Static Function isSelectNew(cCliefor,cLoja,cTipo)
+	Local oSqlUtil := IpSqlObject():newIpSqlObject()
+	Local lRet     := .F.
+
+	if AllTrim(cTipo) $ "D/B"
+		if AllTrim(oSqlUtil:getFieldValue("SA1","A1_ZZINTSE","A1_FILIAL = '%SA1.FILIAL%' AND A1_COD = '"+cClieFor+ "' AND A1_LOJA = '"+cLoja+"' ")) == "2"
+			lRet := .T.
+		endif
+	else
+		if AllTrim(oSqlUtil:getFieldValue("SA2","A2_ZZINTSE","A2_FILIAL = '%SA2.FILIAL%' AND A2_COD = '"+cClieFor+ "' AND A2_LOJA = '"+cLoja+"' "))  == "2"
+			lRet := .T.
+		endif
+
+	ENDIF
+	
+	oSqlUtil:close()
+
+return lRet

@@ -1,0 +1,189 @@
+#Include 'Totvs.ch'
+#Include 'DHL.ch'
+
+/*/{Protheus.doc} DHLBXMAIL
+@author 	Edson Deluca 
+@version 	1.0
+@since 		12/05/2018	
+/*/
+
+User Function DHLBXMAIL(cParam1,cParam2)	
+
+	local oServer 	:= nil
+	local oMessage	:= nil
+	local nAttach 	:= 0
+	local  nI 		:= 0
+	local nMessages 	:= 0
+	local aAttInfo 	:= {}
+	local cBaseName 	:= "" 
+	local cName 		:= ""
+	local xRet		:= nil 
+	local cPopAnexo  := ""//SuperGetMv("ZZ_POPANEX",,"pop.kul-dc.dhl.com")
+	local cSmtpAnexo := ""//SuperGetMv("ZZ_SMTPANE",,"smtp.dhl.com")
+	local cUsrAnexo  := ""//SuperGetMv("ZZ_USRANEX",,"nfeBraskem-xml-q@dhl.com")
+	local cPswAnexo  := ""//SuperGetMv("ZZ_PSWANEX",,"Y%FMtbHf54F8")
+	local lUsaSSL    := ""//SuperGetMv("ZZ_SSLANEX",,.F.)
+	local cDirectory := ""//alltrim(Posicione("SZ1",1, xFilial("SZ1") + APP_BAIXA_XML, "Z1_DIRIMP"))
+	local cDirectory := ""//if(substr(cDirectory, len(cDirectory),1) == "\", cDirectory, cDirectory+"\")
+	Local lAuto      := IsBlind() //Emerson Holanda 11/12/19 - Verifica se a execução é por Job
+	
+	If lAuto 
+		RpcSetEnv(cParam1,cParam2)    
+	EndIf
+//Emerson Holanda 11/12/19 Grava no log a data de inicio do processamento	
+Conout("**************************************************************************")
+Conout("[" + DToC(dDataBase) + " - " + Time() + "] - Iniciado o processamento do Job DHLBXMAIL.")
+Conout("[ Empresa:" + cEmpAnt + " - Filial:" + cFilant + "] ")
+Conout("**************************************************************************")
+	
+	cPopAnexo  := SuperGetMv("ZZ_POPANEX",,"pop.kul-dc.dhl.com")
+	cSmtpAnexo := SuperGetMv("ZZ_SMTPANE",,"smtp.dhl.com")
+	cUsrAnexo  := SuperGetMv("ZZ_USRANEX",,"nfeBraskem-xml-q@dhl.com")
+	cPswAnexo  := SuperGetMv("ZZ_PSWANEX",,"Y%FMtbHf54F8")
+	lUsaSSL    := SuperGetMv("ZZ_SSLANEX",,.F.)
+	cDirectory := alltrim(Posicione("SZ1",1, xFilial("SZ1") + APP_BAIXA_XML, "Z1_DIRIMP"))
+	cDirectory := if(substr(cDirectory, len(cDirectory),1) == "\", cDirectory, cDirectory+"\")
+	
+	
+	oServer := TMailManager():New()
+
+	oServer:SetUseSSL(lUsaSSL)
+
+	alterAppServerIni() 	
+
+	if initServer(oServer, cPopAnexo, cSmtpAnexo, cUsrAnexo, cPswAnexo) != 0
+		return
+	endIf	
+
+	if connectServer(oServer, cPopAnexo, cSmtpAnexo, cUsrAnexo, cPswAnexo) != 0
+		return
+	endIf
+
+	oServer:GetNumMsgs( @nMessages )
+	FWLogMsg("INFO", , "BusinessObject", funName(), "", "01", "Numero de mensagens: " + cValToChar( nMessages ), 0, 0, {})
+
+	if nMessages == 0
+		return
+	endif
+
+	if nMessages > 0
+
+		oMessage  := TMailMessage():New()		
+		cBaseName := getBaseName(cDirectory) 
+
+		for nJ := 1 to nMessages
+
+			conout("*************************")
+			conout("*************PROCESSANDO " + cValToChar(nJ))
+			conout("*************************")
+
+			oMessage:Clear()
+
+			xRet := oMessage:Receive( oServer, nJ )
+
+			if xRet != 0
+				FWLogMsg("ERROR", , "BusinessObject", funName(), "", "01", "Não conseguiu baixar as mensagens " + cValToChar( nMessages ) + ": " + oServer:GetErrorString( xRet ), 0, 0, {})
+				loop
+			endif
+
+			nAttach   := oMessage:GetAttachCount()
+
+			for nI := 1 to nAttach
+
+				aAttInfo := oMessage:GetAttachInfo( nI )
+				varinfo( "", aAttInfo )
+
+				cName := cBaseName
+
+				FWLogMsg("INFO", , "BusinessObject", funName(), "", "01", "Encontrado " + cBaseName + ".", 0, 0, {})
+
+				if aAttInfo[1] == ""
+					cName += "mensagem." + SubStr( aAttInfo[2], At( "/", aAttInfo[2] ) + 1, Len( aAttInfo[2] ) )
+				else
+					cName += aAttInfo[1]
+				endif
+
+				FWLogMsg("INFO", , "BusinessObject", funName(), "", "01", "Salvando anexo " + cValToChar( nI ) + ": " + cName, 0, 0, {})
+
+				If Right(cName,4)$ "#.xml#.XML#"
+					xRet := oMessage:SaveAttach( nI, cName )
+					if !xRet
+						FWLogMsg("ERROR", , "BusinessObject", funName(), "", "01", "Não conseguiu baixar o anexo " + cName, 0, 0, {})
+					endif
+				EndIf			
+
+			next nI
+
+			xRet := oServer:DeleteMsg( nJ ) 
+
+		next nJ
+
+	endIf	
+
+	xRet := oServer:POPDisconnect()
+
+	RpcClearEnv()
+//Emerson Holanda 11/12/19 Grava no log a data e hora final do processamento
+Conout("**************************************************************************")
+Conout("[" + DToC(dDataBase) + " - " + Time() + "] - Finalizado o processamento do JOB DHLBXMAIL.")
+Conout("**************************************************************************")
+
+return
+
+/**
+* Altera a seção do apperver.ini
+**/
+static function alterAppServerIni()
+
+	writePProString( "Mail", "Protocol", "POP3", getsrvininame() )
+
+return
+
+/**
+* Obtém a base name
+**/
+static function getBaseName(cDirectory)
+
+	local cBaseName := ""
+
+	cBaseName := GetSrvProfString( "RootPath", "" )
+
+	if Right( AllTrim(cBaseName), 1 ) <> '\'
+		cBaseName := AllTrim(cBaseName)+'\'
+	endif
+
+	cBaseName += cDirectory
+
+return cBaseName
+
+/**
+* Conecta ao servidor 
+**/
+static function connectServer(oServer, cPopAnexo, cSmtpAnexo, cUsrAnexo, cPswAnexo)
+
+	local xRet := 0
+
+	xRet := oServer:POPConnect()
+
+	if xRet != 0
+		FWLogMsg("ERROR", , "BusinessObject", funName(), "", "01", "Não consegue conectar no Servidor POP3: " + oServer:GetErrorString( xRet ), 0, 0, {})
+		FWLogMsg("ERROR", , "BusinessObject", funName(), "", "01", "Não consegue conectar no Servidor POP3: " + cPopAnexo + " - " + cUsrAnexo + " - " + cPswAnexo, 0, 0, {})
+
+	endif
+
+return xRet
+
+/**
+* Inicia o servidor
+**/
+static function initServer(oServer, cPopAnexo, cSmtpAnexo, cUsrAnexo, cPswAnexo)
+
+	local xRet := 0
+
+	xRet := oServer:Init(cPopAnexo, cSmtpAnexo, cUsrAnexo, cPswAnexo)
+
+	if xRet <> 0
+		FWLogMsg("ERROR", , "BusinessObject", funName(), "", "01", "Não consegue inicializar servidor de E-mail: " + oServer:GetErrorString( xRet ), 0, 0, {})
+	endif
+
+return xRet

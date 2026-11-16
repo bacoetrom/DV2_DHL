@@ -1,0 +1,65 @@
+#include "totvs.ch"
+#include "dhl.ch"
+
+
+/*/{Protheus.doc} SF1140I
+
+Ponto de Entrada localizado após a gravação da pré nota.
+
+@author Winston Dellano de Castro / Diego de Angelo
+@since 02/12/2014
+/*/
+user function SF1140I()
+
+	local cNota    := SF1->F1_DOC
+	local cSerie   := SF1->F1_SERIE
+	local cClieFor := SF1->F1_FORNECE
+	local cLoja    := SF1->F1_LOJA
+	
+	private oSql   := ipSqlObject():newIpSqlObject()
+
+	if 	(FWUnitBusiness() == DHL_BUSINESSUNIT_PKG) .OR. ;
+		(FWUnitBusiness() == DHL_BUSINESSUNIT_SPL) .or. ;
+		(FWUnitBusiness() == DHL_BUSINESSUNIT_REP) .or. ;
+		(FWUnitBusiness() == DHL_BUSINESSUNIT_DIS) .or. ;
+		(FWUnitBusiness() == DHL_BUSINESSUNIT_AGE) .or. ;
+		(FWUnitBusiness() == DHL_BUSINESSUNIT_MUL) .or. ;
+		(FWUnitBusiness() == DHL_BUSINESSUNIT_AGL) .or. ;
+		(FWUnitBusiness() == DHL_BUSINESSUNIT_AG2)
+		
+		if FunName() == "MATA140"
+			updateSF1(cNota,cSerie,cClieFor,cLoja)
+		endif
+	endif
+
+return
+
+/**
+* Atualiza o status da Nota Fiscal
+**/
+static function updateSF1(cNota,cSerie,cClieFor,cLoja)
+
+	local cWhere := ""
+	local lError := nil
+
+	cWhere := "F1_FILIAL  = '%SF1.FILIAL%' AND "
+	cWhere += "F1_DOC     = '"+cNota+"'    AND "
+	cWhere += "F1_SERIE   = '"+cSerie+"'   AND "
+	cWhere += "F1_FORNECE = '"+cClieFor+"' AND "
+	cWhere += "F1_LOJA    = '"+cLoja+"'"
+	
+	if FWUnitBusiness() == DHL_BUSINESSUNIT_SPL
+		lError := oSql:update("SF1","F1_ZZSTATU = '" + DHL_DOC_AGUARDANDO_CONFIRMACAO + "' ",cWhere)
+	elseif FWUnitBusiness() == DHL_BUSINESSUNIT_PKG .or. ;
+		   FWUnitBusiness() == DHL_BUSINESSUNIT_REP .or. ;
+		   FWUnitBusiness() == DHL_BUSINESSUNIT_DIS .or. ;
+		   FWUnitBusiness() == DHL_BUSINESSUNIT_AGE .or. ;
+		   FWUnitBusiness() == DHL_BUSINESSUNIT_MUL .or. ;
+		   FWUnitBusiness() == DHL_BUSINESSUNIT_AGL .or. ;
+		   FWUnitBusiness() == DHL_BUSINESSUNIT_AG2
+		   		   
+		lError := oSql:update("SF1","F1_ZZSTATU = '" + DHL_DOC_PENDENTE_ACAO + "' ",cWhere)
+	endif
+	
+
+return

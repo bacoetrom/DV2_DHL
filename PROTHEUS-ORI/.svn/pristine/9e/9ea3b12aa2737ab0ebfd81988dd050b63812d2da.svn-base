@@ -1,0 +1,650 @@
+#include "totvs.ch"
+#include "dhl.ch"
+
+#define OPC_INCLUSAO   3
+#define INTERFACE_NAME "Stock Adjustment"
+
+
+/*/{Protheus.doc} ImpXMLInv
+
+Importa o arquivo XML
+	
+@author Renato Castro
+@since 30/10/2014
+
+@param cFilePath,Caractere,XML a ser importado
+@param cApp,Caractere,Se o XML é do Nulogy ou do Select
+
+@return Logico Indica se foi importado com sucesso
+/*/
+user function ImpXMLInv(cFilePath,cApp)
+
+	local lOk 	 	       := .F.
+	local cError 	       := ""
+	local cWarning 	       := ""
+
+	private cXmlArq        := cFilePath	
+	private oLogImp        := DHLLogManager():newDHLLogManager()
+	private oXmlIp 	       := IpXmlObject():newIpXmlObject(cXmlArq)
+	private oSql	       := IpSqlObject():newIpSqlObject()
+	private cApplication   := cApp
+	
+	private lMsErroAuto    := .F.
+	private lMsHelpAuto    := .T.
+	private lAutoErrNoFile := .T.		
+	private lAjustProprio  := .F. //Thiago Meschiatti - FSW TOTVS IP Campinas - 20/12/2016
+	
+	if !(oXmlIp:doParse())
+		oLogImp:start(cApplication,DHL_IMPORTACAO,cXmlArq)
+		oLogImp:fail(INTERFACE_NAME,"Falha ao ler XML"+CRLF+CRLF+"Error: "+oXmlIp:getError()+CRLF+CRLF+"Aviso: "+oXmlIp:getWarning())
+		
+		return .F.
+	endif
+	
+	if isLayout(APP_SELECT)
+	
+		lOk := procXml(APP_SELECT)
+				
+	elseif isLayout(APP_NULOGY)
+	
+		lOk := procXml(APP_NULOGY)
+		
+	else
+		oLogImp:start(cApplication,DHL_IMPORTACAO,cXmlArq)
+		oLogImp:fail(INTERFACE_NAME,"Não foi possível definir se o arquivo é do Select ou do Nulogy")	
+	endif
+	
+return lOk
+
+
+/**
+ * Verifica se o Layout refere-se a determinada Aplicação
+ */
+static function isLayout(cApp)
+	
+	local lIsLayout := .F.
+	local cXml		:= Upper(AllTrim(cXmlArq))	
+	
+	if (cApp == APP_SELECT) 
+		lIsLayout := DHL_SELECT_STOCK_ADJUSTMENT $ cXml
+	elseif (cApp == APP_NULOGY)
+		lIsLayout := !(DHL_SELECT_STOCK_ADJUSTMENT $ cXml)
+	endif		 
+	
+return lIsLayout
+
+
+/**
+ * Processa os Arquivos
+ */
+static function procXml(cApp)
+	
+	local lOk  := .F.
+	
+	if isMovimentoInterno(cApp)
+		lOk := geraMovimentoInterno(cApp)
+	elseIf isPreNota(cApp)		
+		lOk := geraPreNota(cApp)
+	elseIf isPedidoVenda(cApp)
+		lOk := geraPedidoVenda(cApp)	
+	else
+		oLogImp:start(cApplication,DHL_IMPORTACAO,cXmlArq)
+		oLogImp:fail(INTERFACE_NAME,"Não foi possível definir o movimento de Ajuste a ser gerado")
+	endif
+								
+return lOk
+
+
+/**
+ * Verifica se deve gerar uma Pre-Nota
+ */
+static function isPreNota(cApp)
+	
+	local lIsPreNota := .F.
+	
+	if (cApp == APP_SELECT) 
+		lIsPreNota := Val(oXmlIp:getNodeValue("Pip4C1InventoryReportNotification:_InventoryReport:_InventoryReportLineItem:_InventoryProductQuantity:_ProductQuantity:text"))>0
+	elseif (cApp == APP_NULOGY)
+		lIsPreNota := Upper(AllTrim(oXmlIp:getNodeValue("STK_ADJ:_BODY:_FILEHEADER:_TYPE:text")))=="P"
+	endif	
+	
+return lIsPreNota
+
+
+/**
+ * Verifica se deve gerar um pedido de venda
+ */
+static function isPedidoVenda(cApp)
+	
+	local lIsPedVenda := .F.
+	
+	if (cApp == APP_SELECT) 
+		lIsPedVenda := Val(oXmlIp:getNodeValue("Pip4C1InventoryReportNotification:_InventoryReport:_InventoryReportLineItem:_InventoryProductQuantity:_ProductQuantity:text")) < 0
+	elseif (cApp == APP_NULOGY)
+		lIsPedVenda := Upper(AllTrim(oXmlIp:getNodeValue("STK_ADJ:_BODY:_FILEHEADER:_TYPE:text"))) == "N"
+	endif	
+	
+return lIsPedVenda
+
+
+/**
+ * Verifica se deve gerar um movimento interno
+ */
+static function isMovimentoInterno(cApp)
+	
+	local lIsMovimentoInterno := .F.
+	local cTipoMov := alltrim(GetNewPar("ZZ_TPINVNE", "SD3")) //Thiago Meschiatti - FSW TOTVS IP Campinas - 20/12/2016
+	
+	if (cApp == APP_NULOGY)
+		lIsMovimentoInterno := Upper(AllTrim(oXmlIp:getNodeValue("STK_ADJ:_BODY:_FILEHEADER:_CUSTOMER:text"))) == "DHL"
+		
+		//INICIO - Thiago Meschiatti - FSW TOTVS IP Campinas - 20/12/2016
+		if lIsMovimentoInterno .and. cTipoMov == "SD2"
+			lAjustProprio 		:= .t.
+			lIsMovimentoInterno := .f.	
+		endif
+		//FIM
+	endif	
+	
+return lIsMovimentoInterno
+
+
+/**
+ * Gera a Pre-Nota de Entrada
+ */
+static function geraPreNota(cApp)
+	
+	local lOk    := .F.
+	local aCab   := {}
+	local aItens := {}
+	local cErro  := ""
+	
+	getDadosPreNota(cApp,@aCab,@aItens)
+	
+	if FWUnitBusiness() == "SPL"
+		aItens	:= u_ProcDesNF(aItens)
+	endif
+	
+	lMsErroAuto := .F.
+	MSExecAuto({|x,y,z| MATA140(x,y,z)},aCab,aItens,OPC_INCLUSAO)
+	
+	if lMsErroAuto
+		RollBackSX8()
+		
+		cErro := mostraErroRotAuto()
+		
+		oLogImp:start(cApplication,DHL_IMPORTACAO,cXmlArq)
+		oLogImp:fail(INTERFACE_NAME,"Erro de rotina automática"+CRLF+CRLF+cErro)
+	else
+		ConfirmSX8()
+
+		lOk := .T.
+	endif
+	
+return lOk
+
+
+/**
+ * Gera o pedido de venda
+ */
+static function geraPedidoVenda(cApp)
+	
+	local lOk    := .F.
+	local aCab   := {}
+	local aItens := {}
+	local cErro  := ""
+	
+	lOk := getDadosPedVenda(cApp,@aCab,@aItens)
+	
+	if lOk 
+	 
+		if FWUnitBusiness() == "SPL"
+			aItens	:= u_ProcDesNF(aItens,.T.)
+		endif
+		
+		lMsErroAuto := .F.
+		MSExecAuto({|x,y,z| MATA410(x,y,z)},aCab,aItens,OPC_INCLUSAO)
+		
+		if lMsErroAuto
+			lOk	  := .f.
+			cErro := mostraErroRotAuto()
+			
+			oLogImp:start(cApplication,DHL_IMPORTACAO,cXmlArq)
+			oLogImp:fail(INTERFACE_NAME,"Erro de rotina automática"+CRLF+CRLF+cErro)
+		else
+			lOk := .T.
+		endif
+	endif
+	
+return lOk
+
+
+/**
+ * Gera o movimento interno
+ */
+static function geraMovimentoInterno(cApp)
+	
+	local lOk    := .F.
+	local aDados := {}
+	local cErro  := ""
+	
+	getDadosMovInterno(cApp,@aDados)
+	
+	lMsErroAuto := .F.
+	//MSExecAuto({|x,y| MATA240(x,y)},aDados,OPC_INCLUSAO)
+	MSExecAuto({|x,y| MATA241(x,y)},aDados,OPC_INCLUSAO)
+	
+	if lMsErroAuto
+		cErro := mostraErroRotAuto()
+		
+		oLogImp:start(cApplication,DHL_IMPORTACAO,cXmlArq)
+		oLogImp:fail(INTERFACE_NAME,"Erro de rotina automática"+CRLF+CRLF+cErro)
+	else
+		lOk := .T.
+	endif
+	
+return lOk
+
+
+/**
+ * Obtem as arrays da rotina automática de mov. interno
+ */
+static function getDadosMovInterno(cApp,aDados)
+
+	local cControle  := ""
+	local cCodProd 	 := ""
+	local cCnpj 	 := ""
+	local cFilialNum := ""
+	local cTM		 := ""
+	local nQuant 	 := 0
+	local aItensXML  := {}
+	
+	if (cApp == APP_NULOGY)
+	
+		if Upper(AllTrim(oXmlIp:getNodeValue("STK_ADJ:_BODY:_FILEHEADER:_TYPE:text"))) == "P"
+			cTM := GetMV("ZZ_TMDEV")
+		else
+			cTM := GetMV("ZZ_TMREQ")
+		endif
+		
+		aItensXML := oXmlIp:getNodeArray("STK_ADJ:_BODY:_FILEHEADER")
+		
+		for nI := 1 to Len(aItensXML)
+		
+			cCodProd  := AllTrim(aItensXML[nI]:_ITEM:text)
+			cCnpj     := AllTrim(oXmlIp:getNodeValue("STK_ADJ:_BODY:_FILEHEADER:_SITE_CNPJ:text"))
+
+			nQuant    := Val(aItensXML[nI]:_QUANTITY:text)
+			cControle := oXmlIp:getNodeValue("STK_ADJ:_BODY:_FILEHEADER:_ADJUSTMENT_ID:text")
+			
+			aAdd(aDados,{"D3_FILIAL"  ,xFilial("SD3"),nil})
+			aAdd(aDados,{"D3_TM"      ,cTM 			 ,nil})
+			aAdd(aDados,{"D3_EMISSAO" ,dDataBase 	 ,nil})
+			aAdd(aDados,{"D3_COD"     ,cCodProd      ,nil})
+			aAdd(aDados,{"D3_QUANT"   ,nQuant 		 ,nil})
+			aAdd(aDados,{"D3_DOC"     ,"INVENT" 	 ,nil})
+			aAdd(aDados,{"D3_ZZADJID" ,cControle     ,nil})	
+		
+		next		
+			
+	endif
+	
+return
+
+
+/**
+ * Obtem as arrays da rotina automática de pré nota
+ */
+static function getDadosPreNota(cApp,aCab,aItens)
+
+	local cControle  := ""
+	local cCodProd 	 := ""
+	local cCnpj 	 := ""
+	local cFilialNum := ""
+	local cSerie 	 := DHL_SERIE_INVENTARIO
+	local cTipoNf  	 := SuperGetMv("MV_TPNRNFS")
+	local cNumero	 := ""
+	local cItem 	 := StrZero(0,TamSx3("D1_ITEM")[1])
+	local cTes		 := GetMv("ZZ_TESENT")
+	local nQuant 	 := 0	
+	local nVUnit 	 := 0
+	local nTotPrice	 := 0
+	local aAux 		 := {}
+	local aItensXML  := {}
+	
+	if (cApp == APP_SELECT)
+	
+		cControle := AllTrim(oXmlIp:getNodeValue("Pip4C1InventoryReportNotification:_ThisDocumentIdentifier:_ProprietaryDocumentIdentifier:text"))		
+		cCnpj     := AllTrim(oXmlIp:getNodeValue("Pip4C1InventoryReportNotification:_InventoryReport:_InventoryReportLineItem:_InventoryLocation:_PartnerDescription:_PhysicalLocation:_PartnerLocationIdentification:_ProprietaryLocationIdentifier:text"))
+		
+		cNumero := NxtSX5Nota(cSerie, NIL, cTipoNf)
+	
+		aAdd(aCab,{"F1_FILIAL"  ,xFilial("SF1")				  ,nil})
+		aAdd(aCab,{"F1_DOC"     ,cNumero				 	  ,nil})
+		aAdd(aCab,{"F1_SERIE"   ,cSerie       				  ,nil})
+		aAdd(aCab,{"F1_FORNECE" ,Left(GetMv("ZZ_CLINTEG"),6)  ,nil})
+		aAdd(aCab,{"F1_LOJA"    ,Right(GetMv("ZZ_CLINTEG"),2) ,nil})
+		aAdd(aCab,{"F1_EMISSAO" ,dDataBase 		              ,nil})
+		aAdd(aCab,{"F1_TIPO"    ,"B"       		              ,nil})
+		aAdd(aCab,{"F1_FORMUL"  ,"S"       		              ,nil})
+		aAdd(aCab,{"F1_ESPECIE" ,"INV"      		          ,nil})			
+		aAdd(aCab,{"F1_ZZADJID"	,cControle 		              ,nil})
+		
+		aItensXML := oXmlIp:getNodeArray("Pip4C1InventoryReportNotification:_InventoryReport:_InventoryReportLineItem")
+		
+		for nI := 1 to Len(aItensXML)
+		
+			cCodProd := AllTrim(aItensXML[nI]:_ProductIdentification:_PartnerProductIdentification:_ProprietaryProductIdentifier:text)
+			nQuant   := Val(aItensXML[nI]:_InventoryProductQuantity:_ProductQuantity:text)
+			
+			oSql:newTable("SB1","B1_COD,B1_LOCPAD","B1_FILIAL = '"+xFilial("SB1")+"' AND B1_COD = '"+cCodProd+"'")
+			
+			//nVUnit := oSql:getFieldValue("SB2","B2_CM1","B2_FILIAL = '"+xFilial("SB2")+"' AND B2_COD = '"+oSql:getValue("B1_COD")+"' AND B2_LOCAL = '"+oSql:getValue("B1_LOCPAD")+"'")
+			nVUnit := retVUnit(cCodProd)
+			
+			oSql:close()
+		
+			aAux  := {}			
+			cItem := Soma1(cItem)
+
+			aAdd(aAux,{"D1_ITEM"  ,cItem		 	 ,nil})
+			aAdd(aAux,{"D1_COD"   ,cCodProd	 	 	 ,nil})
+			aAdd(aAux,{"D1_QUANT" ,nQuant		 	 ,nil})
+			aAdd(aAux,{"D1_VUNIT" ,nVUnit		 	 ,nil})
+			aAdd(aAux,{"D1_TOTAL" ,nQuant * nVUnit 	 ,nil})
+			aAdd(aAux,{"D1_TES"   ,cTes				 ,nil})
+	
+			aAdd(aItens,aAux)
+			
+		next
+		
+	elseif (cApp == APP_NULOGY)
+	
+		cControle := oXmlIp:getNodeValue("STK_ADJ:_BODY:_FILEHEADER:_ADJUSTMENT_ID:text")		
+		cCnpj     := AllTrim(oXmlIp:getNodeValue("STK_ADJ:_BODY:_FILEHEADER:_SITE_CNPJ:text"))
+
+		cNumero := NxtSX5Nota(cSerie, NIL, cTipoNf)
+		
+		aAdd(aCab,{"F1_FILIAL"  ,xFilial("SF1")  			  ,nil})
+		aAdd(aCab,{"F1_DOC"     ,cNumero				 	  ,nil})
+		aAdd(aCab,{"F1_SERIE"   ,cSerie       				  ,nil})
+		aAdd(aCab,{"F1_FORNECE" ,Left(GetMv("ZZ_CLINTEG"),6)  ,nil})
+		aAdd(aCab,{"F1_LOJA"    ,Right(GetMv("ZZ_CLINTEG"),2) ,nil})
+		aAdd(aCab,{"F1_EMISSAO" ,dDataBase 		              ,nil})
+		aAdd(aCab,{"F1_TIPO"    ,"B"       		              ,nil})
+		aAdd(aCab,{"F1_FORMUL"  ,"S"       		              ,nil})
+		aAdd(aCab,{"F1_ESPECIE" ,"INV"      		          ,nil})			
+		aAdd(aCab,{"F1_ZZADJID"	,cControle 		              ,nil})
+		
+		aItensXML := oXmlIp:getNodeArray("STK_ADJ:_BODY:_FILEHEADER")
+		
+		for nI := 1 to Len(aItensXML)
+		
+			cCodProd := AllTrim(aItensXML[nI]:_ITEM:text)
+			nQuant   := Val(aItensXML[nI]:_QUANTITY:text)
+			
+			oSql:newTable("SB1","B1_COD,B1_LOCPAD","B1_FILIAL = '"+xFilial("SB1")+"' AND B1_COD = '"+cCodProd+"'")
+			
+			nVUnit := oSql:getFieldValue("SB2","B2_CM1","B2_FILIAL = '"+xFilial("SB2")+"' AND B2_COD = '"+oSql:getValue("B1_COD")+"' AND B2_LOCAL = '"+oSql:getValue("B1_LOCPAD")+"'")
+			
+			oSql:close()
+		
+			aAux  := {}			
+			cItem := Soma1(cItem)
+			
+			nTotPrice := A410Arred(nQuant * nVUnit ,"D1_TOTAL")
+			if nTotPrice < 0.01
+				nTotPrice   := 0.01
+				nVUnit 		:= A410Arred(nTotPrice / nQuant ,"D1_VUNIT")
+			endif
+			
+			aAdd(aAux,{"D1_ITEM"  ,cItem		 	 ,nil})
+			aAdd(aAux,{"D1_COD"   ,cCodProd	 	 	 ,nil})
+			aAdd(aAux,{"D1_QUANT" ,nQuant		 	 ,nil})
+			aAdd(aAux,{"D1_VUNIT" ,nVUnit		 	 ,nil})
+			aAdd(aAux,{"D1_TOTAL" ,nTotPrice	 	 ,nil})
+			aAdd(aAux,{"D1_ZZTES" ,cTes				 ,nil})
+	
+			aAdd(aItens,aAux)
+			
+		next
+	
+	endif
+	
+return
+
+
+/**
+ * Obtem as arrays da rotina automática de pedido de venda
+ */
+static function getDadosPedVenda(cApp,aCab,aItens)
+
+	local cControle  := ""
+	local cCodProd 	 := ""
+	local cCliente	 := "" //Thiago Meschiatti - FSW TOTVS IP Campinas - 20/12/2016
+	local cLoja		 := "" //Thiago Meschiatti - FSW TOTVS IP Campinas - 20/12/2016
+	local cItem 	 := StrZero(0,TamSx3("C6_ITEM")[1])
+	local cCnpj 	 := ""
+	local cFilialNum := ""
+	local cTesInv	 := GetNewPar("ZZ_TESINVN", "")
+	local cTesSaida	 := GetNewPar("ZZ_TESSAI", "")
+	local nQuant 	 := 0
+	local aAux 		 := {}
+	local aItensXML  := {}
+	local nVUnit 	 := 0
+	local nTotPrice	 := 0
+	local lOk		 := .t. //Thiago Meschiatti - FSW TOTVS IP Campinas - 21/12/2016
+	
+	if (cApp == APP_SELECT)
+	
+		cControle := AllTrim(oXmlIp:getNodeValue("Pip4C1InventoryReportNotification:_ThisDocumentIdentifier:_ProprietaryDocumentIdentifier:text"))		
+		cCnpj     := AllTrim(oXmlIp:getNodeValue("Pip4C1InventoryReportNotification:_InventoryReport:_InventoryReportLineItem:_InventoryLocation:_PartnerDescription:_PhysicalLocation:_PartnerLocationIdentification:_ProprietaryLocationIdentifier:text"))
+	
+		aAdd(aCab,{"C5_FILIAL"  ,xFilial("SC5")				  ,nil})
+		aAdd(aCab,{"C5_TIPO" 	,"N"       					  ,nil})
+		aAdd(aCab,{"C5_CLIENTE" ,Left(GetMv("ZZ_CLINTEG"),6)  ,nil})
+		aAdd(aCab,{"C5_LOJACLI" ,Right(GetMv("ZZ_CLINTEG"),2) ,nil})
+		aAdd(aCab,{"C5_CONDPAG"	,AllTrim(GetMv("ZZ_CONDINT")) ,nil})
+		aAdd(aCab,{"C5_ZZADJID"	,cControle 		              ,nil})
+		aAdd(aCab,{"C5_ZZESPEC" ,"INV"       		          ,nil})	
+		
+		aItensXML := oXmlIp:getNodeArray("Pip4C1InventoryReportNotification:_InventoryReport:_InventoryReportLineItem")
+		
+		for nI := 1 to Len(aItensXML)
+		
+			cCodProd := AllTrim(aItensXML[nI]:_ProductIdentification:_PartnerProductIdentification:_ProprietaryProductIdentifier:text)
+			nQuant   := Abs(Val(aItensXML[nI]:_InventoryProductQuantity:_ProductQuantity:text))
+			
+			oSql:newTable("SB1","B1_COD,B1_LOCPAD","B1_FILIAL = '"+xFilial("SB1")+"' AND B1_COD = '"+cCodProd+"'")
+			
+			nVUnit := oSql:getFieldValue("SB2","B2_CM1","B2_FILIAL = '"+xFilial("SB2")+"' AND B2_COD = '"+oSql:getValue("B1_COD")+"' AND B2_LOCAL = '"+oSql:getValue("B1_LOCPAD")+"'")
+			
+			oSql:close()
+		
+			aAux  := {}			
+			cItem := Soma1(cItem)
+			
+			aAdd(aAux,{"C6_ITEM"    ,cItem		 	 	,nil})
+			aAdd(aAux,{"C6_PRODUTO" ,cCodProd		  	,nil})
+			aAdd(aAux,{"C6_QTDVEN"  ,nQuant		 	    ,nil})
+			aAdd(aAux,{"C6_PRCVEN"  ,nVUnit		 	    ,nil})
+			aAdd(aAux,{"C6_TES"     ,cTesSaida			,nil})
+	
+			aAdd(aItens,aAux)
+			
+		next
+		
+	elseif (cApp == APP_NULOGY)
+	
+		cControle := oXmlIp:getNodeValue("STK_ADJ:_BODY:_FILEHEADER:_ADJUSTMENT_ID:text")		
+		cCnpj     := AllTrim(oXmlIp:getNodeValue("STK_ADJ:_BODY:_FILEHEADER:_SITE_CNPJ:text"))
+		
+		//INICIO - Thiago Meschiatti - FSW TOTVS IP Campinas - 20/12/2016
+		
+		if lAjustProprio
+			lOk := retCliDhl(@cCliente, @cLoja)
+		else
+			cCliente	:= Left(getMv("ZZ_CLINTEG"),6)
+			cLoja		:= Right(getMv("ZZ_CLINTEG"),2)
+		endif
+		
+		if lOk
+		
+			aAdd(aCab,{"C5_FILIAL"  ,xFilial("SC5") 			  ,nil})
+			aAdd(aCab,{"C5_TIPO" 	,"N"       					  ,nil})
+			aAdd(aCab,{"C5_CLIENTE" ,cCliente  					  ,nil}) //Thiago Meschiatti - FSW TOTVS IP Campinas - 20/12/2016
+			aAdd(aCab,{"C5_LOJACLI" ,cLoja 						  ,nil}) //Thiago Meschiatti - FSW TOTVS IP Campinas - 20/12/2016
+			aAdd(aCab,{"C5_CONDPAG"	,AllTrim(getMv("ZZ_CONDINT")) ,nil})
+			aAdd(aCab,{"C5_ZZADJID"	,cControle 		              ,nil})
+			aAdd(aCab,{"C5_ZZESPEC" ,"INV"       		          ,nil})		
+			
+			if lAjustProprio  //Thiago Meschiatti - FSW TOTVS IP Campinas - 21/12/2016
+				aAdd(aCab,{"C5_ZZTAJES" ,"P"       		          ,nil})
+			endif
+			
+			aItensXML := oXmlIp:getNodeArray("STK_ADJ:_BODY:_FILEHEADER")
+			
+			for nI := 1 to Len(aItensXML)
+			
+				cCodProd := AllTrim(aItensXML[nI]:_ITEM:text)
+				nQuant   := Val(aItensXML[nI]:_QUANTITY:text)
+				
+				oSql:newTable("SB1","B1_COD,B1_LOCPAD","B1_FILIAL = '"+xFilial("SB1")+"' AND B1_COD = '"+cCodProd+"'")
+				
+				nVUnit := oSql:getFieldValue("SB2","B2_CM1","B2_FILIAL = '"+xFilial("SB2")+"' AND B2_COD = '"+oSql:getValue("B1_COD")+"' AND B2_LOCAL = '"+oSql:getValue("B1_LOCPAD")+"'")
+				
+				oSql:close()
+			
+				aAux  := {}			
+				cItem := Soma1(cItem)
+				
+				nTotPrice := A410Arred(nQuant * nVUnit ,"C6_VALOR")
+				
+				aAdd(aAux,{"C6_ITEM"    ,cItem		 	 	,nil})
+				aAdd(aAux,{"C6_PRODUTO" ,cCodProd		  	,nil})
+				aAdd(aAux,{"C6_QTDVEN"  ,nQuant		 	    ,nil})
+				aAdd(aAux,{"C6_PRCVEN"  ,nVUnit		 	    ,nil})
+				aAdd(aAux,{"C6_VALOR"   ,nTotPrice	 	    ,nil})
+
+				if lAjustProprio  //Thiago Meschiatti - FSW TOTVS IP Campinas - 21/12/2016
+					aAdd(aAux,{"C6_TES"     , cTesInv,nil})
+					aAdd(aAux,{"C6_PRUNIT"  , nVUnit,	nil})  
+				else
+					aAdd(aAux,{"C6_TES"     , cTesSaida,nil})
+				endif
+		
+				aAdd(aItens,aAux)
+				
+			next
+		endif
+		
+		//FIM - Thiago Meschiatti - FSW TOTVS IP Campinas - 20/12/2016
+	
+	endif
+	
+return (lOK)
+
+
+/**
+ *	Função responsável pelo retorno da filial de acordo com o CNPJ.
+ */
+/*static function retFilial(cCNPJ)
+	local cFilialNum:= ""
+	local aArea		:= GetArea()
+	local aAreaSM0	:= SM0->(GetArea())
+	 
+	DbSelectArea("SM0")
+	SM0->(DBGoTop())
+	
+	while SM0->(!eof())
+		if alltrim(SM0->M0_CGC) == alltrim(cCNPJ)
+			cFilialNum	:= alltrim(SM0->M0_CODFIL)
+			exit
+		endif
+		SM0->(dbSkip())
+	endDo
+	
+	restArea(aAreaSM0)
+	restArea(aArea)
+	
+return	cFilialNum*/
+
+
+/**
+ *	Retorna o erro da rotina automática
+ */
+static function mostraErroRotAuto()
+
+	local aErro  := {}
+	local nI 	 := 0
+	local cError := ""
+	
+	aErro := GetAutoGRLog()
+	
+    for nI := 1 to Len(aErro)
+    	cError += aErro[nI] +CRLF
+    next nI
+
+return cError
+
+
+/* 
+** Retorna valor unitário através de LIFO
+*/
+static function retVUnit(cCodProd)
+	local oSqlUtil	:= IpSqlObject():newIpSqlObject()
+	local cQuery 	:= ""	
+	local nRet		:= 0
+	
+	cQuery += " Select * from (SELECT MAX(SD1.R_E_C_N_O_) RECNO, D1_VUNIT, D1_VALIPI, D1_ICMSRET FROM %SD1.SQLNAME%       "+CRLF
+	cQuery += " INNER JOIN %SF4.SQLNAME% ON                                                      "+CRLF
+	cQuery += " 	%SF4.NOTDEL%                                                                 "+CRLF
+	cQuery += " 	AND D1_FILIAL 	= F4_FILIAL                                                  "+CRLF
+	cQuery += " 	AND D1_TES 		= F4_CODIGO                                                  "+CRLF
+	cQuery += " 	AND F4_ZZSTATU 	=  'G'                                                       "+CRLF
+	cQuery += " WHERE                                                                            "+CRLF
+	cQuery += " 	%SD1.NOTDEL%                                                                 "+CRLF
+	cQuery += " 	AND %SD1.XFILIAL%                                                            "+CRLF
+	cQuery += " 	AND D1_COD 			= '"+cCodProd+"'                                         "+CRLF
+	cQuery += " 	AND D1_FORNECE		= '"+Left(GetMv("ZZ_FORNDEP"), tamsx3("A2_COD")[1])+"'   "+CRLF
+	cQuery += " 	AND D1_LOJA			= '"+Right(GetMv("ZZ_FORNDEP"), tamsx3("A2_LOJA")[1])+"' "+CRLF
+	cQuery += " GROUP BY D1_VUNIT, D1_VALIPI, D1_ICMSRET Order by RECNO DESC) Where rownum = 1   "+CRLF
+	
+	oSqlUtil:newAlias(cQuery)
+	
+	if oSqlUtil:hasRecords()
+		if GetNewPar("ZZ_ICSTDEV", .T.)
+			nRet := oSqlUtil:getValue("D1_VUNIT") + oSqlUtil:getValue("D1_VALIPI") + oSqlUtil:getValue("D1_ICMSRET")
+		else
+			nRet := oSqlUtil:getValue("D1_VUNIT") + oSqlUtil:getValue("D1_VALIPI")
+		endif
+	endif
+	
+	oSqlUtil:close() 
+return(nRet)
+
+
+/*
+** Retorna cliente e loja
+*/ 
+static function retCliDhl(cCliente, cLoja)
+	local oSql 		:= IpSqlObject():newIpSqlObject()
+	local cQuery 	:= ""
+	local lOk		:= .t.
+	
+	cQuery := "%SA1.XFILIAL% AND A1_CGC = '" + SM0->M0_CGC + "'
+	
+	oSql:newTable("SA1", "A1_COD, A1_LOJA", cQuery)
+	
+	if oSql:hasRecords()
+		cCliente := oSql:getValue("A1_COD")
+		cLoja	 := oSql:getValue("A1_LOJA")
+	else
+		lOk := .f.
+		oLogImp:start(cApplication,DHL_IMPORTACAO,cXmlArq)
+		oLogImp:fail(INTERFACE_NAME,"Cliente DHL não localizado. CNPJ: " + SM0->M0_CGC)
+	endif
+	
+	oSql:close()
+	
+return (lOk)

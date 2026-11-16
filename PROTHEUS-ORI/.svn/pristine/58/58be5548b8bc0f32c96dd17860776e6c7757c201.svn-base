@@ -1,0 +1,663 @@
+#include 'Protheus.ch'
+#include 'dhl.ch'
+#include 'fwcommand.ch'
+#include "rwmake.ch"
+
+/*/{Protheus.doc} User Function relApuDesFis
+	Relatório de Apuração de Desoneração Fiscal
+	@type  Function
+	@author Diogo Mesquita
+	@since 04/08/2021
+	@version version
+	@param param_name, param_type, param_descr
+	@return return_var, return_type, return_description
+	@example
+	(examples)
+	@see (links_or_references)
+	/*/
+user function relApuDesFis()
+	
+	local bParams		:= {|| oParamBox:show() }
+	local bProcRel		:= {|| procRel() }
+
+	private oSqlNotas	:= nil
+	
+	private dDtEmisDe	:= CtoD("")
+	private dDtEmisAte	:= CtoD("")
+	private cCFOPs		:= ""
+	private cCodMun		:= ""
+		
+	private cNome  		:= "relApuDesFis"
+	private cTitulo 	:= "Apuração de Desoneração Fiscal"
+	private cDescricao	:= "Relatório de " + cTitulo
+	
+	private oReport		:= nil
+	private oSecNotas	:= nil
+	
+	private oParamBox 	:= IpParamBoxObject():newIpParamBoxObject(cNome)
+	
+	criaParams()
+	
+	oReport := TReport():new(cNome, cTitulo, bParams, bProcRel, cDescricao)
+	
+	criaSecao()
+	
+	oReport:setLandscape()
+	oReport:printDialog()
+	
+return
+
+/**
+* Função responsável pela criação dos parâmetros
+*/
+static function criaParams()
+	
+	local oParam 	:= nil
+	
+	oParamBox:setTitle(cTitulo)
+	
+	oParam := IpParamObject():newIpParamObject("dtEmisDe", "get", "Dt. Emissão Ret. Simb. de", "D", 60, TamSX3("FT_EMISSAO")[1])
+	oParamBox:addParam(oParam)
+	
+	oParam := IpParamObject():newIpParamObject("dtEmisAte", "get", "Dt. Emissão Ret. Simb. até", "D", 60, TamSX3("FT_EMISSAO")[1])
+	oParamBox:addParam(oParam)
+
+	oParam := IpParamObject():newIpParamObject("CFOPs", "get", "CFOPs Ret. Simb.", "C", 100, 100)
+	oParamBox:addParam(oParam)
+	
+	oParam := IpParamObject():newIpParamObject("CodMun", "get", "Cód. Mun. Estorno/Reversão ICMS", "C", 100, 100)
+	oParamBox:addParam(oParam)
+
+	oParam := IpParamObject():newIpParamObject("help", "memo", "Ajuda", "C", 100)
+	oParam:setInitializer("Informe os CFOPs e Códigos de Municípios separados por ';' ponto e vírgula.")
+	oParam:setWhen(".F.")
+	oParamBox:addParam(oParam)
+
+return
+
+/**
+* Função responsável pelo processamento do relatório
+*/
+static function procRel()
+
+	dDtEmisDe	:= oParamBox:getValue("dtEmisDe")
+	dDtEmisAte	:= oParamBox:getValue("dtEmisAte")
+	cCFOPs		:= oParamBox:getValue("CFOPs")
+	cCodMun		:= oParamBox:getValue("CodMun")
+		
+	getNotas()
+
+	procImpressao()
+	
+return
+
+/**
+* Função responsável pela criação da seção e células
+*/
+static function criaSecao()
+	
+	local aOrdem	:= criaIndice()
+	
+	oSecNotas := TRSection():new(oReport,,,aOrdem)
+	oSecNotas:lHeaderBreak:= .T.
+	
+	TRCell():new(oSecNotas, "RET_DOC"		,		, "Num. Doc. Ret"		, 	nil								, TamSX3("FT_NFISCAL")[1]	,,,,,"RIGHT")
+	TRCell():new(oSecNotas, "RET_SERIE"		,		, "Série Ret"			, 	nil								, TamSX3("FT_SERIE")[1]		,,,,,"RIGHT")
+	TRCell():new(oSecNotas, "RET_DTEMISSAO"	,		, "Dt. Emissão Ret"		, 	nil								, TamSX3("FT_EMISSAO")[1]	,,,,,"RIGHT")
+	TRCell():new(oSecNotas, "RET_ITEM"		,		, "Item Ret"			, 	nil								, TamSX3("FT_ITEM")[1]		,,,,,"RIGHT")
+	TRCell():new(oSecNotas, "RET_PRODUTO"	,		, "Produto Ret"			, 	nil								, TamSX3("FT_PRODUTO")[1]	,,,,,"RIGHT")
+	TRCell():new(oSecNotas, "RET_NCM"		,		, "NCM Ret"				, 	nil								, TamSX3("FT_POSIPI")[1]	,,,,,"RIGHT")
+	TRCell():new(oSecNotas, "RET_DESCPROD"	,		, "Desc. Produto Ret"	, 	nil								, TamSX3("B1_DESC")[1]		,,,,,"RIGHT")
+	TRCell():new(oSecNotas, "RET_TES"		,		, "TES Ret"				, 	nil								, TamSX3("FT_TES")[1]		,,,,,"RIGHT")
+	TRCell():new(oSecNotas, "RET_CFOP"		,		, "CFOP Ret"			, 	nil								, TamSX3("FT_CFOP")[1]		,,,,,"RIGHT")
+	
+	TRCell():new(oSecNotas, "VEN_DOC"		,		, "Num. Doc. Venda"		, 	nil								, TamSX3("ZA_DOCSCJ")[1]	,,,,,"RIGHT")
+	TRCell():new(oSecNotas, "VEN_SERIE"		,		, "Série Venda"			, 	nil								, TamSX3("ZA_SERISCJ")[1]	,,,,,"RIGHT")
+	TRCell():new(oSecNotas, "VEN_DTEMISSAO"	,		, "Data Emis. Venda"	, 	nil								, TamSX3("ZA_DTEMSCJ")[1]	,,,,,"RIGHT")
+	
+	TRCell():new(oSecNotas, "RCO_DOC"		,		, "Num. Doc. Rco"		, 	nil								, TamSX3("FT_NFISCAL")[1]	,,,,,"RIGHT")
+	TRCell():new(oSecNotas, "RCO_SERIE"		,		, "Série Rco"			, 	nil								, TamSX3("FT_SERIE")[1]		,,,,,"RIGHT")
+	TRCell():new(oSecNotas, "RCO_DTEMISSAO"	,		, "Dt. Emissão Rco"		, 	nil								, TamSX3("FT_EMISSAO")[1]	,,,,,"RIGHT")
+	TRCell():new(oSecNotas, "RCO_TES"		,		, "TES Rco"				, 	nil								, TamSX3("FT_TES")[1]		,,,,,"RIGHT")
+	TRCell():new(oSecNotas, "RCO_CFOP"		,		, "CFOP Rco"			, 	nil								, TamSX3("FT_CFOP")[1]		,,,,,"RIGHT")
+	TRCell():new(oSecNotas, "RCO_UF"		,		, "UF Rco"				, 	nil								, TamSX3("F3_ESTADO")[1]	,,,,,"RIGHT")
+	TRCell():new(oSecNotas, "RCO_MUN"		,		, "Município Rco"		, 	nil								, TamSX3("A1_MUN")[1]		,,,,,"RIGHT")
+	TRCell():new(oSecNotas, "RCO_VLUNITEM"	,		, "Vlr. Unit. Item Rco"	, 	PesqPict("SFT", "FT_PRCUNIT")	, TamSX3("FT_PRCUNIT")[1]	,,,,,"RIGHT")
+	TRCell():new(oSecNotas, "RCO_QTDITEM"	,		, "Qtd. Item Rco"		, 	PesqPict("SFT", "FT_QUANT")		, TamSX3("FT_QUANT")[1]		,,,,,"RIGHT")
+	TRCell():new(oSecNotas, "RCO_ALIQICMIT"	,		, "Aliq. Icms Item Rco"	, 	PesqPict("SFT", "FT_ALIQICM")	, TamSX3("FT_ALIQICM")[1]	,,,,,"RIGHT")
+	TRCell():new(oSecNotas, "RCO_ICMSUNIT"	,		, "Vlr. Unit. Icms Item Rco","@E 999,999,999.99"			, 14						,,,,,"RIGHT")
+	TRCell():new(oSecNotas, "RCO_ICMSTOIT"	,		, "Vlr. Total Icms Item Rco",PesqPict("SFT", "FT_DESCZFR")	, TamSX3("FT_DESCZFR")[1]	,,,,,"RIGHT")
+	
+	TRCell():new(oSecNotas, "REM_DOC"		,		, "Num. Doc. Rem"		, 	nil								, TamSX3("FT_NFISCAL")[1]	,,,,,"RIGHT")
+	TRCell():new(oSecNotas, "REM_SERIE"		,		, "Série Rem"			, 	nil								, TamSX3("FT_SERIE")[1]		,,,,,"RIGHT")
+	TRCell():new(oSecNotas, "REM_DTEMISSAO"	,		, "Dt. Emissão Rem"		, 	nil								, TamSX3("FT_EMISSAO")[1]	,,,,,"RIGHT")
+	TRCell():new(oSecNotas, "REM_TES"		,		, "TES Rem"				, 	nil								, TamSX3("FT_TES")[1]		,,,,,"RIGHT")
+	TRCell():new(oSecNotas, "REM_CFOP"		,		, "CFOP Rem"			, 	nil								, TamSX3("FT_CFOP")[1]		,,,,,"RIGHT")
+	TRCell():new(oSecNotas, "RET_QTDITEM"	,		, "Qtd. Item Ret"		, 	PesqPict("SFT", "FT_QUANT")		, TamSX3("FT_QUANT")[1]		,,,,,"RIGHT")
+	TRCell():new(oSecNotas, "REM_ALIQICMIT"	,		, "Aliq. Icms Item Rem"	, 	PesqPict("SFT", "FT_ALIQICM")	, TamSX3("FT_ALIQICM")[1]	,,,,,"RIGHT")
+	TRCell():new(oSecNotas, "REM_ICMSUNIT"	,		, "Vlr. Icms Item Rem"	, 	"@E 999,999,999.99"				, 14						,,,,,"RIGHT")
+	TRCell():new(oSecNotas, "REM_ICMSESTO"	,		, "Vlr. Icms Estornar Rem"	, 	"@E 999,999,999.99"			, 14						,,,,,"RIGHT")
+	
+	TRCell():new(oSecNotas, "REC_DOC"		,		, "Num. Doc. Rec/Dev"	, 	nil								, TamSX3("FT_NFISCAL")[1]	,,,,,"RIGHT")
+	TRCell():new(oSecNotas, "REC_SERIE"		,		, "Série Rec/Dev"		, 	nil								, TamSX3("FT_SERIE")[1]		,,,,,"RIGHT")
+	TRCell():new(oSecNotas, "REC_DTENTRADA"	,		, "Dt. Entrada Rec/Dev", 	nil								, TamSX3("FT_ENTRADA")[1]	,,,,,"RIGHT")
+	TRCell():new(oSecNotas, "REC_TES"		,		, "TES Rec/Dev"			, 	nil								, TamSX3("FT_TES")[1]		,,,,,"RIGHT")
+	TRCell():new(oSecNotas, "REC_CFOP"		,		, "CFOP Rec/Dev"		, 	nil								, TamSX3("FT_CFOP")[1]		,,,,,"RIGHT")
+	TRCell():new(oSecNotas, "REC_QTDITEM"	,		, "Qtd. Item Rec/Dev"	, 	PesqPict("SFT", "FT_QUANT")		, TamSX3("FT_QUANT")[1]		,,,,,"RIGHT")
+	TRCell():new(oSecNotas, "REC_ICMSUNIT"	,		, "Vlr. Icms Item Rec/Dev",	"@E 999,999,999.99"				, 14						,,,,,"RIGHT")
+	TRCell():new(oSecNotas, "REC_ICMSREVE"	,		, "Vlr. Icms Reverter Rec/Dev",	"@E 999,999,999.99"			, 14						,,,,,"RIGHT")
+	
+return
+
+/**
+* Função responsável pelo processamento da impressão
+*/
+static function procImpressao()
+	
+	local nAliqICMRem	:= 0
+	local aAux			:= {}
+
+	oSecNotas:cAlias := oSqlNotas:getAlias()
+	oReport:startPage()
+	oSecNotas:init()
+	oSqlNotas:setField("FT_EMISSAO", "D")
+	oSqlNotas:setField("ZA_DTEMSCJ", "D")
+	oSqlNotas:setField("FT_ENTRADA", "D")
+	
+	oReport:SetMeter(oSqlNotas:count())
+
+	while oSqlNotas:notIsEof()
+		oReport:IncMeter()
+
+		nAliqICMRem := oSqlNotas:getValue("REM_ALIQICMIT")
+		if nAliqICMRem == 0
+			aAux := getAliqICMRem(oSqlNotas:getValue("REM_DOC"), oSqlNotas:getValue("REM_SERIE"), oSqlNotas:getValue("REM_CLIEFOR"), oSqlNotas:getValue("REM_LOJA"), oSqlNotas:getValue("REM_ITEM"), oSqlNotas:getValue("REM_PRODUTO"))
+		
+			oSecNotas:Cell("REM_ALIQICMIT"):setValue(aAux[1])
+			oSecNotas:Cell("REM_ICMSUNIT"):setValue(aAux[2])
+			oSecNotas:Cell("REM_ICMSESTO"):setValue(aAux[3])
+		endIf
+
+		oSecNotas:printLine()
+		
+		oSqlNotas:skip()
+	endDo
+	
+	oSecNotas:finish()
+	oSqlNotas:close()
+
+return
+
+/**
+* Função responsável pela estruturação da consulta SQL
+*/
+static function getNotas()
+	
+	local cQuery	:= ""
+	local nIndice	:= oSecNotas:getOrder()
+	local aCfops	:= iif(!empty(cCFOPs),StrTokArr(cCFOPs,';'),{})
+	local aCodMun	:= iif(!empty(cCodMun),StrTokArr(cCodMun,';'),{})
+	local nI		:= 0
+	local cAux		:= ""
+	
+	cQuery := "	SELECT DISTINCT " + CRLF 
+
+	// Dados da nota fiscal de retorno simbólico (saída)
+	cQuery += "		RET.FT_NFISCAL AS RET_DOC, " + CRLF
+	cQuery += "		RET.FT_SERIE AS RET_SERIE, " + CRLF
+	cQuery += "		RET.FT_EMISSAO AS RET_DTEMISSAO, " + CRLF
+	cQuery += "		RET.FT_ITEM AS RET_ITEM, " + CRLF
+	cQuery += "		RET.FT_PRODUTO AS RET_PRODUTO, " + CRLF
+	cQuery += "		RET.FT_POSIPI AS RET_NCM, " + CRLF
+	cQuery += "		RET.B1_DESC AS RET_DESCPROD, " + CRLF
+	cQuery += "		RET.FT_TES AS RET_TES, " + CRLF
+	cQuery += "		RET.FT_CFOP AS RET_CFOP, " + CRLF
+
+	// Dados da nota fiscal de venda da SCJ		
+	cQuery += "		VEN.ZA_DOCSCJ AS VEN_DOC, " + CRLF
+	cQuery += "		VEN.ZA_SERISCJ AS VEN_SERIE, " + CRLF
+	cQuery += "		VEN.ZA_DTEMSCJ AS VEN_DTEMISSAO, " + CRLF
+	cQuery += "		VEN.D2_ITEM, " + CRLF
+	cQuery += "		VEN.D2_COD, " + CRLF
+	cQuery += "		VEN.D2_QUANT, " + CRLF
+	cQuery += "		VEN.D2_PEDIDO, " + CRLF
+	cQuery += "		VEN.D2_ITEMPV, " + CRLF
+	cQuery += "		VEN.ZB_LINITEM, " + CRLF
+	cQuery += "		VEN.ZB_ITEM, " + CRLF
+	cQuery += "		VEN.ZB_QUANTIT, " + CRLF
+
+	// Dados da nota fiscal de remessa por conta e ordem (saída)	
+	cQuery += "		RCO.FT_NFISCAL AS RCO_DOC, " + CRLF
+	cQuery += "		RCO.FT_SERIE AS RCO_SERIE, " + CRLF
+	cQuery += "		RCO.FT_EMISSAO AS RCO_DTEMISSAO, " + CRLF
+	cQuery += "		RCO.FT_TES AS RCO_TES, " + CRLF
+	cQuery += "		RCO.FT_CFOP AS RCO_CFOP, " + CRLF
+	cQuery += "		RCO.F3_ESTADO AS RCO_UF, " + CRLF
+	cQuery += "		RCO.A1_MUN AS RCO_MUN, " + CRLF
+	cQuery += "		RCO.FT_PRCUNIT + (RCO.FT_DESCZFR / RCO.FT_QUANT) AS RCO_VLUNITEM, " + CRLF
+	cQuery += "		RCO.FT_QUANT AS RCO_QTDITEM, " + CRLF
+	cQuery += "		CASE " + CRLF
+	cQuery += "			WHEN RCO.FT_DESCZFR > 0 THEN 7 " + CRLF
+	cQuery += "			ELSE 0 " + CRLF
+	cQuery += "		END AS RCO_ALIQICMIT, " + CRLF
+	cQuery += "		RCO.FT_DESCZFR / RCO.FT_QUANT AS RCO_ICMSUNIT, " + CRLF
+	cQuery += "		RCO.FT_DESCZFR AS RCO_ICMSTOIT, " + CRLF
+
+	// Dados da nota fiscal de remessa para armazenagem (entrada)	
+	cQuery += "		REM.FT_NFISCAL AS REM_DOC, " + CRLF
+	cQuery += "		REM.FT_SERIE AS REM_SERIE, " + CRLF
+	cQuery += "		REM.FT_CLIEFOR AS REM_CLIEFOR, " + CRLF
+	cQuery += "		REM.FT_LOJA AS REM_LOJA, " + CRLF
+	cQuery += "		REM.FT_EMISSAO AS REM_DTEMISSAO, " + CRLF
+	cQuery += "		REM.FT_ITEM AS REM_ITEM, " + CRLF
+	cQuery += "		REM.FT_PRODUTO AS REM_PRODUTO, " + CRLF
+	cQuery += "		REM.FT_TES AS REM_TES, " + CRLF
+	cQuery += "		REM.FT_CFOP AS REM_CFOP, " + CRLF
+	cQuery += "		RET.FT_QUANT AS RET_QTDITEM, " + CRLF
+	cQuery += "		REM.FT_ALIQICM AS REM_ALIQICMIT, " + CRLF
+	cQuery += "		REM.FT_VALICM / REM.FT_QUANT AS REM_ICMSUNIT, " + CRLF
+	if Len(aCodMun) > 0
+		cAux := ""
+		cQuery += "		CASE " + CRLF
+		cQuery += "			WHEN RCO.A1_COD_MUN IN ("
+		for nI:=1 to len(aCodMun)
+			if !Empty(aCodMun[nI])
+				cAux += "'" + alltrim(aCodMun[nI]) + "',"
+			endIf
+		next nI
+		cAux := left(cAux,RAT(",",cAux)-1)
+		cQuery += iif(!empty(cAux),cAux,"''") + ")" + CRLF
+		cQuery += "			THEN (REM.FT_VALICM / REM.FT_QUANT) * RET.FT_QUANT " + CRLF
+		cQuery += "			ELSE 0 " + CRLF
+		cQuery += "		END AS REM_ICMSESTO, " + CRLF
+	else
+		cQuery += "		(REM.FT_VALICM / REM.FT_QUANT) * RET.FT_QUANT AS REM_ICMSESTO, " + CRLF
+	endIf
+
+	// Dados da nota fiscal de recusa/devolução da remessa por conta e ordem (entrada)	
+	cQuery += "		REC.FT_NFISCAL AS REC_DOC, " + CRLF
+	cQuery += "		REC.FT_SERIE AS REC_SERIE, " + CRLF
+	cQuery += "		REC.FT_ENTRADA AS REC_DTENTRADA, " + CRLF
+	cQuery += "		REC.FT_TES AS REC_TES, " + CRLF
+	cQuery += "		REC.FT_CFOP AS REC_CFOP, " + CRLF
+	cQuery += "		REC.FT_QUANT AS REC_QTDITEM, " + CRLF 
+	cQuery += "		REC.FT_DESCZFR / REC.FT_QUANT AS REC_ICMSUNIT, " + CRLF
+	if Len(aCodMun) > 0
+		cQuery += "		CASE " + CRLF
+		cQuery += "			WHEN RCO.A1_COD_MUN IN ("
+		cQuery += iif(!empty(cAux),cAux,"''") + ")" + CRLF
+		cQuery += "			THEN REC.FT_DESCZFR * -1 " + CRLF
+		cQuery += "			ELSE 0 " + CRLF
+		cQuery += "		END AS REC_ICMSREVE " + CRLF
+	else
+		cQuery += "		REC.FT_DESCZFR * -1 AS REC_ICMSREVE " + CRLF
+	endIf
+		
+	cQuery += "	FROM " + CRLF 
+	cQuery += "		( SELECT " + CRLF
+	cQuery += "			ZA_FILIAL, " + CRLF
+	cQuery += "			ZA_DOCSCJ, " + CRLF
+	cQuery += "			ZA_SERISCJ, " + CRLF
+	cQuery += "			ZA_DTEMSCJ, " + CRLF
+	cQuery += "			ZA_NFRET, " + CRLF
+	cQuery += "			ZA_SERIRET, " + CRLF
+	cQuery += "			ZA_NFRCO, " + CRLF
+	cQuery += "			ZA_SERIRCO, " + CRLF
+	cQuery += "			A1_COD, " + CRLF
+	cQuery += "			A1_LOJA, " + CRLF
+	cQuery += "			D2_ITEM, " + CRLF
+	cQuery += "			D2_COD, " + CRLF
+	cQuery += "			D2_QUANT, " + CRLF
+	cQuery += "			D2_PEDIDO, " + CRLF
+	cQuery += "			D2_ITEMPV, " + CRLF
+	cQuery += "			ZB_LINITEM, " + CRLF
+	cQuery += "			ZB_ITEM, " + CRLF
+	cQuery += "			ZB_QUANTIT " + CRLF
+	cQuery += "		FROM %SZA.SQLNAME% " + CRLF
+	cQuery += "		INNER JOIN %SA1.SQLNAME% " + CRLF
+	cQuery += "		ON 1=1 " + CRLF 
+	cQuery += "		AND A1_FILIAL = '%SA1.FILIAL%' " + CRLF
+	cQuery += "		AND A1_ZZCLSAP = ZA_BUYCODE " + CRLF
+	cQuery += "		AND %SA1.NOTDEL% " + CRLF
+	cQuery += "		INNER JOIN %SD2.SQLNAME% " + CRLF
+	cQuery += "		ON 1=1 " + CRLF 
+	cQuery += "		AND D2_FILIAL = ZA_FILIAL " + CRLF
+	cQuery += "		AND D2_DOC = ZA_NFRET " + CRLF
+	cQuery += "		AND D2_SERIE = ZA_SERIRET " + CRLF
+	cQuery += "		AND %SD2.NOTDEL% " + CRLF
+	cQuery += "		LEFT JOIN %SZB.SQLNAME% " + CRLF
+	cQuery += "		ON 1=1 " + CRLF 
+	cQuery += "		AND ZB_FILIAL = ZA_FILIAL " + CRLF
+	cQuery += "		AND ZB_KENFSCJ = ZA_KENFSCJ " + CRLF
+	cQuery += "		AND ZB_PEDIDO = D2_PEDIDO " + CRLF
+	cQuery += "		AND ZB_ITEMPV = D2_ITEMPV " + CRLF
+	cQuery += "		AND %SZB.NOTDEL% " + CRLF
+	cQuery += "		WHERE 1=1
+	cQuery += "		AND	ZA_FILIAL = '%SZA.FILIAL%' " + CRLF
+	cQuery += "		AND ZA_ICMSDES = 'S' " + CRLF
+	//cQuery += "		AND ZA_DOCSCJ IN ('000085336','000085341') " + CRLF
+	//cQuery += "		AND ZA_DOCSCJ IN ('000090849') " + CRLF
+	//cQuery += "		AND ZA_DOCSCJ IN ('999999995') " + CRLF
+	//cQuery += "		AND ZA_SERISCJ = '041' " + CRLF
+	cQuery += "		AND %SZA.NOTDEL% " + CRLF
+	cQuery += "		) VEN " + CRLF
+
+	cQuery += "	INNER JOIN " + CRLF
+	cQuery += "		( SELECT " + CRLF
+	cQuery += "			FT_FILIAL, " + CRLF
+	cQuery += "			FT_NFISCAL, " + CRLF
+	cQuery += "			FT_SERIE, " + CRLF
+	cQuery += "			FT_EMISSAO, " + CRLF
+	cQuery += "			FT_ITEM, " + CRLF
+	cQuery += "			FT_PRODUTO, " + CRLF
+	cQuery += "			FT_POSIPI, " + CRLF
+	cQuery += "			B1_DESC, " + CRLF
+	cQuery += "			FT_TES, " + CRLF
+	cQuery += "			FT_CFOP, " + CRLF
+	cQuery += "			FT_QUANT, " + CRLF
+	cQuery += "			FT_NFORI, " + CRLF
+	cQuery += "			FT_SERORI, " + CRLF
+	cQuery += "			FT_ITEMORI " + CRLF
+	cQuery += "		FROM %SFT.SQLNAME% " + CRLF
+	cQuery += "		INNER JOIN %SB1.SQLNAME% " + CRLF
+	cQuery += "		ON 1=1 " + CRLF 
+	cQuery += "		AND B1_FILIAL = '%SB1.FILIAL%' " + CRLF
+	cQuery += "		AND B1_COD = FT_PRODUTO " + CRLF
+	cQuery += "		AND %SB1.NOTDEL% " + CRLF
+	cQuery += "		WHERE 1=1 " + CRLF
+	cQuery += "		AND	FT_FILIAL = '%SFT.FILIAL%' " + CRLF
+	cQuery += "		AND FT_EMISSAO BETWEEN '"+dtos(dDtEmisDe)+"' AND '"+dtos(dDtEmisAte)+"' " + CRLF
+
+	if Len(aCfops) > 0
+		cAux := ""
+		cQuery += "			AND FT_CFOP IN ("
+		for nI:=1 to len(aCfops)
+			if !Empty(aCfops[nI])
+				cAux += "'" + alltrim(aCfops[nI]) + "',"
+			endIf
+		next nI
+		cAux := left(cAux,RAT(",",cAux)-1)
+		cQuery += iif(!empty(cAux),cAux,"''") + ")" + CRLF
+	endIf
+
+	cQuery += "		AND FT_DTCANC = ' ' " + CRLF
+	cQuery += "		AND %SFT.NOTDEL% " + CRLF
+	cQuery += "		) RET " + CRLF
+	cQuery += "	ON 1=1 " + CRLF
+	cQuery += "	AND RET.FT_FILIAL = VEN.ZA_FILIAL " + CRLF
+	cQuery += "	AND RET.FT_NFISCAL = VEN.ZA_NFRET " + CRLF
+	cQuery += "	AND RET.FT_SERIE = VEN.ZA_SERIRET " + CRLF
+	cQuery += "	AND RET.FT_ITEM = VEN.D2_ITEM " + CRLF
+	cQuery += "	AND RET.FT_PRODUTO = VEN.D2_COD " + CRLF
+	
+	cQuery += "	OUTER APPLY " + CRLF
+	cQuery += "		( SELECT * FROM " + CRLF
+	cQuery += "			( SELECT " + CRLF
+	cQuery += "			FT_FILIAL, " + CRLF
+	cQuery += "			FT_NFISCAL, " + CRLF
+	cQuery += "			FT_SERIE, " + CRLF
+	cQuery += "			FT_EMISSAO, " + CRLF
+	cQuery += "			FT_ITEM, " + CRLF
+	cQuery += "			FT_PRODUTO, " + CRLF
+	cQuery += "			FT_TES, " + CRLF
+	cQuery += "			FT_CFOP, " + CRLF
+	cQuery += "			F3_ESTADO, " + CRLF
+	cQuery += "			A1_COD_MUN, " + CRLF
+	cQuery += "			A1_MUN, " + CRLF
+	cQuery += "			FT_PRCUNIT, " + CRLF
+	cQuery += "			FT_QUANT, " + CRLF
+	cQuery += "			FT_DESCZFR, " + CRLF
+	cQuery += "			FT_ALIQICM, " + CRLF
+	cQuery += "			FT_CLIEFOR, " + CRLF
+	cQuery += "			FT_LOJA " + CRLF
+	cQuery += "		FROM %SFT.SQLNAME% " + CRLF
+	cQuery += "		INNER JOIN %SF3.SQLNAME% " + CRLF
+	cQuery += "		ON 1=1 " + CRLF
+	cQuery += "		AND F3_FILIAL = FT_FILIAL " + CRLF
+	cQuery += "		AND F3_SERIE = FT_SERIE " + CRLF
+	cQuery += "		AND F3_NFISCAL = FT_NFISCAL " + CRLF
+	cQuery += "		AND F3_CLIEFOR = FT_CLIEFOR " + CRLF
+	cQuery += "		AND F3_LOJA = FT_LOJA " + CRLF
+	cQuery += "		AND %SF3.NOTDEL% " + CRLF
+	cQuery += "		INNER JOIN %SA1.SQLNAME% " + CRLF
+	cQuery += "		ON 1=1 " + CRLF
+	cQuery += "		AND A1_FILIAL = '%SA1.FILIAL%' " + CRLF
+	cQuery += "		AND A1_COD = FT_CLIEFOR " + CRLF
+	cQuery += "		AND A1_LOJA = FT_LOJA " + CRLF
+	cQuery += "		AND %SA1.NOTDEL% " + CRLF
+	cQuery += "		WHERE 1=1 " + CRLF
+	cQuery += "		AND FT_FILIAL = '%SFT.FILIAL%' " + CRLF
+	cQuery += "		AND FT_DTCANC = ' ' " + CRLF
+	cQuery += "		AND %SFT.NOTDEL% " + CRLF
+	cQuery += "		) SUB_RCO " + CRLF
+	cQuery += "	WHERE 1=1 " + CRLF  
+	cQuery += "	AND SUB_RCO.FT_FILIAL = VEN.ZA_FILIAL " + CRLF
+	cQuery += "	AND SUB_RCO.FT_NFISCAL = VEN.ZA_NFRCO " + CRLF
+	cQuery += "	AND SUB_RCO.FT_SERIE = VEN.ZA_SERIRCO " + CRLF
+	cQuery += "	AND SUB_RCO.FT_CLIEFOR = VEN.A1_COD " + CRLF
+	cQuery += "	AND SUB_RCO.FT_LOJA = VEN.A1_LOJA " + CRLF
+	cQuery += "	AND TO_NUMBER(SUB_RCO.FT_ITEM) = TO_NUMBER(VEN.ZB_LINITEM) " + CRLF
+	cQuery += "	AND SUB_RCO.FT_PRODUTO = VEN.ZB_ITEM " + CRLF
+	cQuery += ") RCO " + CRLF
+	
+	cQuery += "	INNER JOIN " + CRLF
+	cQuery += "		( SELECT " + CRLF
+	cQuery += "			FT_FILIAL, " + CRLF
+	cQuery += "			FT_NFISCAL, " + CRLF
+	cQuery += "			FT_SERIE, " + CRLF
+	cQuery += "			FT_CLIEFOR, " + CRLF
+	cQuery += "			FT_LOJA, " + CRLF
+	cQuery += "			FT_EMISSAO, " + CRLF
+	cQuery += "			FT_ITEM, " + CRLF
+	cQuery += "			FT_PRODUTO, " + CRLF
+	cQuery += "			FT_TES, " + CRLF
+	cQuery += "			FT_CFOP, " + CRLF
+	cQuery += "			FT_QUANT, " + CRLF
+	cQuery += "			FT_ALIQICM, " + CRLF
+	cQuery += "			FT_VALICM " + CRLF
+	cQuery += "		FROM %SFT.SQLNAME% " + CRLF
+	cQuery += "		WHERE 1=1 " + CRLF
+	cQuery += "		AND	FT_FILIAL = '%SFT.FILIAL%' " + CRLF
+	cQuery += "		AND FT_DTCANC = ' ' " + CRLF
+	cQuery += "		AND %SFT.NOTDEL% " + CRLF
+	cQuery += "		) REM " + CRLF
+	cQuery += "	ON 1=1 " + CRLF
+	cQuery += "	AND REM.FT_FILIAL = RET.FT_FILIAL " + CRLF
+	cQuery += "	AND REM.FT_NFISCAL = RET.FT_NFORI " + CRLF
+	cQuery += "	AND REM.FT_SERIE = RET.FT_SERORI " + CRLF
+	cQuery += "	AND REM.FT_ITEM = RET.FT_ITEMORI " + CRLF
+	cQuery += "	AND REM.FT_PRODUTO = RET.FT_PRODUTO " + CRLF
+
+	cQuery += "	OUTER APPLY " + CRLF
+	cQuery += "		( SELECT * FROM " + CRLF
+	cQuery += "			( SELECT " + CRLF
+	cQuery += "				FT_FILIAL, " + CRLF
+	cQuery += "				FT_NFISCAL, " + CRLF
+	cQuery += "				FT_SERIE, " + CRLF
+	cQuery += "				FT_ENTRADA, " + CRLF
+	cQuery += "				FT_ITEM, " + CRLF
+	cQuery += "				FT_PRODUTO, " + CRLF
+	cQuery += "				FT_TES, " + CRLF
+	cQuery += "				FT_CFOP, " + CRLF
+	cQuery += "				FT_QUANT, " + CRLF
+	cQuery += "				FT_PRCUNIT, " + CRLF
+	cQuery += "				FT_NFORI, " + CRLF
+	cQuery += "				FT_SERORI, " + CRLF
+	cQuery += "				FT_ITEMORI, " + CRLF
+	cQuery += "				FT_DESCZFR " + CRLF
+	cQuery += "			FROM %SFT.SQLNAME% " + CRLF
+	cQuery += "			WHERE 1=1 " + CRLF
+	cQuery += "			AND	FT_FILIAL = '%SFT.FILIAL%' " + CRLF
+	cQuery += "			AND FT_DTCANC = ' ' " + CRLF
+	cQuery += "			AND %SFT.NOTDEL% " + CRLF
+	cQuery += "			) SUB_REC " + CRLF
+	cQuery += "		WHERE 1=1 " + CRLF  
+	cQuery += "		AND SUB_REC.FT_FILIAL = RCO.FT_FILIAL " + CRLF
+	cQuery += "		AND SUB_REC.FT_NFORI = RCO.FT_NFISCAL " + CRLF
+	cQuery += "		AND SUB_REC.FT_SERORI = RCO.FT_SERIE " + CRLF
+	cQuery += "		AND SUB_REC.FT_ITEMORI = RCO.FT_ITEM " + CRLF
+	cQuery += "		AND SUB_REC.FT_PRODUTO = RCO.FT_PRODUTO " + CRLF
+	cQuery += "	) REC " + CRLF
+
+	if nIndice == 1	
+		cQuery += "	ORDER BY " + CRLF 
+		cQuery += "		RET.FT_EMISSAO, " + CRLF 
+		cQuery += "		RET.FT_NFISCAL, " + CRLF 
+		cQuery += "		RET.FT_SERIE, " + CRLF 
+		cQuery += "		RET.FT_ITEM " + CRLF
+	endIf
+	
+	oSqlNotas	:= IpSqlObject():newIpSqlObject()
+	oSqlNotas:newAlias(cQuery)
+
+return
+
+/*
+*	Função responsável pela criação do índice
+*/
+static function criaIndice()
+	local aOrdem	:= {}
+	
+	aADD(aOrdem, "Dt. Emissão Ret + Num. Doc. Ret + Série Ret + Item Ret")
+
+return aOrdem
+
+/*
+*	Função recursiva responsável por obter o valor do ICMS referente a primeira remessa tributada
+*/
+static function getAliqICMRem(cDoc, cSerie, cCliefor, cLoja, cItem, cProduto)
+
+	local oSql		:= IpSqlObject():newIpSqlObject()
+	local oSql2		:= IpSqlObject():newIpSqlObject()
+	local oSql3		:= IpSqlObject():newIpSqlObject()
+	local oSql4		:= IpSqlObject():newIpSqlObject()
+	local oSql5		:= IpSqlObject():newIpSqlObject()
+	local cIdCob	:= ""
+	local cQuery	:= ""
+	local aRet		:= {0,0,0}
+	local cDoc2		:= ""
+	local cSerie2	:= ""
+	local cCliefor2	:= ""
+	local cLoja2	:= ""
+	local cItem2	:= ""
+	local cProduto2	:= ""
+
+	// Obtém o ID de cobertura fiscal da nota fiscal de entrada simbolica (remessa para armazenagem) que cobriu a nota fiscal de entrada de mercadoria / recusa ou devolução de mercadoria 
+	oSql:newTable("SZ4", "Z4_IDCOB", "Z4_FILIAL='%SZ4.FILIAL%' AND Z4_DOC='"+cDoc+;
+		"' AND Z4_SERIE='"+cSerie+"' AND Z4_CLIFOR='"+cCliefor+"' AND Z4_LOJA='"+cLoja+;
+		"' AND Z4_PRODUTO='"+cProduto+"' AND Z4_ITEM='"+cItem+"' AND Z4_TIPMOV = '2'")
+	
+	if oSql:hasRecords()
+		cIdCob := oSql:getValue("Z4_IDCOB")
+		
+		// Através do ID de cobertura fiscal, obtém as informações chave da nota fiscal de entrada de mercadoria / recusa ou devolução de mercadoria
+		oSql2:newTable("SZ4","*","Z4_FILIAL = '%SZ4.FILIAL%' AND Z4_IDCOB='"+cIdCob+"' AND Z4_TIPMOV = '1'")
+		if oSql2:hasRecords()
+
+			// Através das informações chave da nota fiscal de entrada de mercadoria / recusa ou devolução de mercadoria, obtém o documento, serie e item da nota fiscal de origem RCO (remessa por conta e ordem) amarrada à ela
+			oSql3:newTable("SD1", "D1_NFORI, D1_SERIORI, D1_ITEMORI",;
+				"D1_FILIAL = '%SD1.FILIAL%' AND D1_DOC = '"+oSql2:getValue("Z4_DOC")+"' AND "+;
+				"D1_SERIE = '"+oSql2:getValue("Z4_SERIE")+"' AND D1_FORNECE = '"+oSql2:getValue("Z4_CLIFOR")+"' AND "+;
+				"D1_LOJA = '"+oSql2:getValue("Z4_LOJA")+"' AND D1_ITEM = '"+oSql2:getValue("Z4_ITEM")+"' AND D1_COD = '"+oSql2:getValue("Z4_PRODUTO")+"'")
+			if oSql3:hasRecords()
+
+				// A partir dos dados da nota fiscal de origem RCO, obtém as informações do item da nota fiscal de retorno simbólico (RET) 
+				cQuery := "	SELECT " + CRLF
+				cQuery += "		ZA_NFRET, " + CRLF
+				cQuery += "		ZA_SERIRET, " + CRLF
+				cQuery += "		A1_COD, " + CRLF
+				cQuery += "		A1_LOJA, " + CRLF
+				cQuery += "		A1_COD_MUN, " + CRLF
+				cQuery += "		D2_COD, " + CRLF
+				cQuery += "		D2_QUANT, " + CRLF
+				cQuery += "		D2_NFORI, " + CRLF
+				cQuery += "		D2_SERIORI, " + CRLF
+				cQuery += "		D2_ITEMORI " + CRLF
+				cQuery += "	FROM %SZA.SQLNAME% " + CRLF
+				cQuery += "	INNER JOIN %SA1.SQLNAME% " + CRLF
+				cQuery += "	ON 1=1 " + CRLF 
+				cQuery += "	AND A1_FILIAL = '%SA1.FILIAL%' " + CRLF
+				cQuery += "	AND A1_ZZCLSAP = ZA_BUYCODE " + CRLF
+				cQuery += "	AND %SA1.NOTDEL% " + CRLF
+				cQuery += "	INNER JOIN %SD2.SQLNAME% " + CRLF
+				cQuery += "	ON 1=1 " + CRLF 
+				cQuery += "	AND D2_FILIAL = ZA_FILIAL " + CRLF
+				cQuery += "	AND D2_DOC = ZA_NFRET " + CRLF
+				cQuery += "	AND D2_SERIE = ZA_SERIRET " + CRLF
+				cQuery += "	AND D2_ITEM = '"+oSql3:getValue("D1_ITEMORI")+"' " + CRLF
+				cQuery += "	AND %SD2.NOTDEL% " + CRLF
+				cQuery += "	WHERE 1=1
+				cQuery += "	AND	ZA_FILIAL = '%SZA.FILIAL%' " + CRLF
+				cQuery += "	AND ZA_NFRCO = '"+oSql3:getValue("D1_NFORI")+"' " + CRLF
+				cQuery += "	AND ZA_SERIRCO = '"+oSql3:getValue("D1_SERIORI")+"' " + CRLF
+				cQuery += "	AND %SZA.NOTDEL% "
+				oSql4:newAlias(cQuery)
+				
+				if oSql4:hasRecords()
+
+					// A partir das informações do item da nota fiscal de retorno simbólico (RET), obtém a nota fiscal de entrada de remessa para armazenagem, referenciada ao item 
+					cQuery := " SELECT " + CRLF
+					cQuery += " 	FT_NFISCAL, " + CRLF
+					cQuery += " 	FT_SERIE, " + CRLF 
+					cQuery += " 	FT_CLIEFOR, " + CRLF 
+					cQuery += " 	FT_LOJA, " + CRLF 
+					cQuery += " 	FT_ITEM, " + CRLF 
+					cQuery += " 	FT_PRODUTO, " + CRLF 
+					cQuery += " 	FT_QUANT, " + CRLF 
+					cQuery += " 	FT_ALIQICM AS REM_ALIQICMIT, " + CRLF 
+					cQuery += " 	FT_VALICM / FT_QUANT AS REM_ICMSUNIT, " + CRLF
+					cQuery += " 	(FT_VALICM / FT_QUANT) * " + cValToChar(oSql4:getValue("D2_QUANT")) + " AS REM_ICMSESTO " + CRLF
+					cQuery += " FROM %SFT.SQLNAME% " + CRLF
+					cQuery += " WHERE 1=1 " + CRLF
+					cQuery += " AND %SFT.XFILIAL% " + CRLF
+					cQuery += " AND FT_NFISCAL = '" + oSql4:getValue("D2_NFORI") + "' " + CRLF
+					cQuery += " AND FT_SERIE = '" + oSql4:getValue("D2_SERIORI") + "' " + CRLF
+					cQuery += " AND FT_ITEM	= '" + oSql4:getValue("D2_ITEMORI") + "' " + CRLF
+					cQuery += " AND FT_PRODUTO = '" + oSql4:getValue("D2_COD") + "' " + CRLF
+					cQuery += " AND %SFT.NOTDEL% "
+					oSql5:newAlias(cQuery)
+					
+					if oSql5:hasRecords()
+						// Caso a alíquota de ICMS da nota fiscal de remessa para armazenagem localizada seja 0 (zero), a função é acionada novamente, de forma recursiva, para obter a próxima nota fiscal de remessa para armazenagem
+						if oSql5:getValue("REM_ALIQICMIT") == 0
+							cDoc2	:= oSql5:getValue("FT_NFISCAL")
+							cSerie2	:= oSql5:getValue("FT_SERIE")
+							cCliefor2:= oSql5:getValue("FT_CLIEFOR")
+							cLoja2	:= oSql5:getValue("FT_LOJA")
+							cItem2	:= oSql5:getValue("FT_ITEM")
+							cProduto2:= oSql5:getValue("FT_PRODUTO")
+							
+							oSql:close()
+							oSql2:close()
+							oSql3:close()
+							oSql4:close()
+							oSql5:close()
+
+							aRet := getAliqICMRem(cDoc2, cSerie2, cCliefor2, cLoja2, cItem2, cProduto2)
+						else // Caso contrário, as informações de alíquota e valor de ICMS são obtidas e utilizadas
+							aRet[1] := oSql5:getValue("REM_ALIQICMIT")
+							aRet[2] := oSql5:getValue("REM_ICMSUNIT")
+							if !empty(cCodMun)
+								if alltrim(oSql4:getValue("A1_COD_MUN")) $ alltrim(cCodMun)
+									aRet[3] := oSql5:getValue("REM_ICMSESTO") 
+								endIf
+							else
+								aRet[3] := oSql5:getValue("REM_ICMSESTO")
+							endIf
+						endIf
+					endIf
+					oSql5:close()
+
+				endIf
+				oSql4:close()
+
+			endIf
+			oSql3:close()
+
+		endIf
+		oSql2:close()
+
+	endIf
+	oSql:close()
+
+return aRet

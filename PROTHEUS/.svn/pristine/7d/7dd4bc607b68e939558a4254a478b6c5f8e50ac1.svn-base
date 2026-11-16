@@ -1,0 +1,57 @@
+#INCLUDE "TOTVS.CH"
+#INCLUDE "DHL.CH"
+
+/*/{Protheus.doc} User Function AglVldCancelamentoNF
+    Validação do processo de exclusão triangulação faturamento
+    @type  Function
+    @author TOTVS IP
+    @since 16/11/2023
+    @version 1.0
+    (examples)
+    @see MS520VLD
+    /*/
+User Function AglVldCancelamentoNF()
+	Local oSql := IpSqlObject():newIpSqlObject()
+	Local cNota := PARAMIXB[1]
+	Local cSerie := PARAMIXB[2]
+	Local cTipoNf := PARAMIXB[3]
+	Local lRet  := .t.
+
+	if cTipoNf == REMESSA_CONTA_ORDEM
+		cWhere := " %SZ8.XFILIAL% AND Z8_NFRCO = '" + cNota + "' AND Z8_SERRCO = '" + cSerie + "'"
+
+		oSql:newTable("SZ8", "Z8_CLIEMIT, Z8_LOJEMIT, Z8_NFRET, Z8_SERRET", cWhere)
+		if oSql:hasRecords()
+			if Existblock("IsClienteDepositante")
+				lRet := u_IsClienteDepositante(oSql:getValue("Z8_CLIEMIT"), oSql:getValue("Z8_LOJEMIT"))
+			endif
+			if lRet
+				if !Empty(oSql:getValue("Z8_NFRET")) .and. !Empty(oSql:getValue("Z8_SERRET"))
+					lRet:= .f.
+					MsgAlert("Para o processo de triangulação, "+;
+						"necessário primeiro excluir NF Ret.Simb.: " + oSql:getValue("Z8_NFRET") + "/" + oSql:getValue("Z8_SERRET"),;
+						"Cancelamento de NF (Triagulação)")
+				endif
+			endif
+		endif
+		oSql:close()
+	elseif cTipoNf == RETORNO_SIMBOLICO
+		cWhere := " %SZ8.XFILIAL% AND Z8_NFRET = '" + cNota + "' AND Z8_SERRET = '" + cSerie + "'"
+
+		oSql:newTable("SZ8", "Z8_CLIEMIT, Z8_LOJEMIT, Z8_NFRCO, Z8_SERRCO, Z8_NFRET, Z8_SERRET", cWhere)
+		if oSql:hasRecords()
+			if Existblock("IsClienteDepositante")
+				lRet := u_IsClienteDepositante(oSql:getValue("Z8_CLIEMIT"), oSql:getValue("Z8_LOJEMIT"))
+			endif
+			if !Empty(oSql:getValue("Z8_NFRCO")) .and. !Empty(oSql:getValue("Z8_SERRCO"))
+				MsgInfo("Processo de triangulação, "+;
+					"após essa exclusão, ainda existirá o vinculo com a NF RCO: " + oSql:getValue("Z8_NFRCO") + "/" + oSql:getValue("Z8_SERRCO")+;
+					" e essa deverá ser excluída manualmente.",;
+					"Cancelamento de NF (Triagulação)")
+			endif
+		endif
+
+		oSql:close()
+	endif
+
+Return (lRet)

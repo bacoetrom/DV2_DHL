@@ -1,0 +1,197 @@
+#include 'protheus.ch'
+#include 'dhl.ch'
+
+/*/{Protheus.doc} DHLDisDevRec
+Classe para tratativa de devolução e recusa
+@author Thiago Meschiatti
+@since 09/06/2016
+@version 1.0
+@example
+(examples)
+@see (links_or_references)
+/*/
+class DHLDisDevRec FROM DhlDisControl
+
+	method newDHLDisDevRec() constructor 
+	
+	method hasGeneration()
+	method getSA7()
+	method getTesDev()
+	method getKeyNf()
+	method updStatus(cStatus)
+
+endclass
+
+/*/{Protheus.doc} newDHLDisDevRec
+Metodo construtor
+@author Thiago Meschiatti
+@since 09/06/2016 
+@version 1.0
+@example
+(examples)
+@see (links_or_references)
+/*/
+method newDHLDisDevRec() class DHLDisDevRec
+	::oUtils  		:= IpUtilsObject():newIpUtilsObject()
+	::aHeader 		:= {}
+	::aAuxItems		:= {}
+	::aItems  		:= {}
+return
+
+
+/*/{Protheus.doc} hasGeneration
+Verifica se possuí geração de NF espelho
+@author Thiago Meschiatti
+@since 09/06/2016
+@version undefined
+/*/
+method hasGeneration(cTes) class DHLDisDevRec
+	local oSql 	:= IpSqlObject():newIpSqlObject()
+	local lRet	:= .f.
+	
+	if oSql:getFieldValue("SF4", "F4_ZZNFDEV", "%SF4.XFILIAL% AND F4_CODIGO = '" + cTes + "' ") == "S"
+		lRet := .t.
+	endif
+	
+	oSql:close()
+return (lRet)
+
+
+/*/{Protheus.doc} getSA7
+Retorna informações da tabela de Amarração Produto x Cliente
+@author Thiago Meschiatti
+@since 09/06/2016
+@version undefined
+
+@type method
+/*/
+method getSA7(cProduct) class DHLDisDevRec
+	local oSql		:= IpSqlObject():newIpSqlObject()
+	local cWhere	:= ""
+	local cCustomer	:= ""
+	local cUnit		:= ""
+	
+	default cProduct := ""
+	
+	cWhere += " %SA7.XFILIAL% AND A7_PRODUTO = '"+cProduct+"' AND %SA7.NOTDEL%"
+	
+	oSql:newTable("SA7", "A7_CLIENTE CLIENTE, A7_LOJA LOJA", cWhere)
+	
+	if oSql:hasRecords()
+		cCustomer 	:= oSql:getValue("CLIENTE")
+		cUnit		:= oSql:getValue("LOJA")
+	endif
+	
+	oSql:close()
+return {cCustomer, cUnit}
+
+
+/*/{Protheus.doc} getTesDev
+Coleta a Tes de devolução espelho
+@author Thiago Meschiatti
+@since 10/06/2016
+@version undefined
+
+@type method
+/*/
+method getTesDev(cTes) class DHLDisDevRec
+	local oSql 	:= IpSqlObject():newIpSqlObject()
+	local lRet	:= .f.
+	
+	cRet := oSql:getFieldValue("SF4", "F4_ZZTESDE", "%SF4.XFILIAL% AND F4_CODIGO = '" + cTes + "' ") 
+	
+	oSql:close()
+return (cRet)
+
+
+/*/{Protheus.doc} getKeyNf
+Coleta a chave para gravação na NF
+@author Thiago Meschiatti
+@since 16/06/2016
+@version undefined
+
+@type method
+/*/
+method getKeyNf(cDoc, cSeries, cItem) class DHLDisDevRec
+	local oSql		:= IpSqlObject():newIpSqlObject()
+	local oSqlAux	:= IpSqlObject():newIpSqlObject()
+	local cQuery 	:= ""
+	local cChvNf	:= ""
+	
+	if FunName() == "PROCMSADW"
+		oSqlAux:NewAlias(retQrySD2(cDoc, cSeries, cItem))
+	else
+		oSqlAux:NewTable("SD2", "D2_NFORI, D2_SERIORI, D2_ITEMORI", retQrySD2(cDoc, cSeries, cItem))
+	endif
+		
+	if upper(alltrim(oSqlAux:getValue("D2_SERIORI"))) == DHL_SERIE_ESPELHO
+		cQuery += " SELECT SD1_DEV.D1_ZZCHVNF AS CHAVE_NF "
+		cQuery += " FROM SD1100 SD1_DEV "
+		cQuery += " INNER JOIN SB6100 SB6 ON SB6.B6_FILIAL = SD1_DEV.D1_FILIAL "
+		cQuery += " 	AND SB6.B6_IDENT = SD1_DEV.D1_IDENTB6 "
+		cQuery += " 	AND SB6.B6_PRODUTO = SD1_DEV.D1_COD "
+		cQuery += " 	AND SB6.B6_TPCF = 'C' "
+		cQuery += " 	AND SB6.B6_PODER3 = 'D' "
+		cQuery += " 	AND SB6.D_E_L_E_T_ = ' ' "
+		cQuery += " WHERE "
+		cQuery += " 		SD1_DEV.D1_DOC 		= '" + oSqlAux:getValue("D2_NFORI") 	+ "' "
+		cQuery += " 	AND	SD1_DEV.D1_SERIE	= '" + oSqlAux:getValue("D2_SERIORI")	+ "' "
+		cQuery += " 	AND SD1_DEV.D1_ITEM		= '" + oSqlAux:getValue("D2_ITEMORI")	+ "' "
+		cQuery += " 	AND SD1_DEV.D_E_L_E_T_ = ' '  "
+		cQuery += " 	AND SD1_DEV.D1_FILIAL  = '" + xFilial("SD1") + "'  "
+	else
+		cQuery += " SELECT SD2.D2_NFORI || SD2.D2_SERIORI || SD2.D2_ITEMORI || SB6.B6_CLIFOR || SB6.B6_LOJA as CHAVE_NF " 
+		cQuery += " FROM %SD2.SQLNAME% "
+		cQuery += " INNER JOIN %SB6.SQLNAME% ON	"
+		cQuery += " 		B6_FILIAL 	= SD2.D2_FILIAL "
+		cQuery += " 	AND	B6_IDENT	= SD2.D2_IDENTB6 "
+		cQuery += " 	AND B6_PRODUTO	= SD2.D2_COD "
+		cQuery += " 	AND B6_TPCF		= 'C' "
+		cQuery += " 	AND B6_PODER3	= 'R' "
+		cQuery += " 	AND %SB6.NOTDEL%  "
+		cQuery += " WHERE "
+		cQuery += " 		D2_DOC 		= '" + cDoc 	+ "' "
+		cQuery += " 	AND	D2_SERIE	= '" + cSeries	+ "' "
+		cQuery += " 	AND D2_ITEM		= '" + cItem	+ "' "
+		cQuery += " 	AND %SD2.NOTDEL%  "
+		cQuery += " 	AND %SD2.XFILIAL% "
+	endif
+	
+	oSql:newAlias(cQuery)
+	if oSql:hasRecords()
+		cChvNf := oSql:getValue("CHAVE_NF")
+	endif
+	oSql:close()
+	oSqlAux:close() //Emerson Holanda 30/12/2022
+return (cChvNf)
+
+
+/*/{Protheus.doc} updStatus
+Grava Status da NF de Devolução
+@author Thiago Meschiatti
+@since 16/06/2016
+@version undefined
+
+@type method
+/*/
+method updStatus(cStatus) class DHLDisDevRec
+ 	SF1->(RecLock("SF1", .F.))
+ 		SF1->F1_ZZSTATU := cStatus
+ 	SF1->(MsUnlock())
+return
+
+
+/*
+** Where para tabela SD2
+*/
+static function retQrySD2(cDoc, cSeries, cItem)
+	local cQuery := ""
+	
+	if FunName() == "PROCMSADW"
+		cQuery += " SELECT * FROM %SD2.SQLNAME% "
+		cQuery += " WHERE %SD2.XFILIAL% AND D2_DOC = '" + cDoc + "' AND D2_SERIE = '" + cSeries + "' AND D2_ITEM = '" + cItem + "'
+	else
+		cQuery += "%SD2.XFILIAL% AND D2_DOC = '" + cDoc + "' AND D2_SERIE = '" + cSeries + "' AND D2_ITEM = '" + cItem + "'"
+	endif
+	
+return (cQuery)

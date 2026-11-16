@@ -1,0 +1,317 @@
+#include "totvs.ch"
+#include "dhl.ch"
+
+#define BLQ_TELA_SIM "1"
+#define ADD_CLIENTE  3
+#define UPD_CLIENTE  4
+
+
+/*/{Protheus.doc} Ag2Customer
+
+Rotina responsável por ler e processar a interface Customer - IP_040 e atualizar os dados referentes ao cliente.
+Processo para a Unidade de Negócio AG2(SCJ - PUZZLE)
+	
+@author Thiago Meschiatti
+@since 04/05/2017
+/*/
+user function Ag2Customer(cFilePath)
+
+	Local nOpc			:= ADD_CLIENTE
+
+	private aDatas      := {}
+	private lMSErroAuto := .F.
+	private lMsHelpAuto := .F.
+	private cFile       := cFilePath
+
+	DbSelectArea("SA1")
+	SA1->(DbSetOrder(1))
+	
+	If existCliente()
+		nOpc := UPD_CLIENTE
+	Endif
+	
+	getDatas(nOpc)
+	
+	aDatas := FwVetByDic(aDatas, "SA1")
+	
+	MSExecAuto({|x,y| Mata030(x,y)}, aDatas, nOpc) 
+
+	if lMsErroAuto
+		DisarmTransaction()
+		setFileLog(cFile,"fail","Falha ao " + If(nOpc == ADD_CLIENTE, "incluir", "alterar")+ " o Cliente."+CRLF+CRLF+oUtils:getErroAuto())
+		
+		lError := .T. 
+	endif
+	
+return (lError)
+
+
+/**
+* Cria o array com os dados para a rotina automatica
+**/
+static function getDatas(nOpc)
+
+	Local cCityCode := getCityCode()
+	Local cState	:= getState()
+	Local cAdress	:= getAdress()
+	Local cNumber	:= getNumber()
+	Local cEmail	:= getEmail()
+	Local cTaxPayer	:= getTaxPayer()
+	
+	If (nOpc == UPD_CLIENTE)
+		aAdd(aDatas, {"A1_COD"		 , SA1->A1_COD				, Nil})
+		aAdd(aDatas, {"A1_LOJA"		 , SA1->A1_LOJA				, Nil})
+	EndIf
+
+	aAdd(aDatas, {"A1_NOME"      , getName()						, Nil}) 
+	aAdd(aDatas, {"A1_NREDUZ"    , getTradeName()	 				, Nil})
+	aAdd(aDatas, {"A1_PESSOA"    , getPessoa()		 				, Nil})  
+	aAdd(aDatas, {"A1_TIPO"      , "R"				 				, Nil}) 
+	aAdd(aDatas, {"A1_ZZRUA"     , cAdress 							, Nil})
+	aAdd(aDatas, {"A1_ZZNRO"     , cNumber							, Nil})
+	aAdd(aDatas, {"A1_END"       , cAdress + ", " + cNumber			, Nil})
+	aAdd(aDatas, {"A1_COMPLEM"   , getComplement()					, Nil})
+	aAdd(aDatas, {"A1_EST"       , cState							, Nil})
+	aAdd(aDatas, {"A1_COD_MUN"   , getCityCode()					, Nil})
+	aAdd(aDatas, {"A1_MUN"       , getMun(cCityCode, cState)		, Nil})
+	aAdd(aDatas, {"A1_BAIRRO"    , If(Empty(getDistrict()), "X", getDistrict())	, Nil})
+	aAdd(aDatas, {"A1_CEP"       , getZipCode()						, Nil})
+	aAdd(aDatas, {"A1_PAIS"      , getCodeCountry()					, Nil})
+	aAdd(aDatas, {"A1_PAISDES"   , getCountry()						, Nil})
+	If (cState $ "EX")
+		aAdd(aDatas, {"A1_PFISICA"   , getCGC()	 						, Nil})
+	Else
+		aAdd(aDatas, {"A1_CGC"   	 , getCGC()	 						, Nil})
+	EndIf
+	aAdd(aDatas, {"A1_INSCR"     , getInscEst()						, Nil})
+	aAdd(aDatas, {"A1_EMAIL"     , if(empty(cEmail), "X", cEmail)	, Nil}) 		
+	aAdd(aDatas, {"A1_CONTRIB"   , cTaxPayer						, Nil})
+	aAdd(aDatas, {"A1_CODPAIS"   , getCBCode() 						, Nil})
+	aAdd(aDatas, {"A1_SUFRAMA"   , getSuframa()						, Nil})
+	aAdd(aDatas, {"A1_CALCSUF"   , Iif(Empty(getSuframa()), "N", "I")	, Nil})
+	aAdd(aDatas, {"A1_DDD"       , getDDD()	                          	, Nil})
+	aAdd(aDatas, {"A1_TEL"       , getTelephone()	                 	, Nil})
+	
+	If (nOpc == ADD_CLIENTE)
+		aAdd(aDatas, {"A1_INSCR"     , if(cTaxPayer $ "1", "X", "")	, Nil})
+		aAdd(aDatas, {"A1_MSBLQL"    , "1"							, Nil})
+		aAdd(aDatas, {"A1_ZZCLSAP"   , getSapCode()					, Nil})
+	EndIf
+	
+	aAdd(aDatas, {"A1_ZZINDDW"   , "2"	 	 				, Nil})
+	aAdd(aDatas, {"A1_ZZREPRE"   , "N"	 	 				, Nil})
+	
+return
+
+
+/**
+* Coleta o Código do Produto
+**/
+static function getName()
+return PadR(Upper(AllTrim(oXml:_CUST_IP030:_BODY:_FILEHEADER:_NAME:TEXT)), TamSx3("A1_NOME")[1])
+
+
+/**
+* Coleta a Descrição do Produto
+**/
+static function getTradeName()
+return substr(Upper(AllTrim(oXml:_CUST_IP030:_BODY:_FILEHEADER:_NAME:TEXT)), 1, TamSx3("A1_NREDUZ")[1])
+
+/**
+* Coleta o rastro do produto
+**/
+static function getPessoa()
+return If(len(AllTrim(oXml:_CUST_IP030:_BODY:_FILEHEADER:_CNPJ_CPF:TEXT)) < 14, "F", "J")
+
+
+/**
+* Coleta o Tipo do Produto
+**/
+static function getAdress()
+return AllTrim(oXml:_CUST_IP030:_BODY:_FILEHEADER:_ADDRESS:TEXT)
+
+
+/**
+* Coleta a Unidade de Medida
+**/
+static function getNumber()
+return AllTrim(oXml:_CUST_IP030:_BODY:_FILEHEADER:_NUMBER:TEXT)
+
+
+/**
+* Coleta o Armazem
+**/
+static function getState()
+return AllTrim(oXml:_CUST_IP030:_BODY:_FILEHEADER:_STATE:TEXT)
+
+
+/**
+* Coleta o Armazem
+**/
+static function getCityCode(cCodMun)
+return AllTrim(oXml:_CUST_IP030:_BODY:_FILEHEADER:_CITY_CODE:TEXT)
+
+
+/**
+* Coleta a descrição do municipio
+**/
+static function getMun(cCityCode, cState)
+	Local oSql := IpSqlObject():newIpSqlObject()
+	Local cRet := ""
+	
+	cRet := oSql:getFieldValue("CC2","CC2_MUN","%CC2.XFILIAL% AND CC2_EST = '" + cState + "' AND CC2_CODMUN = '" + cCityCode + "'")
+	
+	oSql:close()
+
+return Alltrim(cRet)
+
+
+/**
+* Coleta o Bairro
+**/
+static function getDistrict()
+return AllTrim(oXml:_CUST_IP030:_BODY:_FILEHEADER:_DISTRICT:TEXT)
+
+
+/**
+* Coleta o Cep
+**/
+static function getZipCode()
+return AllTrim(oXml:_CUST_IP030:_BODY:_FILEHEADER:_ZIPCODE:TEXT)
+
+
+/**
+* Coleta o codigo do Pais
+**/
+static function getCodeCountry()
+return AllTrim(oXml:_CUST_IP030:_BODY:_FILEHEADER:_COUNTRY_CODE:TEXT)
+
+
+/**
+* Coleta o Nome do Pais
+**/
+static function getCountry()
+return AllTrim(oXml:_CUST_IP030:_BODY:_FILEHEADER:_COUNTRY_NAME:TEXT)
+
+
+/**
+* Coleta o CNPJ/CPF
+**/
+static function getCGC()
+return AllTrim(oXml:_CUST_IP030:_BODY:_FILEHEADER:_CNPJ_CPF:TEXT)
+
+
+/**
+* Coleta o E-mail
+**/
+static function getEmail()
+	Local cEmail 		:= GetNewPar("ZZ_MAIL030", "")
+	Local cEmailCli	:= AllTrim(oXml:_CUST_IP030:_BODY:_FILEHEADER:_EMAIL:TEXT)
+	
+	If !Empty(cEmailCli)
+		cEmailCli := AllTrim(cEmailCli) + ","
+	Endif
+
+return (cEmailCli + AllTrim(cEmail))
+
+
+/**
+* Coleta a definição de Contribuinte de ICMS
+**/
+static function getTaxPayer()
+return AllTrim(oXml:_CUST_IP030:_BODY:_FILEHEADER:_TAXPAYER:TEXT)
+
+
+/**
+* Coleta o codigo do Pais (BACEN)
+**/
+static function getCBCode()
+return AllTrim(oXml:_CUST_IP030:_BODY:_FILEHEADER:_CB_CODE:TEXT)
+
+
+/**
+* Coleta o código Suframa
+**/
+static function getSuframa()
+//AllTrim(oXml:_CUST_IP030:_BODY:_FILEHEADER:_SUFRAMA_CODE:TEXT)
+return (Criavar("A1_SUFRAMA", .F.)) 
+
+
+/**
+* Coleta o código do cliente no SAP
+**/
+static function getSapCode()
+return AllTrim(oXml:_CUST_IP030:_BODY:_FILEHEADER:_SAP_CODE:TEXT)
+
+
+/**
+* Coleta o código do cliente no SAP
+**/
+static function getComplement()
+return AllTrim(oXml:_CUST_IP030:_BODY:_FILEHEADER:_COMPLEMENT:TEXT)
+
+
+/**
+* Coleta a Inscrição Estadual
+**/
+static function getInscEst()
+return AllTrim(oXml:_CUST_IP030:_BODY:_FILEHEADER:_IE:TEXT)
+
+
+/**
+* Coleta DDD do telefone
+**/
+static function getDDD()
+return AllTrim(oXml:_CUST_IP030:_BODY:_FILEHEADER:_DDD:TEXT)
+
+
+/**
+* Coleta telefone
+**/
+static function getTelephone()
+return AllTrim(oXml:_CUST_IP030:_BODY:_FILEHEADER:_TELEPHONE:TEXT)
+
+
+/**
+ * Define os Logs de acordo com os tipos de arquivos
+ */
+static function setFileLog(cFile,cLogType,cLogText,cTag,cValue)
+	
+	local cInterface := "Customer IP_030"
+	
+	oLog:start(APP_DLX,DHL_IMPORTACAO,cFile)
+	
+	if !(Empty(cTag))
+		cLogText += CRLF+CRLF+"Tag: "+cTag
+	endIf
+	
+	if !(Empty(cValue))
+		cLogText += CRLF+CRLF+"Valor: "+cValue
+	endIf
+	
+	if (cLogType == "fail")
+		oLog:fail(cInterface, cLogText)
+	elseIf (cLogType == "warn")
+		oLog:warn(cInterface, cLogText)
+	endIf	
+	
+return
+
+
+/*
+** Verifica se ja existe cliente cadastrado para o código do cliente do SAP
+*/
+Static Function existCliente()
+	Local oSql 		:= IpSqlObject():newIpSqlObject()
+	Local cCodSap 	:= getSapCode()
+	Local lRet		:= .f.
+	
+	oSql:newTable("SA1", "A1_FILIAL || A1_COD || A1_LOJA CLIENTE", "%SA1.XFILIAL% AND A1_ZZCLSAP = '" + cCodSap + "'")
+	
+	If oSql:hasRecords()
+		SA1->(DbSeek(oSql:getValue("CLIENTE")))
+		lRet := .t.
+	Endif
+	
+	oSql:close()
+Return (lRet)

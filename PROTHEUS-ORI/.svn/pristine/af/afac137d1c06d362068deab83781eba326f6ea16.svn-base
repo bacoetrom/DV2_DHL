@@ -1,0 +1,1491 @@
+#include "totvs.ch"
+#include "dhl.ch"
+
+#define CAMPOS_SZA  	"ZA_FILIAL #ZA_NFRET  #ZA_SERIRET#ZA_NFRCO  #ZA_SERIRCO#ZA_F3QTLIN #ZA_NFRCOX5"
+#define CAMPOS_SZB 	"ZB_FILIAL #ZB_PEDIDO #ZB_ITEMPV "
+#define SUFRAMA	  	"7"
+
+/*/{Protheus.doc} SAPIP040
+
+Rotina responsável por ler e processar a interface SAP IP 040 e gravar os dados da nota fiscal SCJ em tabelas personalizadas.
+Processo para a Unidade de Negócio AG2(SCJ - PUZZLE)
+	
+@author Diogo Mesquita
+@since 17/05/2017
+/*/
+user function SAPIP040(cFilePath)
+
+	local lError		:= .f.
+	private cFile		:= cFilePath
+	private oIp040		:= DHLIp040Sap():newDHLIp040Sap()
+	
+	BEGIN TRANSACTION
+		BEGIN SEQUENCE
+			lError := incNFSCJ()
+			if lError
+				BREAK
+			endif
+		RECOVER
+			DisarmTransaction()
+		END SEQUENCE
+	END TRANSACTION
+	
+return lError
+
+/**
+* Inclui NF SCJ em tabelas personalizadas
+**/
+static function incNFSCJ()
+	
+	local aArea		:= GetArea()
+	local lError		:= .f.		
+	local aItems		:= {}
+	local nItem		:= 1
+	local nLenItem	:= 0
+	local oSql			:= IpSqlObject():newIpSqlObject()
+	local cQuery		:= ""
+	local nF3QtLin	:= 0
+	local cWhere		:= ""
+	local lUpdate		:= .f.
+	Local nCount		:= 0
+	local aCposSX3		:= FWSX3Util():GetAllFields("SZA", .f.)
+		
+	SZA->(DbSelectArea("SZA"))
+	SZA->(DbSetOrder(1))
+	if SZA->(DbSeek(xFilial("SZA") + getKeNFSCJ()))
+		DisarmTransaction()
+		setFileLog(cFile,"fail","Interface não pode ser processada. NF SCJ já importada no Protheus - Chave NFe: "+alltrim(getKeNFSCJ())+".")
+		lError := .t.
+	endif
+		
+	if !(lError)
+		
+		if SZA->(RecLock("SZA",.T.))
+			SZA->ZA_FILIAL  := xFilial("SZA")
+			
+			for nCount := 1 to len(aCposSX3)
+				if X3Uso(getSX3Cache(aCposSX3[nCount],"X3_USADO")) .and. cNivel >= getSX3Cache(aCposSX3[nCount],"X3_NIVEL") .and. !(aCposSX3[nCount] $ CAMPOS_SZA)
+					
+					
+					&("SZA->" + alltrim(aCposSX3[nCount])) := &("get" + allTrim(SubStr(aCposSX3[nCount],4,7)) + "()")
+		 		endif
+			next nCount
+			
+			SZA->(MsUnlock())	
+		
+			if ValType(oXml:_IP_040:_BODY:_FILEITEM) == "A"
+					
+				nLenItem := Len(oXml:_IP_040:_BODY:_FILEITEM)
+				aItems   := {}
+						
+				for nItem := 1 to nLenItem
+				
+					if !incItNFSCJ(@nItem)
+						lError := .t.
+						exit
+					endif
+					
+				next nItem
+						
+			elseif ValType(oXml:_IP_040:_BODY:_FILEITEM) == "O"
+				
+				nItem	:= 0
+				aItems  := {}
+				
+				if !incItNFSCJ(@nItem)
+					lError := .t.
+				endif
+						
+			endif
+		
+			// Atualiza o campo ZA_F3QTLIN
+			nF3QtLin := oIp040:getQtyLinSF3(getKeNFSCJ())
+			
+			cWhere := "ZA_FILIAL  = '%SZA.FILIAL%' AND "
+			cWhere += "ZA_KENFSCJ = '"+getKeNFSCJ()+"'"
+			
+			lUpdate := oSql:update("SZA","ZA_F3QTLIN = " + Str(nF3QtLin),cWhere)
+						
+			if !(lUpdate)
+				lError := .T.
+				setFileLog(cFile,"fail","Falha ao atualizar o campo ZA_F3QTLIN." + CRLF + CRLF + oSql:getLastError())
+			endif
+			
+		endif
+	endif
+	
+	RestArea(aArea)
+	
+return lError 
+
+
+/**
+* Inclui o item da NF SCJ em tabela personalizada
+**/
+static function incItNFSCJ(nItem)
+	
+	local lOk		:= .t.
+	Local nCount	:= 0
+	Local aCposSX3	:= FWSX3Util():GetAllFields("SZB", .f.)
+	
+	Private cItem		:= ""
+	
+	SZB->(RecLock("SZB",.T.))
+	SZB->ZB_FILIAL  := xFilial("SZB")
+	
+	for nCount := 1 to len(aCposSX3)
+	
+		If  X3Uso(getSX3Cache(aCposSX3[nCount],"X3_USADO")) .and. cNivel >= getSX3Cache(aCposSX3[nCount],"X3_NIVEL") .and.;
+		 	!(PADR(aCposSX3[nCount],Len(getSX3Cache(aCposSX3[nCount],"X3_CAMPO"))) $ CAMPOS_SZB)
+			
+			&("SZB->" + alltrim(aCposSX3[nCount])) := &("get" + allTrim(SubStr(aCposSX3[nCount],4,7)) + iif( allTrim(aCposSX3[nCount]) == "ZB_KENFSCJ","()","(" + STR(nItem) + ")"))
+		EndIf
+	
+	next nCount
+	
+	SZB->(MsUnlock())
+	
+return lOk
+
+
+/**
+* Coleta o Número nota fiscal SCJ
+**/
+static function getDocSCJ()
+
+	local cChvNfe := AllTrim(oXml:_IP_040:_BODY:_FILEHEADER:_KEY_NF_SCJ:TEXT)
+
+	/*
+	cUF:	Código da UF do emitente do Documento Fiscal	-	02 caracteres
+	AAMM:	Ano e Mês de emissão da NFe						-	04 caracteresf
+	CNPJ:	CNPJ do emitente									-	14 caracteres
+	mod:	Modelo do Documento Fiscal						-	02 caracteres
+	serie:	Série do Documento Fiscal						-	03 caracteres
+	nNF:	Número do Documento Fiscal						-	09 caracteres
+	cNF:	Código Numérico que compõe a Chave de Acesso	-	09 caracteres
+	cDV:	Dígito Verificador da Chave de Acesso			-	01 caracter
+	*/
+
+return PadR(SubStr( cChvNfe, 26, 09 ), TamSx3("ZA_DOCSCJ")[1])
+
+
+/**
+* Coleta a Serie nota fiscal SCJ
+**/
+static function getSeriSCJ()
+
+	local cChvNfe := AllTrim(oXml:_IP_040:_BODY:_FILEHEADER:_KEY_NF_SCJ:TEXT)
+
+	/*
+	cUF:	Código da UF do emitente do Documento Fiscal	-	02 caracteres
+	AAMM:	Ano e Mês de emissão da NFe						-	04 caracteres
+	CNPJ:	CNPJ do emitente									-	14 caracteres
+	mod:	Modelo do Documento Fiscal						-	02 caracteres
+	serie:	Série do Documento Fiscal						-	03 caracteres
+	nNF:	Número do Documento Fiscal						-	09 caracteres
+	cNF:	Código Numérico que compõe a Chave de Acesso	-	09 caracteres
+	cDV:	Dígito Verificador da Chave de Acesso			-	01 caracter
+	*/
+
+return PadR(SubStr( cChvNfe, 23, 03 ), TamSx3("ZA_SERISCJ")[1])
+
+
+/**
+* Coleta o CNPJ SCJ
+**/
+static function getCNPJSCJ()
+
+	local cChvNfe := AllTrim(oXml:_IP_040:_BODY:_FILEHEADER:_KEY_NF_SCJ:TEXT)
+
+	/*
+	cUF:	Código da UF do emitente do Documento Fiscal	-	02 caracteres
+	AAMM:	Ano e Mês de emissão da NFe						-	04 caracteres
+	CNPJ:	CNPJ do emitente									-	14 caracteres
+	mod:	Modelo do Documento Fiscal						-	02 caracteres
+	serie:	Série do Documento Fiscal						-	03 caracteres
+	nNF:	Número do Documento Fiscal						-	09 caracteres
+	cNF:	Código Numérico que compõe a Chave de Acesso	-	09 caracteres
+	cDV:	Dígito Verificador da Chave de Acesso			-	01 caracter
+	*/
+
+return PadR(SubStr( cChvNfe, 07, 14 ), TamSx3("ZA_CNPJSCJ")[1])
+
+
+/**
+* Coleta a Data de emissão NF SCJ
+**/
+static function getDtEmSCJ()
+return dDataBase //TODO - Verificar com DHL
+
+
+/**
+* Coleta a Chave da NF de Venda da SCJ
+**/
+static function getKeNFSCJ()
+return AllTrim(oXml:_IP_040:_BODY:_FILEHEADER:_KEY_NF_SCJ:TEXT)
+
+
+/**
+* Coleta o Numero do Shipment
+**/
+static function getShipNum()
+return AllTrim(oXml:_IP_040:_BODY:_FILEHEADER:_SHIPMENT_NUMBER:TEXT)
+
+
+/**
+* Coleta o Pedido de Compra
+**/
+static function getCustoPO()
+return AllTrim(oXml:_IP_040:_BODY:_FILEHEADER:_CUSTOMER_PO:TEXT)
+
+
+/**
+* Coleta o Cnpj do transportador
+**/
+static function getCNPJCar()
+return AllTrim(oXml:_IP_040:_BODY:_FILEHEADER:_CNPJ_CARRIER:TEXT)
+
+
+/**
+* Coleta a Data de vencimento
+**/
+static function getDueDate()
+return STOD(AllTrim(oXml:_IP_040:_BODY:_FILEHEADER:_DUE_DATE:TEXT))
+
+
+/**
+* Coleta o Código Cliente Comprador do SAP
+**/
+static function getBuyCode()
+	local xRet := ""
+	
+	if Type("oXml:_IP_040:_BODY:_FILEHEADER:_DELIVERY") <> "U"
+		xRet :=	AllTrim(oXml:_IP_040:_BODY:_FILEHEADER:_DELIVERY:_SAP_CODE:TEXT)
+	else
+		xRet :=	AllTrim(oXml:_IP_040:_BODY:_FILEHEADER:_BUYER:_SAP_CODE:TEXT)
+	endif
+
+return (xRet)
+
+
+/**
+* Coleta o CNPJ Cliente Comprador do SAP
+**/
+static function getBuyCNPJ()
+	local xRet := ""
+	
+	if Type("oXml:_IP_040:_BODY:_FILEHEADER:_DELIVERY") <> "U"
+		xRet := AllTrim(oXml:_IP_040:_BODY:_FILEHEADER:_DELIVERY:_CNPJ:TEXT)
+	else
+		xRet := AllTrim(oXml:_IP_040:_BODY:_FILEHEADER:_BUYER:_CNPJ:TEXT)
+	endif
+
+return (xRet)
+
+
+/**
+* Coleta a Inscrição Estadual Cliente Comprador do SAP
+**/
+static function getBuyerIE()
+	local xRet := ""
+	
+	if Type("oXml:_IP_040:_BODY:_FILEHEADER:_DELIVERY") <> "U"
+		xRet := AllTrim(oXml:_IP_040:_BODY:_FILEHEADER:_DELIVERY:_IE:TEXT)
+	else
+		xRet := AllTrim(oXml:_IP_040:_BODY:_FILEHEADER:_BUYER:_IE:TEXT)
+	endif
+	
+return (xRet)
+
+
+/**
+* Coleta o Código Cliente Entrega do SAP
+**/
+static function getDelCode()
+	local xRet := ""
+	
+	if Type("oXml:_IP_040:_BODY:_FILEHEADER:_DELIVERY") <> "U"
+		xRet :=	AllTrim(oXml:_IP_040:_BODY:_FILEHEADER:_DELIVERY:_SAP_CODE:TEXT)
+	endif
+
+return (xRet)
+
+
+/**
+* Coleta o CNPJ Cliente Entrega do SAP
+**/
+static function getDelCNPJ()
+	local xRet := ""
+	
+	if Type("oXml:_IP_040:_BODY:_FILEHEADER:_DELIVERY") <> "U"
+		xRet := AllTrim(oXml:_IP_040:_BODY:_FILEHEADER:_DELIVERY:_CNPJ:TEXT)
+	endif
+
+return (xRet)
+
+
+/**
+* Coleta a Inscrição Estadual Cliente Entrega do SAP
+**/
+static function getDelivIE()
+	local xRet := ""
+	
+	if Type("oXml:_IP_040:_BODY:_FILEHEADER:_DELIVERY") <> "U"
+		xRet := AllTrim(oXml:_IP_040:_BODY:_FILEHEADER:_DELIVERY:_IE:TEXT)
+	endif
+	
+return (xRet) 
+
+
+/**
+* Coleta o Numero de linhas da nota
+**/
+static function getNumLine()
+return Val(oXml:_IP_040:_BODY:_FOOTER:_NUMBER_OF_LINES:TEXT)
+
+
+/**
+* Coleta o Numero de pacotes(cx) dos itens
+**/
+static function getNumPack()
+return Val(oXml:_IP_040:_BODY:_FOOTER:_NUMBER_OF_PACKAGES:TEXT)
+
+
+/**
+* Coleta o Peso Bruto
+**/
+static function getGroWeig()
+return Val(oXml:_IP_040:_BODY:_FOOTER:_GROSS_WEIGHT:TEXT)
+
+
+/**
+* Coleta o Peso Liquido
+**/
+static function getNetWeig()
+return Val(oXml:_IP_040:_BODY:_FOOTER:_NET_WEIGHT:TEXT)
+
+
+/**
+* Coleta o ROYALTIES ADICIONAIS
+**/
+static function getAddRoya()
+return Val(oXml:_IP_040:_BODY:_FOOTER:_ADDITIONAL_ROYALTIES:TEXT)
+
+
+/**
+* Coleta o Valor Faturado
+**/
+static function getBilValu()
+return Val(oXml:_IP_040:_BODY:_FOOTER:_BILLED_VALUE:TEXT)
+
+
+/**
+* Coleta o Valor de desconto
+**/
+static function getDisAmou()
+return Val(oXml:_IP_040:_BODY:_FOOTER:_DISCOUNT_AMOUNT:TEXT)
+
+
+/**
+* Coleta o Valor total das linhas
+**/
+static function getTLiItAm()
+return Val(oXml:_IP_040:_BODY:_FOOTER:_TOTAL_LINE_ITEM_AMOUNT:TEXT)
+
+
+/**
+* Coleta o Valor total de desconto
+**/
+static function getTDisAmo()
+return Val(oXml:_IP_040:_BODY:_FOOTER:_TOTAL_DISCOUNT_AMOUNT:TEXT)
+
+
+/**
+* Coleta o Valor total dos produtos
+**/
+static function getTItValu()
+return Val(oXml:_IP_040:_BODY:_FOOTER:_NF_TOTAL_ITEMS_TOTAL_VALUE:TEXT)
+
+
+/**
+* Coleta o Valor total da NF
+**/
+static function getTotValu()
+return Val(oXml:_IP_040:_BODY:_FOOTER:_NF_TOTAL_VALUE:TEXT)
+
+
+/**
+* Coleta o Base de Calculo ICMS
+**/
+static function getIcmTBas()
+return Val(oXml:_IP_040:_BODY:_FOOTER:_ICMS_TOTAL_CALC_BASE:TEXT)
+
+
+/**
+* Coleta o Valor Total ICMS
+**/
+static function getIcmToVl()
+return (Val(oXml:_IP_040:_BODY:_FOOTER:_ICMS_TOTAL_VALUE:TEXT))
+
+
+/**
+* Coleta o Base de Calculo ICMS ST
+**/
+static function getIcmSTTB()
+return Val(oXml:_IP_040:_BODY:_FOOTER:_ICMS_ST_TOTAL_CALC_BASE:TEXT)
+
+
+/**
+* Coleta o Valor Total ICMS ST
+**/
+static function getIcmSTVT()
+return Val(oXml:_IP_040:_BODY:_FOOTER:_ICMS_ST_TOTAL_VALUE:TEXT)
+
+
+/**
+* Coleta Mensagens adicionais da NF contidas na IP_040
+**/
+static function getMsgAdic()
+	Local cRet := ""
+	
+	If Type("oXml:_IP_040:_BODY:_FOOTER:_NF_INFO_ADDITIONAL") <> "U"
+		cRet := AllTrim(FwNoAccent(oXml:_IP_040:_BODY:_FOOTER:_NF_INFO_ADDITIONAL:TEXT))
+	EndIf
+return (cRet)
+
+
+/**
+* Coleta Log de Inclusão
+**/
+static function getDateLog()
+return AllTrim(dtoc(dDataBase) + " - " + Time())
+
+
+/**
+* Coleta o Valor IPI
+**/
+static function getIpiToVl()
+return Val(oXml:_IP_040:_BODY:_FOOTER:_IPI_TOTAL_VALUE:TEXT)
+
+
+/**
+* Coleta o Total do desconto
+**/
+static function getTotDisc()
+return Val(oXml:_IP_040:_BODY:_FOOTER:_TOTAL_DISCOUNT:TEXT)
+
+
+/**
+* Coleta o Valor ICMS Destino
+**/
+static function getPDeToVl()
+return Val(oXml:_IP_040:_BODY:_FOOTER:_PART_DEST_TOTAL_VALUE:TEXT)
+
+
+/**
+* Coleta o Valor ICMS Origem
+**/
+static function getPOrToVl()
+return Val(oXml:_IP_040:_BODY:_FOOTER:_PART_ORIG_TOTAL_VALUE:TEXT)
+
+
+/**
+* Coleta o Valor FCP
+**/
+static function getFcpToVl()
+return Val(oXml:_IP_040:_BODY:_FOOTER:_FCP_TOTAL_VALUE:TEXT)
+
+
+
+/***********************************************************************************************************
+
+Author.: Edson Deluca - FIT GEstão
+Projeto: NF 4.0
+
+=>  <SUB_TRIB_FCP_TOTAL>0</SUB_TRIB_FCP_TOTAL> ---> SZA->ZA_FCPTOTA
+
+=>  <SUB_TRIB_FCP_RATE>0</SUB_TRIB_FCP_RATE>   ---> SZB->ZB_FCPRATE
+=>  <SUB_TRIB_FCP_AMOUNT>0</SUB_TRIB_FCP_AMOUNT> -> SZB->ZB_FCPAMOU
+=>  <SUB_TRIB_FCP_BASE>0</SUB_TRIB_FCP_BASE ------> SZB->ZB_FCPBASE
+
+OBSERVACAO: Criar os campos acima mencionados
+*/  
+
+//******************************************* Inicio Header ****************************************************//
+static function getFCPTOTA()  //ZA_FCPTOTA
+
+	Local nRet := 0
+	
+	If Type("oXml:_IP_040:_BODY:_FOOTER:_SUB_TRIB_FCP_TOTAL")<>"U"
+		nRet := Val(oXml:_IP_040:_BODY:_FOOTER:_SUB_TRIB_FCP_TOTAL:TEXT)
+	EndIf
+return(nRet)
+
+
+// Inicio TOTVS IP Campinas iVan Oliveira - 04/06/2021 - SCJ - ICMS desonerado
+
+/**
+* Coleta se a NF é desenoração ICMS
+**/
+static function getICMSDES()   
+
+Local cRet := 'N'
+
+if Type("oXml:_IP_040:_BODY:_FILEITEM["+str(01)+"]:_ICMS_DIFAL") <> "U"
+		cRet := if ( Val(oXml:_IP_040:_BODY:_FILEITEM[01]:_ICMS_DIFAL:_DISCOUNT_ICMS:TEXT) > 0 .and. IsSAPCodeZFM(), 'S', 'N' )
+elseIf Type("oXml:_IP_040:_BODY:_FILEITEM:_ICMS_DIFAL") <> "U"
+		cRet := if ( Val(oXml:_IP_040:_BODY:_FILEITEM:_ICMS_DIFAL:_DISCOUNT_ICMS:TEXT)> 0 .and. IsSAPCodeZFM(), 'S', 'N' )
+endif
+
+return(cRet)
+
+
+// Final TOTVS IP Campinas iVan Oliveira - 04/06/2021 - SCJ - ICMS desonerado
+
+//******************************************* Fim Header *******************************************************// 
+
+//******************************************* Inicio Itens *******************************************************//
+static function getFCPRATE(nItem)
+
+	local xRet := 0
+	
+	if nItem > 0
+		if Type("oXml:_IP_040:_BODY:_FILEITEM["+str(nItem)+"]:_ICMS") <> "U"
+			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_ICMS:_SUB_TRIB_FCP_RATE:TEXT)
+		endif
+	else
+		if Type("oXml:_IP_040:_BODY:_FILEITEM:_ICMS") <> "U"
+			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM:_ICMS:_SUB_TRIB_FCP_RATE:TEXT)
+		endif
+	endif
+	
+return (xRet)
+
+static function getFCPAMOU(nItem)
+
+	local xRet := 0
+	
+	if nItem > 0
+		if Type("oXml:_IP_040:_BODY:_FILEITEM["+str(nItem)+"]:_ICMS") <> "U"
+			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_ICMS:_SUB_TRIB_FCP_AMOUNT:TEXT)
+		endif
+	else
+		if Type("oXml:_IP_040:_BODY:_FILEITEM:_ICMS") <> "U"
+			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM:_ICMS:_SUB_TRIB_FCP_AMOUNT:TEXT)
+		endif
+	endif
+	
+return (xRet)
+
+static function getFCPBASE(nItem)
+
+	local xRet := 0
+	
+	if nItem > 0
+		if Type("oXml:_IP_040:_BODY:_FILEITEM["+str(nItem)+"]:_ICMS") <> "U"
+			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_ICMS:_SUB_TRIB_FCP_BASE:TEXT)
+		endif
+	else
+		if Type("oXml:_IP_040:_BODY:_FILEITEM:_ICMS") <> "U"
+			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM:_ICMS:_SUB_TRIB_FCP_BASE:TEXT)
+		endif
+	endif
+	
+return (xRet)
+
+/************************************************************************************************************
+Author.: Alberto (DHL)
+Projeto: NF 4.0
+
+<UTRIB>CX</UTRIB>
+<QTRIB>127.0000</QTRIB>
+<VUNTRIB>29.34976379</VUNTRIB>
+************************************************************************************************************/
+static function getUTrib(nItem)
+
+	local xRet := ""
+	
+	if nItem > 0
+		xRet := AllTrim(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_UTRIB:TEXT)
+	else
+		xRet := AllTrim(oXml:_IP_040:_BODY:_FILEITEM:_UTRIB:TEXT)
+	endif	
+	
+	if !Empty(xRet)
+		updPrd(cItem, "B1_SEGUM", xRet)
+	endif
+	
+return (xRet)
+
+static function getQTrib(nItem)
+
+	local xRet := ""
+	local nQtd := getQuantit(nItem)
+
+	if nItem > 0
+		xRet := Val(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_QTRIB:TEXT)
+	else
+		xRet := Val(oXml:_IP_040:_BODY:_FILEITEM:_QTRIB:TEXT)
+	endif	
+	
+	if !Empty(xRet)
+		updPrd(cItem, "B1_CONV", xRet/nQtd)
+	endif
+	
+return (xRet)
+
+static function getVTrib(nItem)
+
+	local xRet := ""
+	
+	if nItem > 0
+		xRet := Val(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_VUNTRIB:TEXT)
+	else
+		xRet := Val(oXml:_IP_040:_BODY:_FILEITEM:_VUNTRIB:TEXT)
+	endif	
+return (xRet)
+
+//******************************************* Fim Itens *******************************************************//
+
+
+
+/**
+* Coleta a Linha do Item no SAP (ex.: 10,20,30,40...)
+**/
+static function getLinItem(nItem)
+	local xRet := ""
+	
+	if nItem > 0
+		xRet := AllTrim(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_LINE_ITEM:TEXT)
+	else
+		xRet := AllTrim(oXml:_IP_040:_BODY:_FILEITEM:_LINE_ITEM:TEXT)
+	endif
+return (xRet)
+
+
+/**
+* Coleta o Código do item
+**/
+static function getItem(nItem)
+	local xRet := ""
+	
+	if nItem > 0
+		xRet 	:= AllTrim(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_ITEM:TEXT)
+	else
+		xRet := AllTrim(oXml:_IP_040:_BODY:_FILEITEM:_ITEM:TEXT)
+	endif
+	
+return (xRet)
+
+
+/**
+* Coleta o Código EAN do produto
+**/
+static function getEAN(nItem)
+	local xRet := ""
+	
+	if nItem > 0
+		xRet := AllTrim(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_EAN:TEXT)
+	else
+		xRet := AllTrim(oXml:_IP_040:_BODY:_FILEITEM:_EAN:TEXT)
+	endif
+return (xRet)
+
+
+/**
+* Coleta a Quantidade
+**/
+static function getQuantit(nItem)
+	local xRet := 0
+	
+	if nItem > 0
+		xRet := Val(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_QUANTITY:TEXT)
+	else
+		xRet := Val(oXml:_IP_040:_BODY:_FILEITEM:_QUANTITY:TEXT)
+	endif
+return (xRet)
+
+
+/**
+* Coleta a Unidade de medida
+**/
+static function getUOM(nItem)
+	local xRet := ""
+	
+	if nItem > 0
+		xRet := AllTrim(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_UOM:TEXT)
+	else
+		xRet := AllTrim(oXml:_IP_040:_BODY:_FILEITEM:_UOM:TEXT)
+	endif
+return (xRet)
+
+
+/**
+* Coleta a Cest
+**/
+static function getCest(nItem)
+	local xRet := ""
+	
+	if nItem > 0
+		xRet 	:= AllTrim(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_CEST:TEXT)
+		cItem 	:= getItem(nItem)
+	else
+		xRet 	:= AllTrim(oXml:_IP_040:_BODY:_FILEITEM:_CEST:TEXT)
+		cItem 	:= getItem(nItem)
+	endif
+	
+	If !Empty(xRet)
+		updPrd(cItem, "B1_CEST", xRet)
+	EndIf
+return (xRet)
+
+
+/**
+* Coleta a Origem do Produto
+**/
+static function getOrigin(nItem)
+	local xRet := ""
+	
+	if nItem > 0
+		xRet := AllTrim(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_ORIGIN:TEXT)
+		cItem 	:= getItem(nItem)
+	else
+		xRet := AllTrim(oXml:_IP_040:_BODY:_FILEITEM:_ORIGIN:TEXT)
+		cItem 	:= getItem(nItem)
+	endif
+	
+	updPrd(cItem, "B1_ORIGEM", xRet)
+return (xRet)
+
+
+/**
+* Coleta a MODBC Icms
+**/
+static function getMoIcmTx(nItem)
+	local xRet := ""
+	
+	if nItem > 0
+		if Type("oXml:_IP_040:_BODY:_FILEITEM["+str(nItem)+"]:_ICMS") <> "U"
+			xRet := AllTrim(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_ICMS:_MOD_ICMS_TAX:TEXT)
+		endif
+	else
+		if Type("oXml:_IP_040:_BODY:_FILEITEM:_ICMS") <> "U"
+			xRet := AllTrim(oXml:_IP_040:_BODY:_FILEITEM:_ICMS:_MOD_ICMS_TAX:TEXT)
+		endif
+	endif
+return (xRet)
+
+
+/**
+* Coleta a Base de Calculo do ICMS
+**/
+static function getIcmTxBs(nItem)
+	local xRet := 0
+	
+	If AllTrim(getIcmExRe(nItem)) # SUFRAMA
+		if nItem > 0
+			if Type("oXml:_IP_040:_BODY:_FILEITEM["+str(nItem)+"]:_ICMS") <> "U"
+				xRet := Val(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_ICMS:_ICMS_TAX_BASE:TEXT)
+			endif
+		else
+			if Type("oXml:_IP_040:_BODY:_FILEITEM:_ICMS") <> "U"
+				xRet := Val(oXml:_IP_040:_BODY:_FILEITEM:_ICMS:_ICMS_TAX_BASE:TEXT)
+			endif
+		endif
+	EndIf
+	
+return (xRet)
+
+
+/**
+* Coleta o Valor do ICMS
+**/
+static function getIcmTxVl(nItem)
+	local xRet := 0
+	
+	If AllTrim(getIcmExRe(nItem)) # SUFRAMA
+		if nItem > 0
+			if Type("oXml:_IP_040:_BODY:_FILEITEM["+str(nItem)+"]:_ICMS") <> "U"
+				xRet := Val(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_ICMS:_ICMS_TAX_VALUE:TEXT)
+			endif
+		else
+			if Type("oXml:_IP_040:_BODY:_FILEITEM:_ICMS") <> "U"
+				xRet := Val(oXml:_IP_040:_BODY:_FILEITEM:_ICMS:_ICMS_TAX_VALUE:TEXT)
+			endif
+		endif
+	EndIf
+return (xRet)
+
+
+/**
+* Coleta o Percentual do ICMS
+**/
+static function getIcmTxRt(nItem)
+	local xRet := 0
+	
+	If AllTrim(getIcmExRe(nItem)) # SUFRAMA
+		if nItem > 0
+			if Type("oXml:_IP_040:_BODY:_FILEITEM["+str(nItem)+"]:_ICMS") <> "U"
+				xRet := Val(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_ICMS:_ICMS_TAX_RATE:TEXT)
+			endif
+		else
+			if Type("oXml:_IP_040:_BODY:_FILEITEM:_ICMS") <> "U"
+				xRet := Val(oXml:_IP_040:_BODY:_FILEITEM:_ICMS:_ICMS_TAX_RATE:TEXT)
+			endif
+		endif
+	EndIf
+	
+return (xRet)
+
+
+/**
+* Coleta o MOD B ST
+**/
+static function getMoIcmSt(nItem)
+	local xRet := ""
+	
+	if nItem > 0
+		if Type("oXml:_IP_040:_BODY:_FILEITEM["+str(nItem)+"]:_ICMS") <> "U"
+			xRet := AllTrim(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_ICMS:_MOD_ICMS_ST:TEXT)
+		endif
+	else
+		if Type("oXml:_IP_040:_BODY:_FILEITEM:_ICMS") <> "U"
+			xRet := AllTrim(oXml:_IP_040:_BODY:_FILEITEM:_ICMS:_MOD_ICMS_ST:TEXT)
+		endif
+	endif
+return (xRet)
+
+
+/**
+* Coleta a Base de Calculo do ICMS ST
+**/
+static function getIcmStBs(nItem)
+	local xRet := 0
+	
+	if nItem > 0
+		if Type("oXml:_IP_040:_BODY:_FILEITEM["+str(nItem)+"]:_ICMS") <> "U"
+			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_ICMS:_ICMS_ST_BASE:TEXT)
+		endif
+	else
+		if Type("oXml:_IP_040:_BODY:_FILEITEM:_ICMS") <> "U"
+			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM:_ICMS:_ICMS_ST_BASE:TEXT)
+		endif
+	endif
+return (xRet)
+
+
+/**
+* Coleta o Valor do ICMS ST
+**/
+static function getIcmStVl(nItem)
+	local xRet := 0
+	
+	if nItem > 0
+		if Type("oXml:_IP_040:_BODY:_FILEITEM["+str(nItem)+"]:_ICMS") <> "U"
+			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_ICMS:_ICMS_ST_VALUE:TEXT)
+		endif
+	else
+		if Type("oXml:_IP_040:_BODY:_FILEITEM:_ICMS") <> "U"
+			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM:_ICMS:_ICMS_ST_VALUE:TEXT)
+		endif
+	endif
+return (xRet)
+
+
+/**
+* Coleta o Percentual do ICMS ST
+**/
+static function getIcmStRt(nItem)
+	local xRet := 0
+	
+	if nItem > 0
+		if Type("oXml:_IP_040:_BODY:_FILEITEM["+str(nItem)+"]:_ICMS") <> "U"
+			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_ICMS:_ICMS_ST_RATE:TEXT)
+		endif
+	else
+		if Type("oXml:_IP_040:_BODY:_FILEITEM:_ICMS") <> "U"
+			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM:_ICMS:_ICMS_ST_RATE:TEXT)
+		endif
+	endif
+return (xRet)
+
+
+/**
+* Coleta o ICMS EX REASON
+**/
+static function getIcmExRe(nItem)
+	local xRet 	   := ""
+	Local _nValDes := 0
+
+	// Inicio TOTVS IP Campinas iVan Oliveira - 04/06/2021 - SCJ - ICMS desonerado
+	if nItem > 0
+
+		if Type("oXml:_IP_040:_BODY:_FILEITEM["+str(nItem)+"]:_ICMS_DIFAL") <> "U"
+			_nValDes := Val(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_ICMS_DIFAL:_DISCOUNT_ICMS:TEXT)
+		endif
+
+		if Type("oXml:_IP_040:_BODY:_FILEITEM["+str(nItem)+"]:_ICMS") <> "U"
+			xRet := AllTrim(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_ICMS:_ICMS_EX_REASON:TEXT)
+		endif
+	else
+
+		if Type("oXml:_IP_040:_BODY:_FILEITEM:_ICMS_DIFAL") <> "U"
+			_nValDes := Val(oXml:_IP_040:_BODY:_FILEITEM:_ICMS_DIFAL:_DISCOUNT_ICMS:TEXT)
+		endif
+
+		if Type("oXml:_IP_040:_BODY:_FILEITEM:_ICMS") <> "U"
+			xRet := Alltrim(oXml:_IP_040:_BODY:_FILEITEM:_ICMS:_ICMS_EX_REASON:TEXT)
+		endif
+	endif
+
+	if (_nValDes#0 .and. IsSAPCodeZFM()) .and. xRet #'7'
+		xRet := '7'
+	EndIf
+	// Final TOTVS IP Campinas iVan Oliveira - 04/06/2021 - SCJ - ICMS desonerado
+	
+return (xRet)
+
+
+/**
+* Coleta o CST do ICMS
+**/
+static function getIcmsCst(nItem)
+	local xRet := ""
+	
+	if nItem > 0
+		if Type("oXml:_IP_040:_BODY:_FILEITEM["+str(nItem)+"]:_ICMS") <> "U"
+			xRet := AllTrim(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_ICMS:_ICMS_CST:TEXT)
+		endif
+	else
+		if Type("oXml:_IP_040:_BODY:_FILEITEM:_ICMS") <> "U"
+			xRet := AllTrim(oXml:_IP_040:_BODY:_FILEITEM:_ICMS:_ICMS_CST:TEXT)
+		endif
+	endif
+return (xRet)
+
+
+/**
+* Coleta o Valor da Base de Cálculo do ICMS na UF de destino
+**/
+static function getVBCUfDe(nItem)
+	local xRet := 0
+	
+	if nItem > 0
+		if Type("oXml:_IP_040:_BODY:_FILEITEM["+str(nItem)+"]:_ICMS_DIFAL") <> "U"
+			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_ICMS_DIFAL:_VBCUFDEST:TEXT)
+		endif
+	else
+		if Type("oXml:_IP_040:_BODY:_FILEITEM:_ICMS_DIFAL") <> "U"
+			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM:_ICMS_DIFAL:_VBCUFDEST:TEXT)
+		endif
+	endif
+return (xRet)
+
+
+/**
+* Coleta o Percentual adicional inserido na alíquota interna da UF de destino, relativo ao Fundo de Combate à Pobreza (FCP) naquela UF
+**/
+static function getPFcpUFD(nItem)
+	local xRet := 0
+	
+	if nItem > 0
+		if Type("oXml:_IP_040:_BODY:_FILEITEM["+str(nItem)+"]:_ICMS_DIFAL") <> "U"
+			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_ICMS_DIFAL:_PFCPUFDEST:TEXT)
+		endif
+	else
+		if Type("oXml:_IP_040:_BODY:_FILEITEM:_ICMS_DIFAL") <> "U"
+			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM:_ICMS_DIFAL:_PFCPUFDEST:TEXT)
+		endif
+	endif
+return (xRet)
+
+
+/**
+* Coleta a Alíquota adotada nas operações internas na UF de destino para o produto / mercadoria
+**/
+static function getPIcmUFD(nItem)
+	local xRet := 0
+	
+	if nItem > 0
+		if Type("oXml:_IP_040:_BODY:_FILEITEM["+str(nItem)+"]:_ICMS_DIFAL") <> "U"
+			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_ICMS_DIFAL:_PICMSUFDEST:TEXT)
+		endif
+	else
+		if Type("oXml:_IP_040:_BODY:_FILEITEM:_ICMS_DIFAL") <> "U"
+			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM:_ICMS_DIFAL:_PICMSUFDEST:TEXT)
+		endif
+	endif
+return (xRet)
+
+
+/**
+* Coleta a Alíquota interestadual das UF envolvidas
+**/
+static function getPIcmInt(nItem)
+	local xRet := 0
+	
+	if nItem > 0
+		if Type("oXml:_IP_040:_BODY:_FILEITEM["+str(nItem)+"]:_ICMS_DIFAL") <> "U"
+			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_ICMS_DIFAL:_PICMSINTER:TEXT)
+		endif
+	else
+		if Type("oXml:_IP_040:_BODY:_FILEITEM:_ICMS_DIFAL") <> "U"
+			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM:_ICMS_DIFAL:_PICMSINTER:TEXT)
+		endif
+	endif
+return (xRet)
+
+
+/**
+* Coleta o Percentual de ICMS Interestadual para a UF de destino
+**/
+static function getPIcmInP(nItem)
+	local xRet := 0
+	
+	if nItem > 0
+		if Type("oXml:_IP_040:_BODY:_FILEITEM["+str(nItem)+"]:_ICMS_DIFAL") <> "U"
+			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_ICMS_DIFAL:_PICMSINTERPART:TEXT)
+		endif
+	else
+		if Type("oXml:_IP_040:_BODY:_FILEITEM:_ICMS_DIFAL") <> "U"
+			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM:_ICMS_DIFAL:_PICMSINTERPART:TEXT)
+		endif
+	endif
+return (xRet)
+
+
+/**
+* Coleta o Valor do ICMS relativo ao Fundo de Combate à Pobreza (FCP) da UF de destino
+**/
+static function getVFcpUFD(nItem)
+	local xRet := 0
+	
+	if nItem > 0
+		if Type("oXml:_IP_040:_BODY:_FILEITEM["+str(nItem)+"]:_ICMS_DIFAL") <> "U"
+			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_ICMS_DIFAL:_VFCPUFDEST:TEXT)
+		endif
+	else
+		if Type("oXml:_IP_040:_BODY:_FILEITEM:_ICMS_DIFAL") <> "U"
+			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM:_ICMS_DIFAL:_VFCPUFDEST:TEXT)
+		endif
+	endif
+return (xRet)
+
+
+/**
+* Coleta o Valor do ICMS Interestadual para a UF de destino, já considerando o valor do ICMS relativo ao Fundo de Combate à Pobreza naquela UF
+**/
+static function getVIcmUFD(nItem)
+	local xRet := 0
+	
+	if nItem > 0
+		if Type("oXml:_IP_040:_BODY:_FILEITEM["+str(nItem)+"]:_ICMS_DIFAL") <> "U"
+			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_ICMS_DIFAL:_VICMSUFDEST:TEXT)
+		endif
+	else
+		if Type("oXml:_IP_040:_BODY:_FILEITEM:_ICMS_DIFAL") <> "U"
+			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM:_ICMS_DIFAL:_VICMSUFDEST:TEXT)
+		endif
+	endif
+return (xRet)
+
+
+/**
+* Coleta o Valor do ICMS Interestadual para a UF do remetente. Nota: A partir de 2019, este valor será zero
+**/
+static function getVIcmUFR(nItem)
+	local xRet := 0
+	
+	if nItem > 0
+		if Type("oXml:_IP_040:_BODY:_FILEITEM["+str(nItem)+"]:_ICMS_DIFAL") <> "U"
+			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_ICMS_DIFAL:_VICMSUFREMET:TEXT)
+		endif
+	else
+		if Type("oXml:_IP_040:_BODY:_FILEITEM:_ICMS_DIFAL") <> "U"
+			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM:_ICMS_DIFAL:_VICMSUFREMET:TEXT)
+		endif
+	endif
+return (xRet)
+
+
+/**
+* Coleta o ICMS % reduction Base (Percentual de redução de base de cálculo ICMS)
+**/
+static function getPredBas(nItem)
+	local xRet := 0
+	
+	if nItem > 0
+		if Type("oXml:_IP_040:_BODY:_FILEITEM["+str(nItem)+"]:_ICMS_DIFAL") <> "U"
+			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_ICMS_DIFAL:_PRED_BASE:TEXT)
+		endif
+	else
+		if Type("oXml:_IP_040:_BODY:_FILEITEM:_ICMS_DIFAL") <> "U"
+			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM:_ICMS_DIFAL:_PRED_BASE:TEXT)
+		endif
+	endif
+return (xRet)
+
+
+/**
+* Coleta o ICMS Discount (Desconto ICMS)
+**/
+static function getDiscIcm(nItem)
+	local xRet := 0
+	
+	if nItem > 0
+		if Type("oXml:_IP_040:_BODY:_FILEITEM["+str(nItem)+"]:_ICMS_DIFAL") <> "U"
+			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_ICMS_DIFAL:_DISCOUNT_ICMS:TEXT)
+		endif
+	else
+		if Type("oXml:_IP_040:_BODY:_FILEITEM:_ICMS_DIFAL") <> "U"
+			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM:_ICMS_DIFAL:_DISCOUNT_ICMS:TEXT)
+		endif
+	endif
+return (xRet)
+
+
+/**
+* Coleta o MVA
+**/
+static function getMVA(nItem)
+	local xRet      := 0
+	local nVlrIcmSt := 0
+	
+	nVlrIcmSt := getIcmStVl(nItem)
+		
+	if nItem > 0
+		if Type("oXml:_IP_040:_BODY:_FILEITEM["+str(nItem)+"]:_ICMS_DIFAL") <> "U"
+			xRet 	:= Val(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_ICMS_DIFAL:_MVA:TEXT)
+			cItem 	:= getItem(nItem)
+		endif
+	else
+		if Type("oXml:_IP_040:_BODY:_FILEITEM:_ICMS_DIFAL") <> "U"
+			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM:_ICMS_DIFAL:_MVA:TEXT)
+			cItem 	:= getItem(0)
+		endif
+	endif
+	
+	if (nVlrIcmSt == 0 .and. xRet > 0)
+		xRet := 0
+	endif
+	
+	updPrd(cItem, "B1_PICMRET", xRet)
+return (xRet)
+
+
+/**
+* Coleta o ICMS ST Calc Base % reduction (Percentual reducao de base calculo ICMS/ST)
+**/
+static function getPrIcmSt(nItem)
+	local xRet := 0
+	
+	if nItem > 0
+		if Type("oXml:_IP_040:_BODY:_FILEITEM["+str(nItem)+"]:_ICMS_DIFAL") <> "U"
+			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_ICMS_DIFAL:_PRED_BASE_ICMSST:TEXT)
+		endif
+	else
+		if Type("oXml:_IP_040:_BODY:_FILEITEM:_ICMS_DIFAL") <> "U"
+			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM:_ICMS_DIFAL:_PRED_BASE_ICMSST:TEXT)
+		endif
+	endif
+return (xRet)
+
+
+/**
+* Coleta o Valor do IPI do item
+**/
+static function getIpiVlr(nItem)
+	local xRet := 0
+	
+	if nItem > 0
+		if Type("oXml:_IP_040:_BODY:_FILEITEM["+str(nItem)+"]:_IPI_VALUE:TEXT") <> "U"
+			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_IPI_VALUE:TEXT)
+		endif
+	else
+		if Type("oXml:_IP_040:_BODY:_FILEITEM:_IPI_VALUE:TEXT") <> "U"
+			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM:_IPI_VALUE:TEXT)
+		endif
+	endif
+return (xRet)
+
+
+/**
+* Coleta o Número do FCI
+**/
+static function getNFci(nItem)
+	local xRet := ""
+	
+	if nItem > 0
+		xRet := AllTrim(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_NFCI:TEXT)
+	else
+		xRet := AllTrim(oXml:_IP_040:_BODY:_FILEITEM:_NFCI:TEXT)
+	endif
+return (xRet)
+
+
+/**
+* Coleta o Pedido de Compra
+**/
+static function getPoCusto(nItem)
+	local xRet := ""
+	
+	if nItem > 0
+		xRet := AllTrim(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_PO_CUSTOMER:TEXT)
+	else
+		xRet := AllTrim(oXml:_IP_040:_BODY:_FILEITEM:_PO_CUSTOMER:TEXT)
+	endif
+return (xRet)
+
+
+/**
+* Coleta o Valor Unitário do item 
+**/
+static function getUniValu(nItem)
+	local xRet := ""
+	
+	if nItem > 0
+		xRet := Val(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_UNIT_VALUE:TEXT)
+	else
+		xRet := Val(oXml:_IP_040:_BODY:_FILEITEM:_UNIT_VALUE:TEXT)
+	endif
+return (xRet)
+
+
+/**
+* Coleta o Valor Total do item 
+**/
+static function getTotVlIt(nItem)
+	local xRet := ""
+	
+	if nItem > 0
+		xRet := Val(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_TOTAL_VALUE:TEXT)
+	else
+		xRet := Val(oXml:_IP_040:_BODY:_FILEITEM:_TOTAL_VALUE:TEXT)
+	endif
+return (xRet)
+
+
+/**
+* Coleta o Número da Delivery do item 
+**/
+static function getDeliver(nItem)
+	local xRet := ""
+	
+	if nItem > 0
+		xRet := AllTrim(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_DELIVERY:TEXT)
+	else
+		xRet := AllTrim(oXml:_IP_040:_BODY:_FILEITEM:_DELIVERY:TEXT)
+	endif
+return (xRet)
+
+
+/**
+* Coleta a TES 
+**/
+static function getTES(nItem)
+	local xRet 			:= ""
+	local oDhlIp040Sap 	:= DhlIp040Sap():newDhlIp040Sap()
+	
+	xRet := oDhlIp040Sap:getTesOperation(getIcmTxVl(nItem), getIcmStVl(nItem), getDiscIcm(nItem), getVIcmUFD(nItem), getIcmExRe(nItem))
+	
+return (xRet)
+
+
+/**
+* Coleta a CFOP
+**/
+static function getCFOP(nItem)
+	local xRet 			:= ""
+	local oDhlIp040Sap	:= DhlIp040Sap():newDhlIp040Sap()
+	local cTes				:= ""
+	local oSql				:= IpSqlObject():newIpSqlObject() 
+	
+	cTes := oDhlIp040Sap:getTesOperation(getIcmTxVl(nItem), getIcmStVl(nItem), getDiscIcm(nItem), getVIcmUFD(nItem), getIcmExRe(nItem))
+	
+	if !(Empty(cTes))
+		xRet := oSql:getFieldValue("SF4", "F4_CF", " %SF4.XFILIAL% AND F4_CODIGO = '"+cTes+"' ")
+	endif	
+	
+return (xRet)
+
+
+/**
+* Coleta valor total dos produto + valor do ICMS ST + IPI
+**/
+static function getTotVlSt(nItem)
+	local xRet 	:= 0
+	local xSt  	:= 0
+	local xIpi 	:= 0
+	local xFcpSt:= 0 
+	
+	local xRet := ""
+	
+	if nItem > 0
+		xRet := Val(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_TOTAL_VALUE:TEXT)
+		
+		if Type("oXml:_IP_040:_BODY:_FILEITEM["+str(nItem)+"]:_ICMS:_ICMS_ST_VALUE:TEXT") <> "U"
+			xSt	 := Val(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_ICMS:_ICMS_ST_VALUE:TEXT)
+		Endif
+		
+		if Type("oXml:_IP_040:_BODY:_FILEITEM["+str(nItem)+"]:_IPI_VALUE:TEXT") <> "U"
+			xIpi	 := Val(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_IPI_VALUE:TEXT)
+		Endif
+		
+		if Type("oXml:_IP_040:_BODY:_FILEITEM["+str(nItem)+"]:_ICMS") <> "U"
+			xFcpSt := Val(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_ICMS:_SUB_TRIB_FCP_AMOUNT:TEXT)
+		endif
+		
+	else
+		xRet := Val(oXml:_IP_040:_BODY:_FILEITEM:_TOTAL_VALUE:TEXT)
+		
+		if Type("oXml:_IP_040:_BODY:_FILEITEM:_ICMS:_ICMS_ST_VALUE:TEXT") <> "U"
+			xSt := Val(oXml:_IP_040:_BODY:_FILEITEM:_ICMS:_ICMS_ST_VALUE:TEXT)
+		Endif
+		
+		if Type("oXml:_IP_040:_BODY:_FILEITEM:_IPI_VALUE:TEXT") <> "U"
+			xIpi := Val(oXml:_IP_040:_BODY:_FILEITEM:_IPI_VALUE:TEXT)
+		Endif
+		
+		if Type("oXml:_IP_040:_BODY:_FILEITEM:_ICMS") <> "U"
+			xFcpSt := Val(oXml:_IP_040:_BODY:_FILEITEM:_ICMS:_SUB_TRIB_FCP_AMOUNT:TEXT)
+		endif
+	endif	
+	
+	xRet += xSt + xIpi + xFcpSt
+	
+return (xRet)
+
+
+/**
+* Coleta valor total
+**/
+static function getVlDiIcm(nItem)
+
+	local xRet 	   := 0
+	Local _nValDes := 0
+
+	// Inicio TOTVS IP Campinas iVan Oliveira - 04/06/2021 - SCJ - ICMS desonerado
+	if nItem > 0
+		if Type("oXml:_IP_040:_BODY:_FILEITEM["+str(nItem)+"]:_ICMS_DIFAL") <> "U"
+			_nValDes := Val(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_ICMS_DIFAL:_DISCOUNT_ICMS:TEXT)
+		endif
+	else
+		if Type("oXml:_IP_040:_BODY:_FILEITEM:_ICMS_DIFAL") <> "U"
+			_nValDes := Val(oXml:_IP_040:_BODY:_FILEITEM:_ICMS_DIFAL:_DISCOUNT_ICMS:TEXT)
+		endif
+	endif
+
+	If AllTrim(getIcmExRe(nItem)) $ SUFRAMA .or. (_nValDes > 0 .and. IsSAPCodeZFM())
+		if nItem > 0
+			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_ICMS:_ICMS_TAX_VALUE:TEXT)
+		else
+			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM:_ICMS:_ICMS_TAX_VALUE:TEXT)
+		endif
+	EndIf
+	// Final TOTVS IP Campinas iVan Oliveira - 04/06/2021 - SCJ - ICMS desonerado
+		
+return (xRet)
+
+
+/**
+* Coleta a quantidade de linhas que deverão ser criadas na tabela CD2
+**/
+static function getCD2QtLi(nItem)
+	
+	local xRet 	:= 0
+		
+	if getIcmTxVl(nItem) > 0
+		xRet +=1
+	endif
+	
+	if getIcmStVl(nItem) > 0
+		xRet +=1
+	endif
+	
+	if getVIcmUFD(nItem) > 0
+		xRet +=1
+	endif
+			
+return (xRet)
+
+
+/**
+ * Define os Logs de acordo com os tipos de arquivos
+ */
+static function setFileLog(cFile,cLogType,cLogText,cTag,cValue)
+	
+	local cInterface := "SAP IP_040"
+	
+	oLog:start(APP_SAP,DHL_IMPORTACAO,cFile)
+	
+	if !(Empty(cTag))
+		cLogText += CRLF+CRLF+"Tag: "+cTag
+	endIf
+	
+	if !(Empty(cValue))
+		cLogText += CRLF+CRLF+"Valor: "+cValue
+	endIf
+	
+	if (cLogType == "fail")
+		oLog:fail(cInterface, cLogText)
+	elseIf (cLogType == "warn")
+		oLog:warn(cInterface, cLogText)
+	endIf	
+	
+return
+
+
+Static Function updPrd(cItem, cField , xValue)
+	Local oSqlSB1	:= IpSqlObject():newIpSqlObject()
+	Local cWhere	:= ""
+	Local cUpd	:= ""	
+	
+	cWhere += " %SB1.XFILIAL% AND "
+	cWhere += " B1_COD 		= '" + cItem + "'"
+	
+	If ValType(xValue) == "C"
+		cUpd	 := cField + " = '" + xValue + "'"
+	Else
+		cUpd	 := cField + " = " + Str(xValue)
+	Endif
+	
+	if !oSqlSB1:update("SB1", cUpd, cWhere)
+		lError := .T.
+		setFileLog(cFile,"fail","Falha ao atualizar o campo " + cField + "." + CRLF + CRLF + oSqlSB1:getLastError())
+	endif
+	
+	oSqlSB1:close()
+Return
+
+/**
+ * Identifica se o SAP Code possui código Suframa
+ */
+Static Function IsSAPCodeZFM()
+
+	local oIp040	:= DhlIp040Sap():newDhlIp040Sap()
+	local cSAPCode	:= ""
+	local cCliente	:= ""
+	local cLoja		:= ""
+	local lRet		:= .f.
+	local aAreaSA1	:= {}
+	
+	if Type("oXml:_IP_040:_BODY:_FILEHEADER:_DELIVERY") <> "U"
+		cSAPCode :=	AllTrim(oXml:_IP_040:_BODY:_FILEHEADER:_DELIVERY:_SAP_CODE:TEXT)
+	else
+		cSAPCode :=	AllTrim(oXml:_IP_040:_BODY:_FILEHEADER:_BUYER:_SAP_CODE:TEXT)
+	endif
+
+	if !Empty(cSAPCode)
+		cCliente 	:= oIp040:getCustomerUnit(cSAPCode)[1]
+		cLoja 		:= oIp040:getCustomerUnit(cSAPCode)[2]
+
+		aAreaSA1 := SA1->(GetArea())
+		DbSelectArea("SA1")
+		SA1->( DbSetOrder(1) )	//A1_FILIAL + A1_COD + A1_LOJA
+		If SA1->(MsSeek(xFilial("SA1") + cCliente + cLoja)) .And. !Empty(SA1->A1_SUFRAMA)
+			lRet := .t.
+		EndIf
+		RestArea(aAreaSA1)
+	endIf
+
+return (lRet)

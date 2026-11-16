@@ -1,0 +1,1340 @@
+#include 'totvs.ch'
+#include 'safx.ch'
+#include 'dhl.ch'
+
+
+#DEFINE POS_FIELD 1
+#DEFINE POS_SIZE  2
+
+/*/{Protheus.doc} DHLSafx
+
+Classe com as regras e metodos genericos para os layouts
+masterSaf DW
+	
+@author Daniel Braga
+@since 31/10/2014
+
+/*/
+user function _Safx;return 
+
+class DHLSafx
+	
+	data aFields 		as Array
+	data oHeaderSql 	as Object
+	data oDetailSql   as Object
+	
+	method newDHLSafx() constructor
+	
+	method getFields()
+	method setFields(aFields)
+	
+	method getHeaderSql()
+	method setHeaderSql(oHeaderSql)
+	
+	method getDetailSql()
+	method setDetailSql(oDetailSql)
+	
+	method initialize(nTamPos,oHeaderSql,oDetailSql)
+	method addField(nPos, xValue ) 
+	method getSupCusRecords(cType,cCod,cBranch)
+	method getTaxRecord(cType,cDoc,cSer,cCod,cLoja) 
+	method getFlowsRecord(cType,cDoc,cSer,cCod,cBranch,lDeleted)
+	method getImportAdd(cDoc,cSer,cCod,cBranch) 
+	method getItemFlowsRecord(cType,cDoc,cSer,cCod,cBranch)
+	method getTypeInOutFlow(cCod)
+	method getEletricPower(cType,cDoc,cSer,cCod,cBranch) 
+	method getTelecomAdd(cType,cDoc,cSer,cCod,cBranch)
+	method getProduct(cCod)
+	method populatedResult(oObj,cWhere,cFields,cTable)
+	method validRequired(aFields)
+	method getFieldValue(xField,xObj) 
+	method getFieldSql(cField)
+	method addLog(cTitle,cError,cFile) 
+	method salveDateExp(cField) 
+	method iniValFields(cAlias,aFlds , nFld)
+	method fieldListSX3(cAlias)
+	method getCodTypeMsg(cTipo)
+	method getMsgFlow(cType,cDoc,cSer,cCusSup,cBranch)
+	method prepareEnvironment()         
+	method isBlocked()  
+	method getProdType()
+	method getTypeDoc(cDoc,cSer,cCod,cBranch)
+	method getSumItems(cType,cDoc,cSer,cCusSup,cBranch)
+	method isCutover(cType,cDoc,cSer,cCod,cBranch)
+	method getRefItem(cType,cDoc,cSer,cItem)
+	method getUfTaxes(cType, cTypeDoc, cSerie, cDoc, cCliFor, cLoja, cItem)
+
+endClass
+
+/*/{Protheus.doc} getFields
+
+Coleta o aFields
+	
+@author Daniel .A. Braga
+@since 27/10/2014
+
+@return array aFields
+/*/
+method getFields() class DHLSafx
+return ::aFields
+
+
+/*/{Protheus.doc} setFields
+
+Define o aFields
+	
+@author Daniel .A. Braga
+@since 27/10/2014
+
+@param  array, aFields
+/*/
+method setFields(aFields) class DHLSafx
+	::aFields := aFields
+return
+
+/*/{Protheus.doc} getHeaderSql
+
+Coleta o oHeaderSql
+	
+@author danielbraga
+@since 28/10/2014
+
+@return object oHeaderSql
+/*/
+method getHeaderSql() class DHLSafx
+return ::oHeaderSql
+
+
+/*/{Protheus.doc} setHeaderSql
+
+Define o oHeaderSql
+	
+@author danielbraga
+@since 28/10/2014
+
+@param  object, oHeaderSql
+/*/
+method setHeaderSql(oHeaderSql) class DHLSafx
+	::oHeaderSql := oHeaderSql
+return
+
+/*/{Protheus.doc} getDetailSql
+
+Coleta o oDetaiSql
+	
+@author danielbraga
+@since 29/10/2014
+
+@return object oDetaiSql
+/*/
+method getDetailSql() class DHLSafx
+return ::oDetailSql
+
+
+/*/{Protheus.doc} setDetailSql
+
+Define o oDetaiSql
+	
+@author danielbraga
+@since 29/10/2014
+
+@param oDetailSql, object, oDetaiSql
+/*/
+method setDetailSql(oDetailSql) class DHLSafx
+	::oDetailSql := oDetailSql
+return
+
+//-----------------------------------------------------------------
+method newDHLSafx() class DHLSafx
+	
+	
+return
+
+/*/{Protheus.doc} initialize
+
+inicializa as variaveis para montagem do arquivo
+	
+@author Daniel Braga
+@since 31/10/2014
+
+@param nTamPos		, integer, tamanho do layout
+@param oHeaderSql	, object, objeto sql ou alias
+@param oDetailSql	, object, objeto sql 
+
+
+/*/
+method initialize(nTamPos,oHeaderSql,oDetailSql) class DHLSafx
+
+	default nTamPos   := 0
+	default oHeaderSql:= nil
+	default oDetailSql:= nil
+	
+	::aFields		:= Array(nTamPos)
+	::oHeaderSql 	:= oHeaderSql
+	::oDetailSql	:= oDetailSql
+
+return 
+
+/*/{Protheus.doc} addField
+
+(Descricaoo da Funcaoo, Classe ou Metodo)
+	
+@author Daniel Braga
+@since 31/10/2014
+
+@param aPos	, Array, Array com as posicaoes do layout 
+@param xValue	, todos , valor da coluna 
+
+@return TipoRet DescricaoRet
+/*/
+method addField(aField, xValue, lFormatZero ) class DHLSafx	
+	local nPos  	:= 0
+	local nSize 	:= 0
+	local oObj 	:= MsafDWFile():newMsafDWFile()
+	
+	default aField := {}
+	default xValue := ""
+	default lFormatZero := .T.
+
+	nPos := aField[POS_FIELD]
+	nSize:= aField[POS_SIZE]
+	
+	::aFields[ aField[POS_FIELD] ] := padr( oObj:formatValue(xValue, aField, lFormatZero),nSize," ")
+
+return 
+
+/*/{Protheus.doc} getSupCusRecords
+
+Cliente e fornecedores
+	
+@author Daniel Braga
+@since 31/10/2014
+
+@param cType, String, Tipo de entidade
+@param cCod , String, Codigo da entidade
+@param cBranch, String, loja da entidade
+
+@return Array valores das entidades  encontradas
+/*/
+method getSupCusRecords(cType,cCod,cBranch)  class DHLSafx
+
+	local oIpSqlObject :=  IpSqlObject():newIpSqlObject()
+	local cWhere := ""
+	local cTable  :=""
+	local cPrefix := ""
+	local cSql		:= ""
+	
+	
+	default cType 	:= ""
+	default cCod  	:= ""
+    default cBranch := ""
+       
+	if cType  == "1"
+		cTable := "SA2"
+	else 
+		cTable := "SA1"
+	endIf 
+	
+	cPrefix := PrefixoCpo(cTable)
+	
+	cWhere := cPrefix+"_FILIAL = '%"+cTable+".FILIAL%' AND "+cPrefix+"_COD = '" +cCod+ "' and "+cPrefix+"_LOJA ='"+cBranch+"' and d_e_l_e_t_ = ' ' " 
+	
+	cSql   := "select "+::fieldListSX3(cTable)+" from "+retSqlName(cTable)+" where "+ cWhere 
+	
+	aFields := ::populatedResult(oIpSqlObject,Upper(cSql))
+	
+	if (oIpSqlObject:aliasExists())
+		oIpSqlObject:close()
+	endif
+
+
+return  aFields
+
+/*/{Protheus.doc} getTaxRecord
+
+Impostos 
+	
+@author Daniel Braga
+@since 31/10/2014
+
+@param cType, String, Tipo de entidade
+@param cDoc , String, numero do documento
+@param cSer , String, serie do documento
+@param cCod , String, Codigo da entidade
+@param cBranch, String, loja da entidade
+
+@return Array valores das entidades  encontradas
+/*/
+method getTaxRecord(cType,cDoc,cSer,cCod,cBranch,cItem) class DHLSafx	
+	local oIpSqlObject 	:=  IpSqlObject():newIpSqlObject()
+	local cWhere			:= "" 
+	local cSql      		:= "" 
+	
+	default cType := ''
+	default cItem := ''
+	
+	if empty(cType)
+		cWhere := "ft_filial = '%sft.filial%' and ft_serie= '"+cSer+"' and ft_nfiscal ='"+cDoc+"' and "+;
+		 		  " ft_cliefor ='"+cCod+"' and ft_loja ='"+cBranch+"'"		 		  
+	else
+		cWhere := "ft_filial = '%sft.filial%' and ft_tipomov='" + iif(cType $ '1', 'E', 'S') + "' and ft_serie= '"+cSer+"' and ft_nfiscal ='"+cDoc+"' and "+;
+		 		  " ft_cliefor ='"+cCod+"' and ft_loja ='"+cBranch+"'"
+	endif
+	
+	if !empty(cItem)
+		cWhere += " and ft_item = '"+cItem+"' "
+	endif
+	 		  
+	cSql:= "select "+::fieldListSX3("SFT")+" from "+retSqlName("SFT")+" where "+cWhere
+	
+	aFields := ::populatedResult(oIpSqlObject,cSql)
+	
+	if (oIpSqlObject:aliasExists())
+		oIpSqlObject:close()
+	endif
+
+return aFields
+
+/*/{Protheus.doc} getFlowsRecord
+
+Documento de entrada e saida 
+	
+@author Daniel Braga
+@since 31/10/2014
+
+@param cType, String, Tipo de entidade
+@param cDoc , String, numero do documento
+@param cSer , String, serie do documento
+@param cCod , String, Codigo da entidade
+@param cBranch, String, loja da entidade
+
+@return Array valores das entidades  encontradas
+/*/
+method getFlowsRecord(cType,cDoc,cSer,cCod,cBranch,lDeleted) class DHLSafx
+	local oIpSqlObject :=  IpSqlObject():newIpSqlObject()
+	local cWhere := ""
+	local cTable  :=""
+	local cPrefix := ""
+	local cSQL 	:= ""
+	local aFields := {}
+
+	default lDeleted := .f.
+       
+	if cType  == "2"
+		cTable := "SF2"
+	else 
+		cTable := "SF1"
+	endIf 
+	
+	cPrefix := PrefixoCpo(Upper(cTable))
+	
+	cWhere := cPrefix+"_filial= '%"+cTable+".filial%' and "+cPrefix+"_doc = '" +cDoc+ "' and "+cPrefix+"_serie ='"+cSer+"' and "
+	if cType == "2"
+		cWhere += cPrefix+"_cliente = '"+cCod+"' and "
+	else 
+		cWhere += cPrefix+"_fornece = '"+cCod+"' and "
+	endIf
+	cWhere +=  cPrefix+"_loja='"+cBranch+"' "
+	if !lDeleted
+		cWhere += " and d_e_l_e_t_ = ' ' "
+	endif
+	
+	cSql := "select "+::fieldListSX3(cTable)+" from "+retSqlName(cTable)+ " where "+cWhere
+	
+	
+	aFields := ::populatedResult(oIpSqlObject,cSql)
+	
+	if (oIpSqlObject:aliasExists())
+		oIpSqlObject:close()
+	endif
+	
+return aFields
+
+/*/{Protheus.doc} getImportAdd
+
+Complemente de importacao  
+	
+@author Daniel Braga
+@since 31/10/2014
+
+@param cDoc , String, numero do documento
+@param cSer , String, serie do documento
+@param cCod , String, Codigo da entidade
+@param cBranch, String, loja da entidade
+
+@return Array valores das entidades  encontradas
+/*/
+method getImportAdd(cDoc,cSer,cCod,cBranch,cItem) class DHLSafx
+	local oIpSqlObject :=  IpSqlObject():newIpSqlObject()
+	local cWhere 	:= ""
+	local cTable  :="CD5"
+	local cPrefix := ""
+	local cSql 	:= ""
+	local aFields := {}
+	
+	default cItem = ''
+	
+	cWhere 	:= " cd5_filial = '%"+cTable+".filial%'  and cd5_doc ='"+cDoc+"' and cd5_serie='"+cSer+"' and cd5_fornec ='"+cCod+"' and cd5_loja = '"+cBranch+"'"
+	
+	if !empty(cItem)
+		cWhere += " and cd5_item = '"+cItem+"' "
+	endif
+	
+	cSql		:=" select "+::fieldListSX3(cTable)+" from "+retSqlName(cTable)+" where "+cWhere 
+	
+	aFields := ::populatedResult(oIpSqlObject,cSql)
+	
+	if (oIpSqlObject:aliasExists())
+		oIpSqlObject:close()
+	endif
+	
+return aFields
+
+
+/*/{Protheus.doc} getItemFlowsRecord
+
+Itens de documento de entrada e saida
+	
+@author Daniel Braga
+@since 31/10/2014
+
+@param cDoc , String, numero do documento
+@param cSer , String, serie do documento
+@param cCod , String, Codigo da entidade
+@param cBranch, String, loja da entidade
+
+@return Array valores das entidades  encontradas
+/*/
+method getItemFlowsRecord(cType,cDoc,cSer,cCod,cBranch,cItem) class DHLSafx
+	local oIpSqlObject :=  IpSqlObject():newIpSqlObject()
+	local cWhere := ""
+	local cTable  :=""
+	local cPrefix := ""
+	local cSql 	:= ""
+	local aFields := {}
+
+	default cItem := ''
+       
+	if cType  == "2"
+		cTable := "SD2"
+	else 
+		cTable := "SD1"
+	endIf 
+	
+	cPrefix := PrefixoCpo(cTable)
+	
+	cWhere := cPrefix+"_filial= '%"+cTable+".filial%' and "+cPrefix+"_doc = '" +cDoc+ "' and "+cPrefix+"_serie ='"+cSer+"' and "
+	if cType == "2"
+		cWhere += cPrefix+"_cliente = '"+cCod+"' and "
+	else 
+		cWhere += cPrefix+"_fornece = '"+cCod+"' and "
+	endIf
+	cWhere +=  cPrefix+"_loja='"+cBranch+"' "
+	
+	if !empty(cItem)
+		cWhere += " and "+cPrefix+"_item = '"+cItem+"' and "+cPrefix+"_tes <> '   '"
+	endif
+	 
+	cSql := " select "+::fieldListSX3(cTable)+" from "+retSqlName(cTable)+" where "+cWhere
+	
+	aFields := ::populatedResult(oIpSqlObject,Upper(cSql))
+
+	if (oIpSqlObject:aliasExists())
+		oIpSqlObject:close()
+	endif
+	
+return aFields
+
+/*/{Protheus.doc} getTypeInOutFlow
+
+Informacoes da TES
+	
+@author Daniel Braga
+@since 31/10/2014
+
+@param cCod , String, Codigo da tes
+
+@return Array valores das entidades  encontradas
+/*/
+method getTypeInOutFlow(cCod) class DHLSafx
+	
+	local oIpSqlObject :=  IpSqlObject():newIpSqlObject()
+	local cWhere := ""
+	local cTable  :="SF4"
+	local cPrefix := ""
+	local cSql 	:= ""
+	local aFields  := {}
+	
+	cWhere 	:= " f4_filial ='%"+cTable+".filial%'  and f4_codigo ='"+cCod+"'"
+	
+	cSql		:=" select "+::fieldListSX3(cTable)+" from "+retSqlName(cTable)+" where "+cWhere  
+	
+	aFields := ::populatedResult(oIpSqlObject,Upper(cSql))
+	
+	if (oIpSqlObject:aliasExists())
+		oIpSqlObject:close()
+	endif
+
+return aFields
+
+
+/*/{Protheus.doc} getEletricPower
+
+Informacoes da energia da eletrica
+	
+@author Daniel Braga
+@since 31/10/2014
+
+@param cType 	, String, tipo de documento
+@param cDoc 	, String, numero do documento
+@param cSer 	, String, serie do documento
+@param cCod 	, String, Codigo da entidade
+@param cBranch, String, loja da entidade
+
+@return Array valores das entidades  encontradas
+/*/
+method getEletricPower(cType,cDoc,cSer,cCod,cBranch) class DHLSafx	
+	local oIpSqlObject :=  IpSqlObject():newIpSqlObject()
+	local cWhere 	:= ""
+	local cTable  :="SFU"
+	local cPrefix := ""
+	local cSql 	:= ""
+	local aFields := {}
+	
+	cWhere 	:= " fu_filial= '%"+cTable+".filial%' and  fu_tipomov = '"+cType+"' and fu_doc ='"+cDoc+"' and "+;
+	 		   " fu_serie='"+cSer+"' and fu_clifor ='"+cCod+"' and fu_loja = '"+cBranch+"'"
+	
+	cSql	:=" select "+::fieldListSX3(cTable)+" from "+retSqlName(cTable)+" where "+cWhere 
+	
+	aFields := ::populatedResult(oIpSqlObject,Upper(cSql))
+	
+	if (oIpSqlObject:aliasExists())
+		oIpSqlObject:close()
+	endif
+
+return aFields
+
+/*/{Protheus.doc} getTelecomAdd
+
+Informacoes da telecomunicoes
+	
+@author Daniel Braga
+@since 31/10/2014
+
+@param cType 	, String, tipo de documento
+@param cDoc 	, String, numero do documento
+@param cSer 	, String, serie do documento
+@param cCod 	, String, Codigo da entidade
+@param cBranch, String, loja da entidade
+
+@return Array valores das entidades  encontradas
+/*/
+method getTelecomAdd(cType,cDoc,cSer,cCod,cBranch) class DHLSafx
+	local oIpSqlObject :=  IpSqlObject():newIpSqlObject()
+	local cWhere 	:= ""
+	local cTable  :="SFX"
+	local cPrefix := ""
+	local cSql 	:= ""
+	local aFields := {}
+	
+	cWhere 	:= " fx_filial = '%"+cTable+".filial%' and  fx_tipomov = '"+cType+"' and fx_doc ='"+cDoc+"' and "+;
+	 		   " fx_serie='"+cSer+"' and fx_clifor ='"+cCod+"' and fx_loja = '"+cBranch+"'"
+	
+	cSql		:="select "+::fieldListSX3(cTable)+" from "+retSqlName(cTable)+" where "+cWhere 
+	
+	aFields := ::populatedResult(oIpSqlObject,Upper(cSql))
+	
+	if (oIpSqlObject:aliasExists())
+		oIpSqlObject:close()
+	endif
+
+return aFields
+
+/*/{Protheus.doc} getProduct
+
+Informacoes do produto
+	
+@author Daniel Braga
+@since 31/10/2014
+
+@param cCod 	, String, Codigo do produto
+
+
+@return Array valores das entidades  encontradas
+/*/
+method getProduct(cCod)  class DHLSafx
+
+	
+	local oIpSqlObject :=  IpSqlObject():newIpSqlObject()
+	local cWhere := ""
+	local cTable  :="SB1"
+	local cPrefix := ""
+	local cSql 	:= ""
+	local aFields  := {}
+	
+	cWhere 	:= "b1_filial= '%"+cTable+".filial%'  and b1_cod ='"+cCod+"' and d_e_l_e_t_ = ' '"
+	
+	cSql		:= "select "+::fieldListSX3(cTable)+" from  "+retSqlName(cTable)+ " where "+cWhere 
+	
+	aFields := ::populatedResult(oIpSqlObject,Upper(cSql))
+
+	if (oIpSqlObject:aliasExists())
+		oIpSqlObject:close()
+	endif
+
+return aFields
+
+
+/*/{Protheus.doc} populatedResult
+
+Informacoes do produto
+	
+@author Daniel Braga
+@since 31/10/2014
+
+@param oObj 	, String, Objeto SQL
+@param cWhere 	, String, condicoes do where
+@param cFields, String, campos 
+@param cTable 	, String, tabela
+
+
+@return Array valores das entidades  encontradas
+/*/
+method populatedResult(oObj,cSql) class DHLSafx	
+    local nFields := 0
+	local aFields := {}
+	local cAlias  := ""
+	local nI      := 0
+	
+	oObj:newAlias(cSql)
+	
+	cAlias  := oObj:getAlias()
+	nFields := (cAlias)->( FCount() )
+	aFields := Array(nFields,2)
+	
+	if !oObj:notIsEof()	
+		return ::iniValFields(cAlias,aFields , nFields)
+	endIf
+	
+	while oObj:notIsEof()
+	
+		  for nI := 1 to nFields
+		  	aFields[nI,2] := (cAlias)->( FieldName(nI) )
+		  	aFields[nI,1] := (cAlias)->( FieldGet(nI) )
+		  
+		  next nI
+		  
+		  exit
+	endDo
+	oObj:close()
+return aFields
+
+/*/{Protheus.doc} iniValFields
+
+(Descrição da Função, Classe ou Método)
+	
+@author Daniel Braga
+@since 12/11/2014
+
+@param cAlias, String, Alias da query
+@param aFlds , Array , Array dos campos vazios
+@param nFlds , Integer, Quantidade de campos na query
+
+@return TipoRet DescricaoRet
+/*/
+method iniValFields(cAlias,aFlds , nFld) class DHLSafx
+ 
+ local lIniPad	  := .F.	
+ local cFieldName := ""
+ local nI		  := 0
+ local aArea	  := SX3->(getArea())
+ 
+ default aFlds 	:= {}
+ default nFld		:= 0
+ default cAlias 	:= ""
+
+
+	for nI := 1 to nFld
+		cFieldName := (cAlias)->( FieldName(nI) )
+		
+		if !allTrim(cFieldName) $ "R_E_C_D_E_L_|R_E_C_N_O_|I_N_S_D_T_|S_T_A_M_P_" 
+			aFlds[nI,2] := cFieldName
+			aFlds[nI,1] := CriaVar(cFieldName, lIniPad)
+		endIf
+	
+	next nI
+	
+	SX3->(restArea(aArea))
+return aFlds
+
+/*/{Protheus.doc} FieldListSX3
+
+Monta a listagem dos campos da query
+	
+@author Daniel Braga
+@since 12/11/2014
+
+@param cAlias, String, Alias do arquivo
+
+@return String String dos campos da select
+/*/
+method fieldListSX3(cAlias) class DHLSafx
+
+	local cFields := "*"
+	
+return cFields
+
+/*/{Protheus.doc} validRequired
+
+Valida os campos obrigatorios
+	
+@author Daniel Braga
+@since 31/10/2014
+
+@param aFields, Array, Array com os campos obrigatorios
+
+@return String descricao dos erros
+/*/
+method validRequired(aFields) class DHLSafx
+	
+	local cError 		:= ""
+	local aFieldReq 	:= aFields
+	local nI			:= 0
+	local xValue		:= nil
+	
+	for nI := 1 to len(aFieldReq)
+		xValue :=  ::getFields()[ aFieldReq[nI,1,1] ]
+		if Empty( xValue ) .or. allTrim(xValue) == "@"
+			cError += aFieldReq[nI,2]+","
+		endIf
+	next nI
+	
+
+return cError
+
+/*/{Protheus.doc} getFieldValue
+
+(Descricao da Funcao, Classe ou MŽtodo)
+	
+@author Daniel Braga
+@since 31/10/2014
+
+@param xField, todos, nome dos campos
+@param xObj  , todos, array ou objeto com os valores
+
+@return todos valor dos campos
+/*/
+method getFieldValue(xField,xObj)  class DHLSafx
+	
+	local xValue 		:= nil
+	local cPrefix		:= ""
+	local nPos			:= 0
+	
+	default xField 	:= ""
+	default xObj		:= nil
+
+	
+	if ValType(xField)  == "C" .and. xObj == nil 
+		
+		if ValType(::oHeaderSql) == "C"  
+			if AliasInDic(::oHeaderSql)  	
+				xValue := (::oHeaderSql)->( FieldGet(FieldPos(xField)) ) 
+			elseif Upper(left(xField,3)) == "MV_"
+				xValue :=  getMv(xField)
+			
+			endIf
+		else
+			if Upper(left(xField,3)) == "ZZ_"
+				xValue :=  getMv(xField)
+			else
+				xValue := ::getFieldSql(xField)
+			endif
+			
+		endIf
+			
+	elseIf ValType(xField)  == "C" .and. ValType(xObj) == "A"
+		nPos := aScan(xObj , {|x| allTrim(x[2]) == allTrim(xField)   })
+		if nPos > 0
+			xValue := xObj[nPos,1]
+		else 
+			xValue := ""
+		endIf	
+    endIf 
+	
+return xValue
+
+/*/{Protheus.doc} getFieldSql
+
+trata os objetos oHeaderSql e oDetailSql
+	
+@author Daniel Braga
+@since 31/10/2014
+
+@param cField, Strinf, nome do campo
+
+@return String valor do campo 
+/*/
+method getFieldSql(cField) class DHLSafx
+		
+
+	local nPosField 	:= 0 
+	local cAlias		:= ""
+	local xValue		:= nil
+		
+	if ::oHeaderSql <> nil
+		
+		cAlias := ::getHeaderSql():getAlias()
+		nPosField := (cAlias)->( FieldPos(cField))
+		
+		if nPosField > 0
+			xValue := ::getHeaderSql():getValue(cField)
+			if Empty(xValue)
+					if Empty(TamSx3(cField))
+						return ""
+					else
+						return CriaVar(cField)
+					endIf
+			else 
+				return xValue
+			endIf	
+		endIf
+	
+	endIf
+	
+	if ::oDetailSql <> nil
+		
+		cAlias := ::getDetailSql():getAlias()
+		nPosField := (cAlias)->( FieldPos(cField))
+		
+		if nPosField > 0
+			return ::getDetailSql():getValue(cField)
+		endIf
+	
+	endIf
+	
+		
+return "" 
+
+method addLog(cTitle,cError,cFile) class DHLSafx
+	local oLog 		:= DHLLogManager():newDHLLogManager()
+	
+	oLog:start(APP_MASTERSAF_DW, DHL_EXPORTACAO,cFile)
+	oLog:fail(cTitle, cError)
+return
+
+/*/{Protheus.doc} salveDateExp
+
+Faz a marcacao do registro exportado 
+	
+@author Daniel Braga
+@since 30/10/2014
+
+/*/
+method salveDateExp(cField) class DHLSafx
+
+	local cAlias 	:= ::getHeaderSql()
+	local cPrefix	:= PrefixoCpo(cAlias)
+	local nPos		:= 0	
+	
+	default cField := "ZZMSDW"
+	
+	nPos := (cAlias)->( FieldPos(cPrefix+"_"+cField) )
+	
+	(cAlias)->( recLock(cAlias,.f.) )
+	(cAlias)->( FieldPut(nPos,date()) )	
+	(cAlias)->(msUnlock())
+	
+return
+/*/{Protheus.doc} getCodTypeMsg
+
+Retorna o codigo da mensagem
+	
+@author Daniel Braga
+@since 14/11/2014
+
+@param cTipo, String, codigo do tipo da mensagem
+
+/*/
+method getCodTypeMsg(cType) class DHLSafx
+
+	local cCod := ""
+	
+	cCod := posicione("ZZ9",2,xFilial("ZZ9")+cType,"ZZ9_CODIGO")
+
+
+return cCod
+
+/*/{Protheus.doc} getMsgFlow
+
+Retorna as mensagens da nota da SZZ
+	
+@author Daniel Braga
+@since 17/11/2014
+
+@param cType	, String, Tipo da nota 
+@param cDoc	, String, Documento
+@param cSer	, String, Serie
+@param cCusSup, String, Cliente/Fornecedor
+@param cBranch, String, Filial
+
+
+@return String Mensagem da nota
+/*/
+
+method getMsgFlow(cType,cDoc,cSer,cCusSup,cBranch) class DHLSafx
+	
+	local oSqlSZZ :=  IpSqlObject():newIpSqlObject() 
+	local cMens	:= ""	
+	local cSql		:= ""
+	
+	cSql := "select * from "+retSqlName("SZZ")+" where zz_filial ='"+xfilial("SZZ")+"' and "+;
+			 " zz_tipodoc= '"+cType+"' and zz_doc='"+cDoc+"' and zz_serie ='"+cSer+"' and "+;
+			 " zz_clifor ='"+cCusSup+"' and zz_loja='"+cBranch+"' and d_e_l_e_t_= ' ' "
+	
+	oSqlSZZ:newAlias( Upper(cSql) )
+	
+	while oSqlSZZ:notIsEof()
+	
+		cMens += alltrim(oSqlSZZ:getValue("ZZ_TXTMENS")) + " "
+		
+		oSqlSZZ:skip()
+	endDo
+	
+	oSqlSZZ:close()
+cMens := strtran( cMens , '"','') // joj JJ 2019-01-02 - erro na safx se tem " na observacao
+return cMens
+
+
+/*/{Protheus.doc} prepareEnvironment
+
+Prepara o ambiente Protheus para Geração das Interfaces
+	
+@author Victor Hugo
+@since 10/12/2014
+
+@param aCompany, Array, Empresa/Filial para Processamento. Ex.: aCompany[1] - Empresa, aCompany[2] - Filial. Obrigatorio quando em Job.
+/*/
+method prepareEnvironment(aCompany) class DHLSafx
+	
+	local lOk  			:= .F.
+	local cCompany		:= ""
+	local cBranch		:= ""
+	local lJob 			:= (Type("oMainWnd") != "O")
+	local oEnv 			:= IpEnvironmentObject():newIpEnvironmentObject()
+	default aCompany	:= {}
+	
+	if lJob .and. (Len(aCompany) == 0)
+		FWLogMsg("WARN", , "BusinessObject", funName(), "", "01", "[MASTERSAFDW] Empresa/Filial não definida para processamento via Job", 0, 0, {})	
+		return .F.
+	endIf
+	
+	if (Len(aCompany) > 0)	
+		cCompany := aCompany[1]
+		cBranch  := aCompany[2]	
+	else
+		cCompany := cEmpAnt
+		cBranch  := cFilAnt		
+	endIf
+	
+	oEnv:setCompany(cCompany)  
+	oEnv:setBranch(cBranch) 
+	oEnv:load()
+	
+return .T.
+
+
+/*/{Protheus.doc} isBlocked
+
+Verifica se um registro está bloqueado. Necessita estar posicionado no registro.
+	
+@author Victor Hugo
+@since 23/12/2014
+
+@param cAlias, String, Alias do registro
+/*/
+method isBlocked(cAlias) class DHLSafx
+	
+	local lBlocked    := .F.
+	local cValue      := ""
+	local cField      := PrefixoCpo(cAlias)+"_MSBLQL"
+	local lExistField := (cAlias)->(FieldPos(cField) > 0)
+	
+	if lExistField                 
+		cValue   := (cAlias)->&cField
+		lBlocked := (cValue == "1")
+	endIf	 
+	
+return lBlocked 
+
+
+/*/{Protheus.doc} getProdType
+
+Coleta o Tipo de Produtos Mastersaf DW
+	
+@author Victor Hugo
+@since 23/12/2014
+
+@param lParametro, Booleano, Indica se foi localizado o tipo nos parâmetros (Personalização Bloco K) 12/12/2018
+
+@return String Tipo do Produto no Mastersaf DW
+/*/
+method getProdType(cErpType, lParametro) class DHLSafx
+	
+	local cDwType := ""
+	
+	default lParametro := .F.
+	
+	cErpType := Upper(AllTrim(cErpType))
+	
+	if lParametro
+		if (cErpType == "PA")
+			cDwType := SAFX_TIPO_PRODUTO
+		elseIf (cErpType == "MP")
+			cDwType := SAFX_TIPO_MAT_PRIMA_INSUMO
+		elseIf (cErpType == "EM")
+			cDwType := SAFX_TIPO_EMBALAGEM
+		elseIf (cErpType == "ME")
+			cDwType := SAFX_TIPO_OUTROS
+		elseIf (cErpType == "SP")
+			cDwType := SAFX_TIPO_OUTROS
+		elseIf (cErpType == "PP")
+			cDwType := SAFX_TIPO_EM_ELABORACAO
+		elseIf (cErpType == "PI")
+			cDwType := SAFX_TIPO_MAT_PRIMA_INSUMO
+		else
+			cDwType := SAFX_TIPO_OUTROS	
+		endIf
+	else
+	
+		if (cErpType == "PA")
+			cDwType := SAFX_TIPO_PRODUTO
+		elseIf (cErpType == "MP")
+			cDwType := SAFX_TIPO_MAT_PRIMA_INSUMO
+		elseIf (cErpType == "EM")
+			cDwType := SAFX_TIPO_EMBALAGEM
+		else
+			cDwType := SAFX_TIPO_OUTROS	
+		endIf
+	
+	endIf
+	
+return cDwType  
+
+/*/{Protheus.doc} getTypeDoc
+
+Coleta o tipo da NF
+	
+@author Thiago Meschiatti
+@since 12/02/2015
+
+@param cErpType, String, Tipo do Produto no Protheus
+
+@return String Tipo do Produto no Mastersaf DW
+/*/
+method getTypeDoc(cDoc, cSer,cCod,cBranch,lCobert,cOrigem) class DHLSafx
+	local cType 	:= ''
+	local cQuery 	:= ''
+	local oSql		:= IpSqlObject():newIpSqlObject()
+	
+	default cOrigem := ""
+	
+	default lCobert := .f.
+	
+	if lCobert
+		return '1'
+	endif
+	
+	if EMPTY(cOrigem)
+	
+		cQuery += " SELECT F3_CFO "
+		cQuery += " FROM %SF3.SQLNAME% "
+		cQuery += " WHERE "
+		cQuery += " 	%SF3.XFILIAL% "
+		cQuery += " 	AND F3_NFISCAL = '" + cDoc + "' AND F3_SERIE = '" + cSer + "' "
+		cQuery += " 	AND F3_CLIEFOR = '" + cCod + "' AND F3_LOJA  = '" + cBranch + "' "  //RONI SILVA RETIRADO O COMENTARIOA PARA TRAZER A NOTA CERTA
+//		cQuery += " 	AND F3_EMISSAO = '" + DTOS(DDTFROM) + "' "  //RONI SILVA INSERIDO PARA BUSCAR A NOTA PELA DATA
+
+		oSql:newAlias(cQuery)
+		
+		if oSql:hasRecords()
+			while oSql:notIsEof()
+				if empty(oSql:getValue("F3_CFO"))
+					oSql:skip()
+				else
+					cType := iif(val(oSql:getValue("F3_CFO")) < 5000 , "1","2" )
+					exit
+				endif
+			end 
+		endif
+	Else
+		IF cOrigem == "SD1"
+			cType := "1"
+		else
+			cType := "2"
+		endif		
+	EndIf
+	
+	oSql:close()
+
+return (cType)
+
+/*/{Protheus.doc} getTaxRecord
+
+Impostos 
+	
+@author Daniel Braga
+@since 31/10/2014
+
+@param cType, String, Tipo de entidade
+@param cDoc , String, numero do documento
+@param cSer , String, serie do documento
+@param cCod , String, Codigo da entidade
+@param cBranch, String, loja da entidade
+
+@return Array valores das entidades  encontradas
+/*/
+method getSumItems(cType,cDoc,cSer,cCod,cBranch) class DHLSafx	
+	local oIpSqlObject 	:=  IpSqlObject():newIpSqlObject()
+	local cWhere			:= "" 
+	local cSql      		:= "" 
+	
+	default cType := ''
+	
+	if empty(cType)
+		cWhere := "ft_filial = '%sft.filial%' and ft_serie= '"+cSer+"' and ft_nfiscal ='"+cDoc+"' and "+;
+		 		  " ft_cliefor ='"+cCod+"' and ft_loja ='"+cBranch+"' and %sft.notdel%"
+	else
+		cWhere := "ft_filial = '%sft.filial%' and ft_tipomov='" + iif(cType $ '1', 'E', 'S') + "' and ft_serie= '"+cSer+"' and ft_nfiscal ='"+cDoc+"' and "+;
+		 		  " ft_cliefor ='"+cCod+"' and ft_loja ='"+cBranch+"' and %sft.notdel%"
+	endif
+	 		  
+	cSql:= " select sum(ft_frete) frete, sum(ft_seguro) seguro, sum(ft_descont) descont, sum(ft_valirr) valirf, sum(ft_baseins) baseins, "
+ 	cSql+= " sum(ft_icmscom) icmscom, sum(ft_baseicm) baseicm, sum(ft_baseirr) baseirr, sum(ft_baseret) baseret, "
+ 	cSql+= " sum(ft_bretcsl) bretcsl, sum(ft_vretcsl) vretcsl, sum(ft_total) total, sum(ft_valcont) valcont 
+	cSql+= " from "+retSqlName("SFT")+" sft where "+cWhere
+	
+	aFields := ::populatedResult(oIpSqlObject,cSql)
+	
+	if (oIpSqlObject:aliasExists())
+		oIpSqlObject:close()
+	endif
+
+return aFields
+
+
+/*/{Protheus.doc} isCutover
+
+Documento de cutover? Sim ou Não
+	
+@author Thiago Meschiatti
+@since 31/10/2014
+
+@param cType, String, Tipo de entidade
+@param cDoc , String, numero do documento
+@param cSer , String, serie do documento
+@param cCod , String, Codigo da entidade
+@param cBranch, String, loja da entidade
+
+@return Array valores das entidades  encontradas
+/*/
+method isCutover(cType,cDoc,cSer,cCod,cBranch) class DHLSafx
+	local oIpSqlObject	:=  IpSqlObject():newIpSqlObject()
+	local cWhere 		:= ""
+	local cTable  		:= ""
+	local cField		:= ""
+	local cPrefix 		:= ""
+	local cSQL 			:= ""
+	local lCutover		:= .f.
+	local aFields := {}
+
+	if cType  == "2"
+		cTable := "SF2"
+		cField := "F2_SERIE"
+	else 
+		cTable := "SF1"
+		cField := "F1_ZZCUTOV"
+	endIf 
+	
+	cPrefix := PrefixoCpo(Upper(cTable))
+	
+	cWhere := cPrefix+"_filial= '%"+cTable+".filial%' and "+cPrefix+"_doc = '" +cDoc+ "' and "+cPrefix+"_serie ='"+cSer+"' and "
+	if cType == "2"
+		cWhere += cPrefix+"_cliente = '"+cCod+"' and "
+	else 
+		cWhere += cPrefix+"_fornece = '"+cCod+"' and "
+	endIf
+	cWhere +=  cPrefix+"_loja='"+cBranch+"' and d_e_l_e_t_ = ' ' "
+		
+	if cType == "2"
+		lCutover := oIpSqlObject:getFieldValue(cTable, cField, cWhere) == DHL_SERIE_CUTOVER
+	else
+		lCutover := oIpSqlObject:getFieldValue(cTable, cField, cWhere) == 'S'
+	endif
+	
+	oIpSqlObject:close()
+	
+return (lCutover)
+
+/*/{Protheus.doc} getItemFlowsRecord
+
+Itens de documento de entrada e saida
+	
+@author Daniel Braga
+@since 31/10/2014
+
+@param cDoc , String, numero do documento
+@param cSer , String, serie do documento
+@param cCod , String, Codigo da entidade
+@param cBranch, String, loja da entidade
+
+@return Array valores das entidades  encontradas
+/*/
+method getRefItem(cType,cDoc,cSer,cProduct) class DHLSafx
+	local oIpSqlObject :=  IpSqlObject():newIpSqlObject()
+	local cWhere := ""
+	local cTable  :=""
+	local cPrefix := ""
+	local cSql 	:= ""
+	local aFields := {}
+
+	default cProduct := ''
+       
+	if cType  == "2"
+		cTable := "SD2"
+	else 
+		cTable := "SD1"
+	endIf 
+	
+	cPrefix := PrefixoCpo(cTable)
+	
+	cWhere := cPrefix+"_filial= '%"+cTable+".filial%' and "+cPrefix+"_doc = '" +cDoc+ "' and "+cPrefix+"_serie ='"+cSer+"' "
+	
+	if !empty(cProduct)
+		cWhere += " and "+cPrefix+"_cod = '"+cProduct+"' and d_e_l_e_t_ = ' ' "
+	endif
+	 
+	cSql := " select "+::fieldListSX3(cTable)+" from "+retSqlName(cTable)+" where "+cWhere
+	
+	aFields := ::populatedResult(oIpSqlObject,Upper(cSql))
+
+	if (oIpSqlObject:aliasExists())
+		oIpSqlObject:close()
+	endif
+	
+return aFields
+
+
+/*/{Protheus.doc} getUfTaxes
+
+Retorna impostos referente a transação interestadual.
+	
+@author Thiago Meschiatti
+@since 11/01/2016
+
+@param cType , String, Tipo do documento (entrada/saida)
+@param cTypeDoc , String, Tipo do documento (devolucao/beneficiamento/etc...)
+@param cDoc , String, numero do documento
+@param cSerie , String, serie do documento
+@param cCliFor , String, Codigo da entidade
+@param cLoja , String, loja da entidade
+@param cItem , String, item do documento
+
+@return Array valores das entidades  encontradas
+/*/
+method getUfTaxes(cType, cTypeDoc, cSerie, cDoc, cCliFor, cLoja, cItem , lTodos , lSol ) class DHLSafx
+	local oSql   	:= IpSqlObject():newIpSqlObject()
+	local nVlrFCP	:= 0
+	local nVlrUfDest:= 0
+	local nVlrUfOri	:= 0
+
+	local tVlrFCP	:= 0
+	local tVlrUfDest:= 0
+	local tVlrUfOri	:= 0
+	
+	local aRet	:= {}
+	local npos	:= 0
+	
+	local cQuery	:= ""
+	local cTypeMov	:= Alltrim(iif(cType == "1" ,'E','S'))
+	local cFil		:= xFilial("CD2")
+	
+	default cItem	:= ""
+	Default lTodos	:= .f.
+	Default lSol	:= .f. // icms e solidadio 4.0 // criado para manter compatibilidade com outros pontos da safx -- e nao mais testar pelo empty(cItem)
+	
+	cQuery := " CD2_FILIAL = '"+cFil+"' AND CD2_TPMOV = '"+cTypeMov+"' AND CD2_SERIE = '"+cSerie+"' AND CD2_DOC = '"+cDoc+"' "
+	
+	if !empty(cItem)
+		cQuery += " AND CD2_ITEM = '"+cItem+"' "
+	endif
+
+	if cTypeMov == 'E'
+		if cTypeDoc $ "B|D|"
+			cQuery += " AND CD2_CODCLI = '"+cCliFor+"' AND CD2_LOJCLI = '"+cLoja+"' "
+		else
+			cQuery += " AND CD2_CODFOR = '"+cCliFor+"' AND CD2_LOJFOR = '"+cLoja+"' "			
+		endif
+	else
+		if cTypeDoc $ "B|D|"
+			cQuery += " AND CD2_CODFOR = '"+cCliFor+"' AND CD2_LOJFOR = '"+cLoja+"' "
+		else
+			cQuery += " AND CD2_CODCLI = '"+cCliFor+"' AND CD2_LOJCLI = '"+cLoja+"' "
+		endif
+	endif
+	
+	oSql:newTable("CD2", "CD2_IMP, CD2_VFCP, CD2_VDDES, CD2_VLTRIB, CD2_ITEM, CD2_PFCP, CD2_BFCP", cQuery)
+	
+	while oSql:notIsEof()
+		if !lSol //empty(cItem)
+			if Upper(alltrim(oSql:getValue("CD2_IMP"))) == "CMP"
+				nVlrFCP 	+= oSql:getValue("CD2_VFCP")
+				nVlrUfDest	+= oSql:getValue("CD2_VDDES")
+				nVlrUfOri	+= oSql:getValue("CD2_VLTRIB")
+	
+				if lTodos
+					tVlrFCP 	+= oSql:getValue("CD2_VFCP")
+					tVlrUfDest	+= oSql:getValue("CD2_VDDES")
+					tVlrUfOri	+= oSql:getValue("CD2_VLTRIB")
+					
+					npos := ascan( aret , {|X| X[4] == oSql:getValue("CD2_ITEM")})
+					if npos == 0
+						aadd( aret , { 0 , 0 , 0 , oSql:getValue("CD2_ITEM")})
+						npos := len(aret)
+					endif
+					aret[npos,1] += oSql:getValue("CD2_VFCP")
+					aret[npos,2] += oSql:getValue("CD2_VDDES")
+					aret[npos,3] += oSql:getValue("CD2_VLTRIB")
+					
+				endif
+	
+			endif
+		else
+			if Upper(alltrim(oSql:getValue("CD2_IMP"))) == "ICM"
+				if oSql:getValue("CD2_PFCP") >0 
+					aadd(aRet, {"ICM", oSql:getValue("CD2_VFCP")})
+				EndIf
+			ElseIf Upper(alltrim(oSql:getValue("CD2_IMP"))) == "SOL"
+				If oSql:getValue("CD2_VFCP") > 0
+					aadd(aRet, {"SOL", oSql:getValue("CD2_VFCP")})
+				EndIf
+			EndIf
+		endif
+		
+		oSql:skip()
+	enddo
+	
+	If !lSol //empty(cItem)
+		if lTodos
+			if len( aret ) = 0
+				aret := { {nVlrFCP, nVlrUfDest, nVlrUfOri , ""} }
+			else
+				aadd( aret , { tVlrFCP, tVlrUfDest, tVlrUfOri , "" })
+			endif
+		else
+			aret :=  {nVlrFCP, nVlrUfDest, nVlrUfOri ,  "" } 
+		endif
+	EndIf
+	
+	oSql:close()
+	
+return(aret)  // {nVlrFCP, nVlrUfDest, nVlrUfOri})

@@ -1,0 +1,1566 @@
+#Include 'Protheus.ch'
+#Include 'DHL.CH'
+
+#DEFINE PEDIDO_ENCERRADO 1
+#DEFINE PEDIDO_BLOQUEADO 2
+#DEFINE PEDIDO_VINCULADO 3
+#DEFINE ERRO_FATURAMENTO 4
+#DEFINE SEM_SALDO_ORIGEM 5
+#DEFINE NAO_VINCULADO 	 6
+#DEFINE NOT_FOUND_SZ8	 7
+
+#define CONSUMIDO 		"CONSUMIDO"
+#define NAO_CONSUMIDO 	"NAO_CONSUMIDO"
+
+/*/{Protheus.doc} AglVNFTer
+
+executa o vínculo com a Nota Fiscal de Terceiro AGL
+
+@author Alberto Diorio
+@since 18/03/2020
+
+@param nil
+/*/
+User Function AglVNFTer(cParam1,cParam2)
+
+	local cAliasPedVin  := ""
+	local nQtdPed		:= 0	
+
+	local cP1 := "10"
+	local cP2 := "A82AGL008271" 
+	
+	private oLog	   	:= DHLLogManager():newDHLLogManager()
+
+	if logaEmp(cP1, cP2)
+
+		FWLogMsg("WARN", , "BusinessObject", funName(), "", "01", "********************************************************************************************************", 0, 0, {})
+		FWLogMsg("WARN", , "BusinessObject", funName(), "", "01", "********************************************************************************************************", 0, 0, {})
+		FWLogMsg("WARN", , "BusinessObject", funName(), "", "01", "***************INICIANDO VINCULO AGLVNFTER " + cValtoChar(dDataBase) + " " + time() + " ***************", 0, 0, {})
+		FWLogMsg("WARN", , "BusinessObject", funName(), "", "01", "********************************************************************************************************", 0, 0, {})
+		FWLogMsg("WARN", , "BusinessObject", funName(), "", "01", "********************************************************************************************************", 0, 0, {})
+
+		if lockByName("AglVNFTer", .T., .T.)
+
+			cAliasPedVin := getAliasPedidVincular(@nQtdPed)
+
+			if nQtdPed > 0
+
+				process(cAliasPedVin)
+
+			endIf
+
+			unLockbyName("AglVNFTer",.T.,.T.)
+
+		endIf
+
+		RpcClearEnv()
+
+	endIf
+
+Return
+
+/**
+* processa
+**/
+static function process(cAliasPedVin)
+
+	while (cAliasPedVin)->(!eof())
+
+		if pedidoIsEncerrado(cAliasPedVin)
+			(cAliasPedVin)->(dbSkip())
+			Loop
+		endIf
+
+		if pedidoIsBloqueado(cAliasPedVin)
+			(cAliasPedVin)->(dbSkip())
+			Loop
+		endIf
+
+		if isPedidoVinculado(cAliasPedVin)
+			(cAliasPedVin)->(dbSkip())
+			Loop
+		endIf		
+
+		BEGIN TRANSACTION
+
+			fVincula(cAliasPedVin)
+
+		END TRANSACTION
+
+
+		(cAliasPedVin)->(dbSkip())
+
+	endDo
+
+	(cAliasPedVin)->(dbCloseArea())
+
+return
+
+/**
+** Realiza o
+**/
+static function fVincula(cAliasPedVin)
+
+	local cNota  	:= ""
+	local cSerie 	:= ""
+	local cCliente 	:= (cAliasPedVin)->C5_CLIENTE
+	local cLoja     := (cAliasPedVin)->C5_LOJACLI
+	local cPedido   := (cAliasPedVin)->C5_NUM	
+	local _cCliSA5 	:= SuperGetMv( "ZZ_SA5XML" , .F. , " " ,  )
+
+	// Inicio TOTVS IP Campinas 02/06/2021 - Customização Mahle
+	// Localizar pelo numero do fornecimento
+	if (Alltrim(cCliente + cLoja) $ Alltrim(_cCliSA5))
+		_nTmZZd :=  TamSx3("C5_ZZDEDOT")[1] 
+		cNota	:=  Padr(Alltrim((cAliasPedVin)->C5_ZZDEDOT),_nTmZZd)
+	Else
+		cNota	:= getNotaOrdex((cAliasPedVin)->C5_ZZORDEX)
+	Endif
+	// Final TOTVS IP Campinas 02/06/2021 - Customização Mahle
+
+	cSerie	:= Substr((cAliasPedVin)->C5_ZZORDEX,RAT("-", allTrim((cAliasPedVin)->C5_ZZORDEX)) + 1,2)+Space(1)
+		
+	if existNfTerceiro(cNota,cSerie, Alltrim(cCliente + cLoja) $ Alltrim(_cCliSA5))
+		eraseSC9(cPedido)
+		lOK := processItens(cPedido)
+		if lOK
+			posicionaPedido(cPedido)
+		endIf
+
+		if lOK
+
+			if fNFxPed(cNota, cSerie, cCliente, cLoja, cPedido, Alltrim(cCliente + cLoja) $ Alltrim(_cCliSA5))
+				amarraPedComNota()
+				if liberaPedido()
+
+					// Inicio TOTVS IP Campinas 02/06/2021 - Customização Mahle
+					if (Alltrim(cCliente + cLoja) $ Alltrim(_cCliSA5))
+					
+						faturaNota() //23/04/2019 - Não será gerado o faturamento automático. Motivo: Tem que ser informado o lacre no pedido de vendas de forma manual.
+					
+					Endif
+					// Final TOTVS IP Campinas 02/06/2021 - Customização Mahle
+
+					FWLogMsg("WARN", , "BusinessObject", funName(), "", "01", "Pedido Liberado", 0, 0, {})
+
+				endIf
+			endIf
+
+		endIf
+	else
+
+		posicionaPedido(cPedido)
+		geraLog(NOT_FOUND_SZ8, cNota + " / " + cSerie)
+
+	endIf
+
+return
+
+/**
+** fatura a nota
+**/
+static function faturaNota()
+
+	local cMsg   := ""
+	local oLibFat:= DhlDisControl():newDhlDisControl()
+
+	oLibFat:incOutFlowInv(SC5->C5_NUM)
+	If !oLibFat:lError
+		RecLock("SZ8",.F.)
+		SZ8->Z8_NFRET  := SF2->F2_DOC
+		SZ8->Z8_SERRET := SF2->F2_SERIE
+		SZ8->Z8_CLIRET := SF2->F2_CLIENTE
+		SZ8->Z8_LOJRET := SF2->F2_LOJA
+		SZ8->(MsUnLock())
+		lavisa := .t.
+	else
+		geraLog(ERRO_FATURAMENTO)
+	endif
+
+return
+
+/**
+** Libera o pedido de vendas
+**/
+static function liberaPedido()
+
+	local lLiberado := .F.
+
+	oLibFat:= DhlDisControl():newDhlDisControl()
+	oLibFat:libSalesOrder()
+
+	lLiberado := !oLibFat:lError
+
+return lLiberado
+
+/**
+* Amarra Pedido com a Nota
+**/
+static function amarraPedComNota()
+
+	if SZ8->(RecLock("SZ8",.F.))
+
+		SZ8->Z8_PEDIDO := SC5->C5_NUM
+		SZ8->(MsUnLock())
+
+	endIf
+
+	if SC5->(RecLock("SC5",.F.))
+
+		SC5->C5_ZZNFTER := SZ8->Z8_DOC
+		SC5->C5_ZZSETER := SZ8->Z8_SERIE
+		SC5->C5_ZZCLTER := SZ8->Z8_CLIEMIT
+		SC5->C5_ZZLJTER := SZ8->Z8_LOJEMIT
+		SC5->C5_MENNOTA := BuscaSZZ(SC5->C5_NUM)
+		SC5->(MsUnLock())
+
+	endif
+
+return
+
+/**
+* Valida Itens da NF Comodato vs Pedido de Venda
+**/
+static function fNFxPed(cNota, cSerie, cCliente, cLoja, cPedido, _lCliSA5)
+
+	local cMensagem		:= ""
+	local nI			:= 0
+	local nJ			:= 0
+	local aConfere 		:= {}
+	local lErroSaldo 	:= .f.
+	local lErroLote		:= .f.
+	local cProduto		:= ""
+
+	FWLogMsg("WARN", , "BusinessObject", funName(), "", "01", "***[AglVNFTer]*** Fazendo Comparação do Vinculo de Terceiros da NF: "+cNota+" / "+cSerie+" / "+cCliente+" / "+cLoja, 0, 0, {})
+
+	// Inicio TOTVS IP Campinas 02/06/2021 - Customização Mahle
+	if !_lCliSA5
+
+		SZ9->(dbSetOrder(1))
+		SZ9->(dbSeek( xFilial("SZ9") + cNota + cSerie ))
+
+		While SZ9->(!Eof()) .and. SZ9->Z9_FILIAL == xFilial("SZ9") .and. SZ9->Z9_DOC == cNota .and. SZ9->Z9_SERIE == cSerie
+
+			cProduto := allTrim(SZ9->Z9_COD)
+
+			if fRastro(SZ9->Z9_COD)
+				nJ := Ascan(aConfere,{|x| Alltrim(x[1]) + Alltrim(x[8]) == Alltrim(cProduto) + Alltrim(SZ9->Z9_LOTE)})
+			else
+				nJ := Ascan(aConfere,{|x| Alltrim(x[1]) == Alltrim(cProduto)})
+			endIf
+
+			If nJ > 0
+				aConfere[nJ,02] += SZ9->Z9_QUANT
+				aConfere[nJ,06] += SZ9->Z9_QUANT
+			Else
+				aAdd(aConfere, { cProduto, SZ9->Z9_QUANT, " ", 0, .F., SZ9->Z9_QUANT, 0, SZ9->Z9_LOTE})
+			EndIf
+
+			//aAdd(aLote, {SZ9->Z9_COD, SZ9->Z9_LOTE})
+
+			SZ9->(dbSkip())
+
+		Enddo
+
+	Else
+
+		// Localizar pelo numero do fornecimento
+		SZ9->(dbSetOrder(2))
+		SZ9->(dbSeek( xFilial("SZ9") + cNota ))
+
+		While SZ9->(!Eof()) .and. SZ9->Z9_FILIAL == xFilial("SZ9") .and. SZ9->Z9_ZZDEDOT == cNota 
+
+			cProduto := allTrim(SZ9->Z9_COD)
+
+			if fRastro(SZ9->Z9_COD)
+				nJ := Ascan(aConfere,{|x| Alltrim(x[1]) + Alltrim(x[8]) == Alltrim(cProduto) + Alltrim(SZ9->Z9_LOTE)})
+			else
+				nJ := Ascan(aConfere,{|x| Alltrim(x[1]) == Alltrim(cProduto)})
+			endIf
+
+			If nJ > 0
+				aConfere[nJ,02] += SZ9->Z9_QUANT
+				aConfere[nJ,06] += SZ9->Z9_QUANT
+			Else
+				aAdd(aConfere, { cProduto, SZ9->Z9_QUANT, " ", 0, .F., SZ9->Z9_QUANT, 0, SZ9->Z9_LOTE})
+			EndIf
+
+			//aAdd(aLote, {SZ9->Z9_COD, SZ9->Z9_LOTE})
+
+			SZ9->(dbSkip())
+
+		Enddo
+
+	Endif
+	// Final TOTVS IP Campinas 02/06/2021 - Customização Mahle
+
+	posicionaPedido(cPedido)
+
+	SC6->(dbSetOrder(1))
+	SC6->(dbSeek( xFilial("SC6") + SC5->C5_NUM ))
+	While SC6->(!Eof()) .and. SC6->C6_FILIAL == xFilial("SC6") .and. SC6->C6_NUM == SC5->C5_NUM
+
+		cProduto := AllTrim(SC6->C6_PRODUTO)
+
+		If fRastro(SC6->C6_PRODUTO)
+			nI := Ascan(aConfere,{|x| Alltrim(x[1]) + Alltrim(x[8]) == Alltrim(cProduto) + Alltrim(SC6->C6_LOTECTL)})
+		Else
+			nI := Ascan(aConfere,{|x| Alltrim(x[1]) == Alltrim(cProduto)})
+		EndIf
+
+		If nI > 0
+			If aConfere[nI,06] >= SC6->C6_QTDVEN
+				aConfere[nI,03] := cProduto
+				aConfere[nI,04] := SC6->C6_QTDVEN
+				aConfere[nI,05] := .T.
+				aConfere[nI,06] := aConfere[nI,06] -  SC6->C6_QTDVEN
+				aConfere[nI,07] += SC6->C6_QTDVEN
+				aConfere[nI,08] := SC6->C6_LOTECTL
+			Else
+				aAdd(aConfere, { " ", 0, cProduto, SC6->C6_QTDVEN, .F. , SC6->C6_QTDVEN, " ", SC6->C6_LOTECTL})
+			Endif
+		Else
+			aAdd(aConfere, { " ", 0, SC6->C6_PRODUTO, SC6->C6_QTDVEN, .F. , SC6->C6_QTDVEN, " ", SC6->C6_LOTECTL})
+		Endif
+		SC6->(dbSkip())
+	Enddo
+
+	cCab := "Produto Nota       Qtde.Nota Produto Pedido  Qtde.Pedido "
+
+	For nI:=1 to Len(aConfere)
+		If aConfere[nI,06] > 0
+			lErroSaldo := .t.
+			exit
+		EndIf
+	Next nI
+
+
+	_cTexto:= ""
+
+	For nI:=1 to Len(aConfere)
+
+		_cTexto := aConfere[nI,1]+Space(05)
+		_cTexto += Str(aConfere[nI,2],12,3)+Space(05)
+		_cTexto += aConfere[nI,3]+Space(05)
+		_cTexto += Str(aConfere[nI,4],12,3)+Space(05)
+		_cTexto += Str(aConfere[nI,6],12,3) + CRLF
+		//       _cTexto += Str(aConfere[nI,7],12,3) + CRLF
+
+	Next nI
+
+	_lErrado := .F.
+
+	For nI:=1 to Len(aConfere)
+		If lErroSaldo
+			_lErrado := .T.
+		Else
+			If !aConfere[nI,05]
+				_lErrado := .T.
+			EndIf
+		Endif
+	Next
+
+	If _lErrado		
+
+		disarmTransaction()
+		geraLog(NAO_VINCULADO, cNota + " / " + cSerie)	
+
+		FWLogMsg("WARN", , "BusinessObject", funName(), "", "01", "***[AglVNFTer]*** Fazendo Comparação do Vinculo de Terceiros da NF: "+cNota+" / "+cSerie+" / "+cCliente+" / "+cLoja, 0, 0, {})
+
+		Return .F.
+	Else
+		FWLogMsg("WARN", , "BusinessObject", funName(), "", "01", "***[AglVNFTer]*** Fazendo Comparação do Vinculo de Terceiros da NF: "+cNota+" / "+cSerie+" / "+cCliente+" / "+cLoja, 0, 0, {})
+		Return .T.
+	Endif
+
+return .T.
+
+/**
+* Apaga os pedidos liberados referente ao pedido
+**/
+static function eraseSC9(cPedido)
+
+	local aArea := getArea()
+	local aAreaSC6 := SC9->(getArea())
+
+	SC9->(dbSelectArea("SC9"))
+	SC9->(dbSetOrder(1))
+	if SC9->(dbSeek(xFilial("SC9")+cPedido,.F.))
+
+		While SC9->(!Eof()) .And. cPedido==SC9->C9_PEDIDO
+
+			If SC9->(RecLock("SC9",.F.))
+				SC9->(dbDelete())
+				SC9->(MsUnLock("SC9"))
+			EndIf
+
+			SC9->(dbSkip())
+
+		EndDo
+
+	endIf
+
+	restArea(aAreaSC6)
+	restArea(aArea)
+
+return
+
+/**
+* Processa os itens dos pedidos
+**/
+static function processItens(cPedido)
+
+	local aRecnoSC6 			:= getRecnosSC6(cPedido)
+	local lok       			:= .T.
+	local nJ					:= 0
+	local nI					:= 0
+	local aSaldoB6ByProdLote 	:= {}
+	local nSaldoVenda			:= 0
+	local cSC6ProxItem			:= ""
+	local nConv					:= 0
+	local cTipConv              := ""
+	local cTesDev				:= ""
+	Private cFunName			:= "" //Emerson Holanda 03/01/2022 - Declarando variavel para nao apresentar error.log
+	Private cMsg				:= "" //Emerson Holanda 03/01/2022 - Declarando variavel para nao apresentar error.log
+	Private cDoc1				:= "" //Emerson Holanda 03/01/2022 - Declarando variavel para nao apresentar error.log
+	Private cDoc2				:= "" //Emerson Holanda 03/01/2022 - Declarando variavel para nao apresentar error.log
+	Private cDoc3				:= "" //Emerson Holanda 03/01/2022 - Declarando variavel para nao apresentar error.log
+	Private cCodMsg				:= "" //Emerson Holanda 03/01/2022 - Declarando variavel para nao apresentar error.log
+
+	for nJ := 1 to len(aRecnoSC6)
+
+		SC6->(dbGoTo(aRecnoSC6[nJ]))
+
+		getSaldoB6ByProdLote(aSaldoB6ByProdLote)
+
+		if len(aSaldoB6ByProdLote) > 0			
+
+			FWLogMsg("WARN", , "BusinessObject", funName(), "", "01", "***[ AglVNFTer ]*** Mudou TES e CFOP do Item do Pedido...", 0, 0, {})
+
+			//inicio do processo de controle de saldo por lote de poder3
+			nSaldoVenda  := SC6->C6_QTDVEN
+			cSC6ProxItem := BuscaUltItem(SC6->C6_NUM)		
+
+			FWLogMsg("WARN", , "BusinessObject", funName(), "", "01", "***[ AglVNFTer ]*** Está no Item: "+SC6->C6_ITEM+" do pedido: "+SC6->C6_NUM, 0, 0, {})
+			FWLogMsg("WARN", , "BusinessObject", funName(), "", "01", "***[ AglVNFTer ]*** Saldo de Venda: "+str(nSaldoVenda)+" - QtdVen: "+str(SC6->C6_QTDVEN), 0, 0, {})
+
+			If Empty(SC6->C6_NFORI)
+
+				getConvUnidMedida(@nConv, @cTipConv)
+
+				for nI := 1 to len(aSaldoB6ByProdLote)
+
+					cTesDev := aSaldoB6ByProdLote[nI][11]
+
+					gravCFOP(cTesDev)
+					nQtdC6 := SC6->C6_QTDVEN
+
+					nPos := aScan(aSaldoB6ByProdLote, {|x| allTrim(x[7]) == allTrim(SC6->C6_PRODUTO) .and. allTrim(x[8]) == allTrim(SC6->C6_LOTECTL) .and. allTrim(x[9]) == NAO_CONSUMIDO})
+
+					if nPos > 0
+
+						nSaldoB6 := aSaldoB6ByProdLote[nPos][5]
+
+						if nSaldoB6 >= nQtdC6						
+
+							FWLogMsg("WARN", , "BusinessObject", funName(), "", "01", "***[ AglVNFTer ]*** Saldo de Venda maior do que Quantidade vendida...", 0, 0, {})
+
+							dbSelectArea("SC6")
+							If SC6->(RecLock("SC6",.F.))
+								SC6->C6_NFORI   := aSaldoB6ByProdLote[nPos][1]
+								SC6->C6_SERIORI := aSaldoB6ByProdLote[nPos][2]
+								SC6->C6_ITEMORI := aSaldoB6ByProdLote[nPos][3]
+								SC6->C6_IDENTB6 := aSaldoB6ByProdLote[nPos][4]
+								SC6->C6_PRCVEN  := aSaldoB6ByProdLote[nPos][6]
+								SC6->C6_PRUNIT  := aSaldoB6ByProdLote[nPos][6]
+								SC6->C6_UNSVEN  := IIF(cTipConv=="M",SC6->C6_QTDVEN * nConv,SC6->C6_QTDVEN / nConv)
+								SC6->C6_VALOR   := (aSaldoB6ByProdLote[nPos][6] * SC6->C6_QTDVEN)
+								SC6->C6_QTDEMP  := SC6->C6_QTDVEN
+								SC6->C6_QTDEMP2 := SC6->C6_UNSVEN
+								SC6->C6_QTDLIB  := SC6->C6_QTDVEN
+								SC6->(MsUnLock("SC6"))
+								FWLogMsg("WARN", , "BusinessObject", funName(), "", "01", "***[ AglVNFTer ]*** Gravado NF Original para este item em Poder de Terceiros - Pedido: "+SC6->C6_NUM, 0, 0, {})
+							EndIf
+
+							atualizaSaldo(aSaldoB6ByProdLote[nPos], nQtdC6)
+							criaRegisSC9()
+							exit
+
+						else
+
+							FWLogMsg("WARN", , "BusinessObject", funName(), "", "01", "***[ AglVNFTer ]*** Saldo B6 menor do que Quantidade vendida...", 0, 0, {})
+
+							dbSelectArea("SC6")
+							If SC6->(RecLock("SC6",.F.))
+								SC6->C6_NFORI   := aSaldoB6ByProdLote[nPos][1]
+								SC6->C6_SERIORI := aSaldoB6ByProdLote[nPos][2]
+								SC6->C6_ITEMORI := aSaldoB6ByProdLote[nPos][3]
+								SC6->C6_IDENTB6 := aSaldoB6ByProdLote[nPos][4]
+								SC6->C6_QTDVEN  := aSaldoB6ByProdLote[nPos][5]
+								SC6->C6_PRCVEN  := aSaldoB6ByProdLote[nPos][6]
+								SC6->C6_PRUNIT  := aSaldoB6ByProdLote[nPos][6]
+								SC6->C6_VALOR   := (aSaldoB6ByProdLote[nPos][6] * SC6->C6_QTDVEN)
+								SC6->C6_UNSVEN  := IIF(cTipConv=="M",SC6->C6_QTDVEN * nConv,SC6->C6_QTDVEN / nConv)
+								SC6->C6_QTDEMP  := SC6->C6_QTDVEN
+								SC6->C6_QTDEMP2 := SC6->C6_UNSVEN
+								SC6->C6_QTDLIB  := SC6->C6_QTDVEN
+								SC6->(MsUnLock("SC6"))
+							EndIf
+
+							criaRegisSC9()
+
+							nSaldoRestVend  := nQtdC6 - nSaldoB6
+
+							atualizaSaldo(aSaldoB6ByProdLote[nPos], SC6->C6_QTDVEN )
+
+							if nSaldoRestVend > 0
+
+								nPos := aScan(aSaldoB6ByProdLote, {|x| allTrim(x[7]) == allTrim(SC6->C6_PRODUTO) .and. allTrim(x[8]) == allTrim(SC6->C6_LOTECTL) .and. allTrim(x[9]) == NAO_CONSUMIDO .and. x[5] >= nSaldoRestVend})
+
+								if nPos > 0
+									atualizaSaldo(aSaldoB6ByProdLote[nPos], nSaldoRestVend)
+									IncluiSC6(cSC6ProxItem, nSaldoRestVend,aSaldoB6ByProdLote[nPos])
+								else
+									disarmTransaction()
+									getMsgLog(@cFunName, @cMsg, @cDoc1, @cDoc2, @cDoc3, @cCodMsg)
+									gravLog(cFunName, cMsg, cDoc1, cDoc2, cDoc3, cCodMsg)
+									return .F.
+								endIf
+
+							endIf
+
+							exit
+
+						endIf
+
+					else
+						disarmTransaction()
+						getMsgLog(@cFunName, @cMsg, @cDoc1, @cDoc2, @cDoc3, @cCodMsg)
+						gravLog(cFunName, cMsg, cDoc1, cDoc2, cDoc3, cCodMsg)
+						return .F.
+					endIf
+
+				next nI
+			endIf
+		else
+			disarmTransaction()
+			geraLog(SEM_SALDO_ORIGEM)
+		endIf
+	next nJ
+
+return lok
+
+/**
+*	Retorna o saldo do produto/lote
+**/
+static function getSaldoB6ByProdLote(aSaldoB6ByProdLote)
+
+	local aArea 		:= getArea()
+	local aAreaB6 		:= SB6->(getArea())
+	local cQuery  		:= ""
+	local cAlias    	:= getNextALias()
+	local nQtdRegistros := 0
+	local nPos			:= 0
+
+	nPos := aScan(aSaldoB6ByProdLote, {|x| allTrim(x[7]) == allTrim(SC6->C6_PRODUTO) .and. allTrim(x[8]) == allTrim(SC6->C6_LOTECTL) .and. allTrim(x[9]) == NAO_CONSUMIDO})
+
+	if nPos == 0
+		nPos := aScan(aSaldoB6ByProdLote, {|x| allTrim(x[7]) == allTrim(SC6->C6_PRODUTO) .and. allTrim(x[8]) == allTrim(SC6->C6_LOTECTL)})
+		//CASO NÃO TIVER NO ARRAY, OBTENHO O NOVO SALDO DO PRODUTO LOTE NA SB6
+		if nPos == 0
+
+			cQuery := " SELECT SB6.B6_DOC, SB6.B6_SERIE, SB6.B6_PRODUTO, SB6.B6_CLIFOR, SB6.B6_LOJA, SB6.B6_IDENT, SD1.D1_DOC, SD1.D1_COD, SD1.D1_LOTECTL, SD1.D1_FORNECE, SD1.D1_LOJA, SD1.D1_IDENTB6, SD1.D1_ITEM, SD1.D1_VUNIT, SB6.B6_SALDO, SF4.F4_TESDV, SF4.F4_ZZTESFE " + CRLF
+			cQuery += " FROM " +retSqlName("SB6") + " SB6 " 					+ CRLF
+			cQuery += " INNER JOIN " + retSqlName("SD1") + " SD1 ON 1 = 1" 		+ CRLF
+			cQuery += "    AND SD1.D1_FILIAL = SB6.B6_FILIAL" 					+ CRLF
+			cQuery += "    AND SD1.D1_IDENTB6 = SB6.B6_IDENT" 					+ CRLF
+			cQuery += "    AND SD1.D1_COD = SB6.B6_PRODUTO" 					+ CRLF
+			cQuery += "    AND SD1.D_E_L_E_T_ = ' '" 							+ CRLF
+
+			cQuery += " INNER JOIN " + retSqlName("SF4") + " SF4 ON 1 = 1" 		+ CRLF
+			cQuery += "    AND SD1.D1_FILIAL = SF4.F4_FILIAL" 					+ CRLF
+			cQuery += "    AND SD1.D1_TES = SF4.F4_CODIGO" 						+ CRLF
+			cQuery += "    AND SF4.D_E_L_E_T_ = ' '" 							+ CRLF
+
+			cQuery += " WHERE 1 = 1" 											+ CRLF
+			cQuery += "    AND SB6.B6_FILIAL = '"+fwxFilial("SB6")+"'" 			+ CRLF
+			cQuery += "    AND SB6.B6_SALDO > 0" 								+ CRLF
+			cQuery += "    AND SB6.B6_PODER3 = 'R'" 							+ CRLF
+			cQuery += "    AND SD1.D1_LOTECTL = '"+SC6->C6_LOTECTL+"'" 			+ CRLF
+			cQuery += "    AND SD1.D1_COD = '"+SC6->C6_PRODUTO+"'" 				+ CRLF
+			cQuery += "    AND SB6.D_E_L_E_T_ = ' '" 							+ CRLF
+			cQuery += " ORDER BY SB6.B6_EMISSAO, SB6.B6_DOC" 					+ CRLF
+
+			dbUseArea( .T., "TOPCONN", TcGenQry(,,cQuery), cAlias, .T., .T. )
+
+			count to nQtdRegistros
+
+			if nQtdRegistros > 0
+				(cAlias)->(dbGoTop())
+				while (cAlias)->(!eof())
+
+					aAdd(aSaldoB6ByProdLote, {(cAlias)->B6_DOC, (cAlias)->B6_SERIE, (cAlias)->D1_ITEM, (cAlias)->B6_IDENT, (cAlias)->B6_SALDO, (cAlias)->D1_VUNIT, (cAlias)->D1_COD, (cAlias)->D1_LOTECTL, NAO_CONSUMIDO, (cAlias)->F4_TESDV, (cAlias)->F4_ZZTESFE  })
+
+					(cAlias)->(dbSkip())
+				endDo
+			endIf
+
+			(cAlias)->(dbCloseArea())
+
+		endIf
+	endIf
+
+	restArea(aAreaB6)
+	restArea(aArea)
+
+return
+
+/**
+* Obtém os recnos da SC6
+**/
+static function getRecnosSC6(cPedido)
+
+	local aRecnoSC6 := {}
+
+	dbSelectArea("SC6")
+	dbSetOrder(1)
+
+	if dbSeek(xFilial("SC6")+cPedido,.F.)
+
+		While SC6->(!Eof()) .And. SC6->C6_NUM == cPedido .And. SC6->C6_FILIAL = xFilial("SC6")
+			aAdd(aRecnoSC6, SC6->(recno()))
+			SC6->(dbSkip())
+		endDo
+
+	endIf
+
+return aRecnoSC6
+
+/**
+* verifica se existe nf de terceiro
+**/
+static function existNfTerceiro(cNota,cSerie, _lCliSA5 )
+
+	local lExistNfTerceiro := .T.
+	 
+	// Inicio TOTVS IP Campinas 02/06/2021 - Customização Mahle
+	if !_lCliSA5
+
+		dbSelectArea("SZ8")
+		dbSetOrder(1)
+		If !(dbSeek(xFilial("SZ8")+cNota+cSerie,.F.))		
+			FWLogMsg("WARN", , "BusinessObject", funName(), "", "01", "***[AglVNFTer]*** Não Existe NF de Terceiro para este pedido: "+cNota+" / "+cSerie, 0, 0, {})
+			lExistNfTerceiro := .F.
+		Endif
+
+	Else
+
+		If !Empty(cNota)
+			// Localizar pelo numero do fornecimento
+			dbSelectArea("SZ8")
+			dbSetOrder(2)
+
+			If !(dbSeek(xFilial("SZ8") + cNota, .F.))		
+				FWLogMsg("WARN", , "BusinessObject", funName(), "", "01", "***[AglVNFTer]*** Não Existe NF de Terceiro para este número de fornecimento: "+cNota, 0, 0, {})
+				lExistNfTerceiro := .F.
+			Endif
+		Else
+			FWLogMsg("WARN", , "BusinessObject", funName(), "", "01", "***[AglVNFTer]*** Não Existe NF de Terceiro para número de fornecimento em branco.", 0, 0, {})
+			lExistNfTerceiro := .F.
+		EndIf
+
+	Endif
+	// Final TOTVS IP Campinas 02/06/2021 - Customização Mahle
+
+return lExistNfTerceiro
+
+/**
+* Obtém a nota Ordex
+**/
+static function getNotaOrdex(cOrderx)
+
+	local cNotaOrdex := StrZero(Val(Substr(cOrderx,1,RAT("-", allTrim(cOrderx)))),9,0)
+
+return cNotaOrdex
+
+/**
+* verica se o pedido esta encerrado
+**/
+static function pedidoIsEncerrado(cAliasPedVin)
+
+	local lIsPedidoEncerrado := .F.
+
+	if !Empty((cAliasPedVin)->C5_NOTA) .or. (cAliasPedVin)->C5_LIBEROK == 'E' .and. Empty((cAliasPedVin)->C5_BLQ)
+		//geraLog(PEDIDO_ENCERRADO) - Desabilitado a pedido da Daniela Barbosa em 14/06/2021
+		lIsPedidoEncerrado := .T.
+	endIf
+
+return lIsPedidoEncerrado
+
+/**
+* verica se o pedido já esta vinculado
+**/
+static function isPedidoVinculado(cAliasPedVin)
+
+	local lIsPedidoVinculado:= .F.
+	local cQuery 			:=  " "
+	local cNfSerie			:= ""
+	local cAlias			:= getNextAlias()
+
+	cQuery := " SELECT SZ8.Z8_DOC, SZ8.Z8_SERIE, SZ8.Z8_CLIENTE, SZ8.Z8_LOJA, SZ8.Z8_PEDIDO " 	+ CRLF
+	cQuery += " FROM " + retSqlName("SZ8") + " SZ8 " 											+ CRLF
+	cQuery += " WHERE 1 = 1 "																	+ CRLF
+	cQuery += "    AND SZ8.Z8_FILIAL = '" + fwXFilial("SZ8") + "'"								+ CRLF
+	cQuery += "    AND SZ8.Z8_PEDIDO = '" + (cAliasPedVin)->C5_NUM + "'"						+ CRLF
+	cQuery += "    AND SZ8.D_E_L_E_T_ = ' '"													+ CRLF
+
+	dbUseArea( .T., "TOPCONN", TcGenQry(,,cQuery), cAlias, .T., .T. )
+
+	if 	(cAlias)->(!eof())
+		lIsPedidoVinculado := .T.
+		cNfSerie := (cAlias)->Z8_DOC+"/"+(cAlias)->Z8_SERIE
+		//geraLog(PEDIDO_VINCULADO, cNfSerie) - Desabilitado a pedido da Daniela Barbosa em 14/06/2021
+		lIsPedidoEncerrado := .T.
+	endIf
+	//TOTVS IP - Thiago Meschiatti - 10/08/2021
+	(cAlias)->(dbCloseArea())
+
+return lIsPedidoVinculado
+
+/**
+* verica se o pedido esta bloqueado
+**/
+static function pedidoIsBloqueado(cAliasPedVin)
+
+	local lIsPedidoBloqueado := .F.
+
+	if !Empty((cAliasPedVin)->C5_BLQ)
+		geraLog(PEDIDO_BLOQUEADO)
+		lIsPedidoBloqueado := .T.
+	endIf
+
+return lIsPedidoBloqueado
+
+/**
+* Loga na empresa/filial
+**/
+static function logaEmp(cParam1, cParam2)
+
+	local lOk := .F.
+
+	lOk := RpcSetEnv(cParam1,cParam2)
+
+return lOk
+
+/**
+* Obtém o alias dos pedidos a vincular
+**/
+static function getAliasPedidVincular(nQtdPed)
+
+	local cAlias := getNextAlias()
+	local cQuery := ""
+
+	cQuery := " SELECT "													+ CRLF
+	cQuery += "     SC5.C5_FILIAL, "										+ CRLF
+	cQuery += "     SC5.C5_NOTA, "											+ CRLF
+	cQuery += "     SC5.C5_NUM, "											+ CRLF
+	cQuery += "     SC5.C5_LIBEROK, "										+ CRLF
+	cQuery += "     SC5.C5_BLQ, "											+ CRLF
+	cQuery += "     SC5.R_E_C_N_O_ RECSC5, " 								+ CRLF
+	cQuery += "     SC5.C5_ZZORDEX, "										+ CRLF
+	cQuery += "     SC5.C5_CLIENTE, " 										+ CRLF
+	cQuery += "     SC5.C5_ZZDEDOT, " 										+ CRLF
+	cQuery += "     SC5.C5_LOJACLI " 										+ CRLF
+	
+	cQuery += " FROM " + retSqlName("SC5") + " SC5 " 						+ CRLF
+	
+	cQuery += " INNER JOIN  " + retSqlName("SC6") + " SC6 ON 1 = 1 "		+ CRLF
+	cQuery += "    AND SC5.C5_FILIAL = SC6.C6_FILIAL "						+ CRLF
+	cQuery += "    AND SC5.C5_NUM = SC6.C6_NUM "							+ CRLF
+	cQuery += "    AND SC6.D_E_L_E_T_ = ' ' "								+ CRLF
+	
+	cQuery += " INNER JOIN " + retSqlName("SA1") + " SA1 ON 1 = 1 "			+ CRLF
+	cQuery += "    AND SA1.A1_FILIAL = '" + fwXFilial("SA1") + "' "			+ CRLF
+	cQuery += "    AND SA1.A1_COD = SC5.C5_CLIENTE " 						+ CRLF
+	cQuery += "    AND SA1.A1_LOJA = SC5.C5_LOJACLI "						+ CRLF
+	cQuery += "    AND SA1.A1_ZZREPAR <> 'S' "								+ CRLF
+	cQuery += "    AND SA1.D_E_L_E_T_ = ' ' "								+ CRLF
+		
+	cQuery += " WHERE 1 = 1 "												+ CRLF
+	cQuery += "    AND SC5.C5_FILIAL = '" + fwXFilial("SC5") + "'"			+ CRLF
+	cQuery += "    AND SC5.C5_TIPO NOT IN ('D','B') "						+ CRLF
+	cQuery += "    AND SC6.C6_NFORI = ' '"									+ CRLF
+	cQuery += "    AND SC5.D_E_L_E_T_= ' '"									+ CRLF
+
+	//Condição para execução de testes específicos
+	//cQuery += "    AND SC5.C5_NUM= '004932'"								+ CRLF
+
+	cQuery += " UNION ALL "													+ CRLF
+
+	cQuery += " SELECT "													+ CRLF
+	cQuery += "     SC5.C5_FILIAL, "										+ CRLF
+	cQuery += "     SC5.C5_NOTA, "											+ CRLF
+	cQuery += "     SC5.C5_NUM, "											+ CRLF
+	cQuery += "     SC5.C5_LIBEROK, "										+ CRLF
+	cQuery += "     SC5.C5_BLQ, "											+ CRLF
+	cQuery += "     SC5.R_E_C_N_O_ RECSC5, " 								+ CRLF
+	cQuery += "     SC5.C5_ZZORDEX, "										+ CRLF
+	cQuery += "     SC5.C5_CLIENTE, " 										+ CRLF
+	cQuery += "     SC5.C5_ZZDEDOT, " 										+ CRLF
+	cQuery += "     SC5.C5_LOJACLI " 										+ CRLF
+	
+	cQuery += " FROM " + retSqlName("SC5") + " SC5 " 						+ CRLF
+	
+	cQuery += " INNER JOIN  " + retSqlName("SC6") + " SC6 ON 1 = 1 "		+ CRLF
+	cQuery += "    AND SC5.C5_FILIAL = SC6.C6_FILIAL "						+ CRLF
+	cQuery += "    AND SC5.C5_NUM = SC6.C6_NUM "							+ CRLF
+	cQuery += "    AND SC6.D_E_L_E_T_ = ' ' "								+ CRLF
+	
+	cQuery += " INNER JOIN " + retSqlName("SA2") + " SA2 ON 1 = 1 "			+ CRLF
+	cQuery += "    AND SA2.A2_FILIAL = '" + fwXFilial("SA2") + "' "			+ CRLF
+	cQuery += "    AND SA2.A2_COD = SC5.C5_CLIENTE " 						+ CRLF
+	cQuery += "    AND SA2.A2_LOJA = SC5.C5_LOJACLI "						+ CRLF
+	cQuery += "    AND SA2.A2_ZZREPAR <> 'S' "								+ CRLF
+	cQuery += "    AND SA2.D_E_L_E_T_ = ' ' "								+ CRLF
+		
+	cQuery += " WHERE 1 = 1 "												+ CRLF
+	cQuery += "    AND SC5.C5_FILIAL = '" + fwXFilial("SC5") + "'"			+ CRLF
+	cQuery += "    AND SC5.C5_TIPO IN ('D','B') "							+ CRLF
+	cQuery += "    AND SC6.C6_NFORI = ' '"									+ CRLF
+	cQuery += "    AND SC5.D_E_L_E_T_= ' '"									+ CRLF
+
+	//Condição para execução de testes específicos
+	//cQuery += "    AND SC5.C5_NUM= '000750'"								+ CRLF
+
+	dbUseArea( .T., "TOPCONN", TcGenQry(,,cQuery), cAlias, .T., .T. )
+
+	count to nQtdPed
+
+	if nQtdPed > 0
+
+		(cAlias)->(dbGoTop())
+
+	endIf
+
+return cAlias
+
+/**
+* Gera Log
+**/
+static function geraLog(nTipoErro, cNfSerie)
+
+	local cMsg     		:= ""
+
+	default  cNfSerie 	:= ""
+
+	if nTipoErro == PEDIDO_ENCERRADO
+
+		cMsg     		:= "Interface não pode ser processada. Pedido Encerrado, Não é possível fazer vinculo com pedido já encerrado."
+
+	elseIf nTipoErro == PEDIDO_BLOQUEADO
+
+		cMsg     		:= "Pedido Bloqueado, Não é possível fazer vinculo com pedido bloqueado. Verifique!"
+
+	elseIf nTipoErro == PEDIDO_VINCULADO
+		cMsg     		:= "Interface não pode ser processada. Pedido com vínculo, Este pedido está vinculado com a nota fiscal no. " + cNfSerie
+
+	elseIf nTipoErro == ERRO_FATURAMENTO
+
+		cMsg     		:= "Interface não pode ser processada. Faturamento do Liberação de Pedido com Erro. Pedido: "+SC5->C5_NUM
+
+	elseIf nTipoErro == SEM_SALDO_ORIGEM
+
+		cMsg     		:= "Não é possível processar o vínculo. Não foi encontrado nota de origem para o produto " + SC6->C6_PRODUTO
+
+	elseIf nTipoErro == NAO_VINCULADO
+
+		cMsg     		:= "Comparação não passou do Vinculo de Terceiros da NF " + cNfSerie
+
+	elseIf nTipoErro == NOT_FOUND_SZ8		
+
+		cMsg     		:= "Não foi localizado Nf de terceiro para fazer o vínculo referente ao pedido " + SC5->C5_NUM "
+
+		if existLogGravado(cMsg)
+
+			return
+
+		endIf
+
+	endIf
+
+	setFileLog("","fail",cMsg)
+
+return
+
+/**
+* Verifica se já existe gravado o log
+*/
+static function existLogGravado(cMsg) 
+
+	local cQuery 	  := ""
+	local cAlias 	  := getNextAlias()
+	local nRecnoSZ2   := 0
+	local aAreaSZ2	  := SZ2->(getArea())
+	local aArea		  := getArea()
+	local lLogGravado := .F.
+
+	cQuery := " SELECT UPPER(UTL_RAW.CAST_TO_VARCHAR2(dbms_lob.substr(SZ2.Z2_LOG, 2000, 1))) LOG, SZ2.R_E_C_N_O_ RECNO FROM " + retSqlName("SZ2") + " SZ2 " + CRLF
+	cQuery += " WHERE 1 = 1 " 																																+ CRLF
+	cQuery += "    AND SZ2.Z2_FILIAL = '"+fwxFilial("SZ2")+"' " 																							+ CRLF
+	cQuery += "    AND TRIM(UPPER(UTL_RAW.CAST_TO_VARCHAR2(dbms_lob.substr(SZ2.Z2_LOG, 2000, 1)))) LIKE  '%"+ allTrim(upper(cMsg)) + "%'" 					+ CRLF
+	cQuery += "    AND SZ2.Z2_CODAPLI = '"+APP_DLX+"' " 																									+ CRLF
+	cQuery += "    AND SZ2.D_E_L_E_T_ = ' ' " 																												+ CRLF
+
+	dbUseArea( .T., "TOPCONN", TcGenQry(,,cQuery), cAlias, .T., .T. )
+
+	if (cAlias)->(!eof())
+
+		nRecnoSZ2 :=  (cAlias)->RECNO
+		SZ2->(dbSetOrder(1))
+		SZ2->(dbGoTo(nRecnoSZ2))
+
+		if SZ2->(recLock("SZ2", .F.))
+
+			SZ2->Z2_DATA := Date()
+			SZ2->Z2_HORA := time()
+			SZ2->(msUnLock())
+
+		endIf
+
+		lLogGravado := .T.
+
+	endIf
+
+	(cAlias)->(dbCloseArea())
+
+	restArea(aAreaSZ2)
+	restArea(aArea)
+
+return lLogGravado
+
+/**
+* Define os Logs de acordo com os tipos de arquivos
+*/
+static function setFileLog(cFile,cLogType,cLogText,cTag,cValue)
+
+	local cInterface := "AglVNFTer"
+
+	oLog:start(APP_DLX,DHL_IMPORTACAO,cFile)
+
+	if !(Empty(cTag))
+		cLogText += CRLF+CRLF+"Tag: "+cTag
+	endIf
+
+	if !(Empty(cValue))
+		cLogText += CRLF+CRLF+"Valor: "+cValue
+	endIf
+
+	if (cLogType == "fail")
+		oLog:fail(cInterface, cLogText)
+	elseIf (cLogType == "warn")
+		oLog:warn(cInterface, cLogText)
+	endIf
+
+return
+
+/**
+* Obtém o CFOP a partir da TES de devolução e grava na SC6
+**/
+static function gravCFOP(cTesDev)
+
+	local aArea 	:= getArea()
+	local aAreaSF4 	:= SF4->(getArea())
+	local cCFOP     := ""
+
+	dbSelectArea("SF4")
+	dbSetOrder(1)
+	If dbSeek(xFilial("SF4")+cTesDev,.F.)
+		cCFOP := SF4->F4_CF
+	Else
+		cCFOP := ""
+	EndIf
+
+	dbSelectArea("SC6")
+	If RecLock("SC6",.F.)
+		SC6->C6_TES := cTesDev
+		SC6->C6_CF  := cCFOP
+		MsUnLock("SC6")
+	EndIf
+
+	restArea(aAreaSF4)
+	restArea(aArea)
+
+return
+
+/**
+* busca o último item
+**/
+Static Function BuscaUltItem(cPedido)
+
+	local aArea 	:= GetArea()
+	local cAlias	:= getNextAlias()
+	local cItemC6 	:= ""
+
+	BeginSql Alias cAlias
+		SELECT SC6.C6_ITEM
+		FROM %Table:SC6% SC6
+		WHERE
+		SC6.C6_FILIAL = %xFilial:SC6% AND
+		SC6.C6_NUM = %Exp:cPedido% AND
+		SC6.%NotDel%
+		ORDER BY SC6.C6_ITEM DESC
+	EndSql
+
+	(cAlias)->(dbGoTop())
+
+	If !Eof()
+		cItemC6:= Soma1((cAlias)->C6_ITEM)
+	Else
+		cItemC6 := "0001"
+	EndIf
+
+	//TOTVS IP - Thiago Meschiatti - 10/08/2021
+	(cAlias)->(dbCloseArea())
+
+	restArea(aArea)
+
+Return(cItemC6)
+
+/**
+* obtém a conversão da unidade de medida
+**/
+static function getConvUnidMedida(nConv, cTipConv)
+
+	local aArea 	:= getArea()
+	local aAreaSB1 	:= SB1->(getArea())
+
+	dbSelectArea("SB1")
+	dbSetOrder(1)
+	If dbSeek(xFilial("SB1")+SC6->C6_PRODUTO,.F.)
+		FWLogMsg("WARN", , "BusinessObject", funName(), "", "01", "***[ AglVNFTer ]*** Achou conversao 2 unidade de medida...", 0, 0, {})		
+		nConv    := SB1->B1_CONV
+		cTipConv := SB1->B1_TIPCONV
+	Else
+		FWLogMsg("WARN", , "BusinessObject", funName(), "", "01", "***[ AglVNFTer ]*** Não achou conversao 2 unidade de medida...", 0, 0, {})		
+		nConv    := 0
+		cTipConv := "M"
+	EndIf
+
+	restArea(aAreaSB1)
+	restArea(aArea)
+
+return
+
+/**
+* atualiza o saldo
+**/
+static function atualizaSaldo(aSaldoB6ByProdLote, nSaldoConsumido)
+
+	aSaldoB6ByProdLote[5] := aSaldoB6ByProdLote[5] - nSaldoConsumido
+
+	if aSaldoB6ByProdLote[5] == 0
+
+		aSaldoB6ByProdLote[9] := CONSUMIDO
+
+	endIf
+
+return
+
+/**
+* inlui uma nova linha
+**/
+Static Function IncluiSC6(cSC6ProxItem,nSaldoVenda, aSaldoB6ByProdLote)
+
+	Local c6FILIAL  := SC6->C6_FILIAL
+	Local c6NUM     := SC6->C6_NUM
+	Local c6LOTECTL := SC6->C6_LOTECTL
+	Local c6ITEM    := cSC6ProxItem
+	Local c6PRODUTO := SC6->C6_PRODUTO
+	Local c6DESCRI  := SC6->C6_DESCRI
+	Local c6UM      := SC6->C6_UM
+	Local c6QTDVEN  := nSaldoVenda
+	Local c6PRCVEN  := SC6->C6_PRCVEN
+	Local c6VALOR   := SC6->C6_VALOR
+	Local c6SEGUM   := SC6->C6_SEGUM
+	Local c6TES     := SC6->C6_TES
+	Local c6CF      := SC6->C6_CF
+	Local c6LOCAL   := SC6->C6_LOCAL
+	Local c6ENTREG  := SC6->C6_ENTREG
+	Local c6CLI     := SC6->C6_CLI
+	Local c6LOJA    := SC6->C6_LOJA
+	Local c6DTVALID := SC6->C6_DTVALID
+	Local c6TPOP    := SC6->C6_TPOP
+	Local c6SUGENTR := SC6->C6_SUGENTR
+	Local c6DTFIMNT := SC6->C6_DTFIMNT
+	Local c6RATEIO  := SC6->C6_RATEIO
+	Local c6ZZLOTE  := SC6->C6_ZZLOTE
+	Local c6PRUNIT  := SC6->C6_PRUNIT
+	Local c6CLASFIS := SC6->C6_CLASFIS
+	Local c6OP      := SC6->C6_OP
+	Local aArea		:= getArea()
+	Local aAreaC6	:= SC6->(getArea())
+	Local nConv     := 0
+	Local cTipConv  := ""
+	Local lIncluiSC6:= .F.
+	local nConv     := 0
+	local cTipConv  := ""
+
+	FWLogMsg("WARN", , "BusinessObject", funName(), "", "01", "***[ AglVNFTer ]*** Entrou na Inclusão de Itens novosa...", 0, 0, {})	
+
+	getConvUnidMedida(@nConv, @cTipConv)
+
+	dbSelectArea("SC6")
+	If RecLock("SC6",.T.)
+		SC6->C6_FILIAL  := c6FILIAL
+		SC6->C6_NUM     := c6NUM
+		SC6->C6_LOTECTL := c6LOTECTL
+		SC6->C6_ITEM    := c6ITEM
+		SC6->C6_PRODUTO := c6PRODUTO
+		SC6->C6_DESCRI  := c6DESCRI
+		SC6->C6_UM      := c6UM
+		SC6->C6_QTDVEN  := c6QTDVEN
+		SC6->C6_PRCVEN  := c6PRCVEN
+		SC6->C6_VALOR   := c6QTDVEN * c6PRCVEN
+		SC6->C6_SEGUM   := c6SEGUM
+		SC6->C6_UNSVEN  := IIF(cTipConv=="M",SC6->C6_QTDVEN * nConv,SC6->C6_QTDVEN / nConv)
+		SC6->C6_TES     := c6TES
+		SC6->C6_CF      := c6CF
+		SC6->C6_LOCAL   := c6LOCAL
+		SC6->C6_ENTREG  := c6ENTREG
+		SC6->C6_CLI     := c6CLI
+		SC6->C6_LOJA    := c6LOJA
+		SC6->C6_DTVALID := c6DTVALID
+		SC6->C6_TPOP    := c6TPOP
+		SC6->C6_SUGENTR := c6SUGENTR
+		SC6->C6_DTFIMNT := c6DTFIMNT
+		SC6->C6_RATEIO  := c6RATEIO
+		SC6->C6_ZZLOTE  := c6ZZLOTE
+		SC6->C6_PRUNIT  := c6PRUNIT
+		SC6->C6_CLASFIS := c6CLASFIS
+		SC6->C6_QTDEMP  := SC6->C6_QTDVEN
+		SC6->C6_QTDEMP2 := SC6->C6_UNSVEN
+		SC6->C6_OP      := c6OP
+		SC6->C6_QTDLIB  := SC6->C6_QTDVEN
+
+		SC6->C6_NFORI   := aSaldoB6ByProdLote[1]
+		SC6->C6_SERIORI := aSaldoB6ByProdLote[2]
+		SC6->C6_ITEMORI := aSaldoB6ByProdLote[3]
+		SC6->C6_IDENTB6 := aSaldoB6ByProdLote[4]
+
+		lIncluiSC6 		:= .T.
+		MsUnLock("SC6")
+	EndIf
+
+	if lIncluiSC6
+		criaRegisSC9()
+	endIf
+
+	cSC6ProxItem := Soma1(cSC6ProxItem)
+
+	restArea(aAreaC6)
+	restArea(aArea)
+
+Return(cSC6ProxItem)
+
+/**
+* Retorna a Mensagem de erro
+**/
+static function getMsgLog(cFunName, cMsg, cDoc1, cDoc2, cDoc3, cCodMsg)
+
+	cFunName := "AglVNFTer"
+	cMsg     := "Interface não pode ser processada. Pedido Não existe estoque para este item em Poder de Terceiros - Pedido: "+SC6->C6_NUM+" / "+SC6->C6_PRODUTO
+	cDoc1    := SC6->C6_NUM
+	cDoc2    := SC6->C6_PRODUTO
+	cDoc3    := ""
+	cCodMsg  := "07"
+
+return
+
+/**
+* Grava o log
+**/
+static function gravLog(cFunName, cMsg, cDoc1, cDoc2, cDoc3, cCodMsg)
+
+	If U_FITLogControl(cFunName,cCodMsg,cDoc1,cDoc2,cDoc3,cMsg)
+		setFileLog(" ","fail",cMsg)	
+	EndIf	
+
+	FWLogMsg("WARN", , "BusinessObject", funName(), "", "01", "***[ AglVNFTer ]*** Não existe estoque para este item em Poder de Terceiros - Pedido: "+SC6->C6_NUM, 0, 0, {})
+
+return
+
+/**
+* Cria registro na SC9
+**/
+static function criaRegisSC9()
+
+	local aArea 	:= getArea()
+	local aAreaSC9 	:= SC9->(getArea())
+
+	SC9->(dbSelectArea("SC9"))
+	SC9->(dbSetOrder(1))
+	If SC9->(RecLock("SC9",.T.))
+		SC9->C9_FILIAL  := SC6->C6_FILIAL
+		SC9->C9_PEDIDO  := SC6->C6_NUM
+		SC9->C9_ITEM    := SC6->C6_ITEM
+		SC9->C9_CLIENTE := SC6->C6_CLI
+		SC9->C9_LOJA    := SC6->C6_LOJA
+		SC9->C9_PRODUTO := SC6->C6_PRODUTO
+		SC9->C9_QTDLIB  := SC6->C6_QTDLIB
+		SC9->C9_DATALIB := dDataBase
+		SC9->C9_SEQUEN  := "01"
+		SC9->C9_GRUPO   := SB1->B1_GRUPO
+		SC9->C9_PRCVEN  := SC6->C6_PRCVEN
+		SC9->C9_IDENTB6 := SC6->C6_IDENTB6
+		SC9->C9_LOTECTL := SC6->C6_LOTECTL
+		SC9->C9_DTVALID := SC6->C6_DTVALID
+		SC9->C9_LOCAL   := SC6->C6_LOCAL
+		SC9->C9_TPCARGA := SC5->C5_TPCARGA
+		SC9->C9_QTDLIB2 := SC6->C6_UNSVEN
+		SC9->C9_RETOPER := "2"
+		SC9->C9_TPOP    := "1"
+		SC9->C9_DATENT  := dDataBase
+		SC9->(MsUnLock("SC9"))
+	EndIf
+
+	restArea(aAreaSC9)
+	restArea(aArea)
+
+return
+
+/*
+** Retorna se produto controla lote
+*/
+Static Function fRastro(cCodProd)
+Return (Posicione("SB1", 1, xFilial("SB1") + cCodProd, "B1_RASTRO") == "L")
+
+/**
+* Posiciona no pedido de vendas
+**/
+static function posicionaPedido(cPedido)
+
+	local lOk	:= .F.
+
+	SC5->(dbSetOrder(1))
+
+	if SC5->(dbSeek(fwxFilial("SC5") + cPedido))
+
+		lOk := .T.
+
+	endIf
+
+return lOk
+
+/**
+* Obtém a mensagem
+**/
+Static Function BuscaSZZ(_cNumSC5)
+
+	local _cMsg   :=""
+	local _aArea  := GetArea()
+	local _cTexto := ""
+	Local _nI	  := 0
+
+	dbSelectArea("SC6")
+	dbSetOrder(1)
+	dbSeek(xFilial("SC6")+_cNumSC5,.F.)
+
+	While !Eof() .And. SC6->C6_NUM == _cNumSC5
+
+		dbSelectArea("SZZ")
+		dbSetOrder(1)
+		If dbSeek(xFilial("SZZ") + "E" + SC6->C6_NFORI + SC6->C6_SERIORI + SC5->C5_CLIENTE + SC5->C5_LOJACLI ,.F.)
+			While !Eof() .And. xFilial("SZZ")==SZZ->ZZ_FILIAL .And. SZZ->ZZ_DOC==SC6->C6_NFORI .AND. SZZ->ZZ_SERIE==SC6->C6_SERIORI .AND. SZZ->ZZ_CLIFOR==SC5->C5_CLIENTE .AND. SZZ->ZZ_LOJA==SC5->C5_LOJACLI
+
+				_cTexto += AllTrim(SZZ->ZZ_TXTMENS)+" "
+
+				dbSkip()
+
+			End
+
+		EndIf
+
+		dbSelectArea("SC6")
+		dbSkip()
+
+	End
+
+	For _nI:=1 to Len(_cTexto)
+
+		If Substr(_cTexto,_nI,08)=="Fatura: "
+
+			_cFatura  := Substr(_cTexto,_nI+08,10)
+			_cMsg += "Fatura: "+_cFatura+" | "
+
+		EndIf
+
+		If Substr(_cTexto,_nI,09)=="Remessa: "
+
+			_cRemessa  := Substr(_cTexto,_nI+09,10)
+			_cMsg += "Remessa: "+_cRemessa+" | "
+
+		EndIf
+
+	Next _nI
+
+	RestArea(_aArea)
+Return _cMsg
+
+/**
+* valida as informações na Entrada
+**/
+static function validOrigens(aC6Origens)	
+
+	local aArea 	        := getArea()
+	local aAreaSD1 	        := SD1->(getArea())
+	local aAreaSC5          := SC5->(getArea())
+	local aAreaSC6          := SC6->(getArea())
+	local aAreaSA4	        := SA4->(getArea())
+	local nI		        := 0
+	local cFilSD1           := ""
+	local cForneSD1         := ""
+	local cLojaSD1          := ""
+	local cDocSD1           := ""
+	local cSerSD1           := ""
+	local cItemSD1          := ""
+	local cCbenefD1         := ""
+	local cCbenefCDV        := ""
+	local nRecnoSC6         := 0
+	local nRecnoSC5         := 0
+	local lValid	        := .T.
+	local cMsgErro	        := ""
+	local cProduto          := "" 
+	local lProcesWithError	:= superGetMV("ZZ_JBPRCBE",,.F.)
+	local lJob				:= IIF(getRemoteType() == -1, .T., .F.)
+
+	for nI := 1 to len(aC6Origens)
+
+		cFilSD1   := aC6Origens[nI][1]
+		cForneSD1 := aC6Origens[nI][2]
+		cLojaSD1  := aC6Origens[nI][3]
+		cDocSD1   := aC6Origens[nI][4]
+		cSerSD1   := aC6Origens[nI][5]
+		cItemSD1  := aC6Origens[nI][6] 	
+
+		cCbenefD1 := getCbenfD1(cFilSD1, cForneSD1, cLojaSD1, cDocSD1, cSerSD1, cItemSD1)		
+
+		nRecnoSC5 := SC5->(recno())
+		SC6->(dbSetOrder(1))
+
+		SC6->(dbSeek(SC5->C5_FILIAL + SC5->C5_NUM))
+		nRecnoSC6 := SC6->(recno())
+		cCbenefCDV:= getCbenfCDV(nRecnoSC5 , nRecnoSC6)
+		cProduto  := allTrim(SC6->C6_PRODUTO)
+
+		if allTrim(cCbenefD1) != allTrim(cCbenefCDV)
+			if empty(cCbenefD1)
+				cMsgErro += "PRODUTO ["+cProduto+"]: CBENEF ENTRADA [VAZIO], CBENEF SAIDA["+allTrim(cCbenefCDV)+"]" + CRLF + CRLF
+			elseIf empty(cCbenefCDV)
+				cMsgErro += "PRODUTO ["+cProduto+"]: CBENEF ENTRADA ["+allTrim(cCbenefD1)+"], CBENEF SAIDA[VAZIO]" + CRLF + CRLF
+			else
+				cMsgErro += "PRODUTO ["+cProduto+"]: CBENEF ENTRADA ["+allTrim(cCbenefD1)+"], CBENEF SAIDA["+allTrim(cCbenefCDV)+"]" + CRLF + CRLF
+			endIf			
+		endif	
+
+	next nI	
+
+	if !empty(cMsgErro)
+		if lJob
+			if lProcesWithError
+				setFileLog("", "fail","CBENEF - parâmetro ZZ_JBPRCBE habilitado. Log gerado, porém será dado continuidade na geração da nota normalmente."+CRLF+CRLF+cMsgErro)
+			else
+				disarmTransaction()
+				setFileLog("", "fail","CBENEF - parâmetro ZZ_JBPRCBE desabilitado. Log gerado, não será dado continuidade na geração da nota da nota."+CRLF+CRLF+cMsgErro)			
+			endIf
+		else
+			if !empty(cMsgErro)
+				u_DHLMsgLog(cMsgErro, "LOG", 1, .F.)
+			endIf
+		endIf
+
+		if !lJob
+			if ApMsgNoYes( "Foi identificado divergências com o CBENEF da entrada com o CBENEF da saída.<br><br>"+;
+			"<b>Solução:</b> Verifique a amarração do produto x código CBENEF/NF de Entrada. Deseja abandonar a geração da Nota de Saída?","Atenção")
+
+				lValid := .F.
+
+			endIf
+		endIf
+	endIf
+
+	restArea(aAreaSA4)
+	restArea(aAreaSC6)
+	restArea(aAreaSC5)
+	restArea(aAreaSD1)
+	restArea(aArea)	
+
+return lValid
+
+/**
+*obtém o codigo CBENEF da CDV
+**/
+static function   getCbenfCDV(nRecnoSC5 , nRecnoSC6)
+
+	local cCbenefCDV := ""
+	local aArea		 := getArea()
+	local aAreaSC5   := SC5->(getArea())
+	local aAreaSC6   := SC6->(getArea())
+	local aAreaSA4   := SA4->(getArea())
+	local aTransp    := {"",""}
+	local cProduto   := ""
+	local cTes       := ""
+	local nQtd       := 0	
+	local nValMerc   := 0
+	local nTotal	 := 0
+	local cCliPed	 := ""
+
+	SC5->(dbSetOrder(1))
+	SC5->(dbGoTo(nRecnoSC5))
+
+	SC6->(dbSetOrder(1))	
+	SC6->(dbGoTo(nRecnoSC6))
+
+	SA4->(dbSetOrder(1))
+	If SA4->(dbSeek(xFilial("SA4")+SC5->C5_TRANSP)) 
+		aTransp[01] := SA4->A4_EST		
+		aTransp[02] := SA4->A4_TPTRANS	
+	Endif
+
+	MaFisSave()
+	MaFisEnd()
+
+	nTotal	+= (SC5->C5_FRETE+SC5->C5_DESPESA+SC5->C5_SEGURO)
+
+	cCliPed := SC5->C5_CLIENTE
+
+	MaFisIni(IIf(!Empty(cCliPed),cCliPed,Iif(Empty(SC5->C5_CLIENT),SC5->C5_CLIENTE,SC5->C5_CLIENT)),;// 1-Codigo Cliente/Fornecedor
+	SC5->C5_LOJAENT,;		// 2-Loja do Cliente/Fornecedor
+	IIf(SC5->C5_TIPO$'DB',"F","C"),;				// 3-C:Cliente , F:Fornecedor
+	SC5->C5_TIPO,;				// 4-Tipo da NF
+	SC5->C5_TIPOCLI,;		// 5-Tipo do Cliente/Fornecedor
+	Nil,;
+	Nil,;
+	Nil,;
+	Nil,;
+	"MATA461")
+
+	cProduto  := SC6->C6_PRODUTO
+	cTes	  := SC6->C6_TES
+	nQtd	  := SC6->C6_QTDVEN
+	nPreco	  := SC6->C6_PRCVEN
+	nValMerc  := SC6->C6_QTDVEN * SC6->C6_PRCVEN
+	cCFOP	  := SC6->C6_CF
+	cClasFis  := SC6->C6_CLASFIS
+
+
+	MaFisAdd(cProduto,;   	// 1-Codigo do Produto ( Obrigatorio )
+	cTes,;	   	// 2-Codigo do TES ( Opcional )
+	nQtd,;  	// 3-Quantidade ( Obrigatorio )
+	0,;		  	// 4-Preco Unitario ( Obrigatorio )
+	0,; 	// 5-Valor do Desconto ( Opcional )
+	"",;	   			// 6-Numero da NF Original ( Devolucao/Benef )
+	"",;				// 7-Serie da NF Original ( Devolucao/Benef )
+	,;					// 8-RecNo da NF Original no arq SD1/SD2
+	0,;					// 9-Valor do Frete do Item ( Opcional )
+	0,;					// 10-Valor da Despesa do item ( Opcional )
+	0,;					// 11-Valor do Seguro do item ( Opcional )
+	0,;					// 12-Valor do Frete Autonomo ( Opcional )
+	nValMerc,;			// 13-Valor da Mercadoria ( Obrigatorio )
+	0,;					// 14-Valor da Embalagem ( Opiconal )	
+	,;					// 15
+	,;					// 16
+	,; //17
+	0,;					// 18-Despesas nao tributadas - Portugal
+	0,;					// 19-Tara - Portugal
+	cCFOP,; // 20-CFO
+	{},;            // 21-Array para o calculo do IVA Ajustado (opcional)	
+	,;// 22-Codigo Retencao - Equador
+	,; //23-Valor Abatimento ISS
+	,; // 24-Lote Produto
+	,;	// 25-Sub-Lote Produto
+	,;
+	,;
+	cClasFis,; // 28-Classificação fiscal
+	,; //29
+	,; //30
+	,; //31
+	,; //32
+	" ") // 33 - Tipo de Operação.
+
+	aInf  := StaticCall(MATN410B, A410LancAp)  
+
+	if len(aInf) > 0
+		cCbenefCDV := aInf[1][2]
+	endIf
+
+	restArea(aAreaSA4)
+	restArea(aAreaSC6)
+	restArea(aAreaSC5)
+	restArea(aArea)
+
+return cCbenefCDV
+
+/**
+* Obtém as origens da SC6
+**/
+static function getC6Origens()
+
+	local aC6Origens:= {}
+	local aArea 	:= getArea()
+	local aAreaSC6 	:= SC6->(getArea())
+	local cChaveSC6 := SC5->C5_FILIAL + SC5->C5_NUM
+
+	SC6->(dbSetOrder(1))
+
+	if SC6->(dbSeek(cChaveSC6))
+		while SC6->(C6_FILIAL + C6_NUM) == cChaveSC6
+
+			aAdd(aC6Origens, {SC6->C6_FILIAL, SC6->C6_CLI, SC6->C6_LOJA, SC6->C6_NFORI, SC6->C6_SERIORI, SC6->C6_ITEMORI, SC6->(recno())})
+
+			SC6->(dbSkip())
+		endDo
+
+	endIf
+
+	restArea(aAreaSC6)
+	restArea(aArea)
+
+return aC6Origens
+
+/**
+* Obtém o CBENEF da origem (SD)
+**/
+static function getCbenfD1(cFilSD1, cForneSD1, cLojaSD1, cDocSD1, cSerSD1, cItemSD1)	
+
+	local cAliasSD1 	:= getNextAlias()	
+	local aArea 		:= getArea()  
+	local aAreaSD1  	:= SD1->(getArea())
+	local cCodAjuD1Cob	:= ""
+
+	BeginSql Alias cAliasSD1
+		SELECT SD1.D1_ZZCBENE 
+		FROM %Table:SD1% SD1
+		WHERE
+		SD1.D1_FILIAL	= %Exp:cFilSD1% AND
+		SD1.D1_DOC 		= %Exp:cDocSD1% AND
+		SD1.D1_SERIE 	= %Exp:cSerSD1% AND		
+		SD1.D1_FORNECE 	= %Exp:cForneSD1% AND	
+		SD1.D1_LOJA 	= %Exp:cLojaSD1% AND			
+		SD1.D1_ITEM    = %Exp:cItemSD1% AND		
+		SD1.%NotDel%
+	EndSql	
+
+	If (cAliasSD1)->(!Eof())		
+		cCodAjuD1Cob:=  (cAliasSD1)->D1_ZZCBENE			
+	EndIf 	
+
+	(cAliasSD1)->(dbCloseArea())	
+
+	restArea(aAreaSD1)
+	restArea(aArea)
+
+return cCodAjuD1Cob
+
+
+
+

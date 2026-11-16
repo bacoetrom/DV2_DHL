@@ -1,0 +1,23 @@
+#INCLUDE "totvs.ch"
+
+/*/{Protheus.doc} User Function IsClienteDepositante
+    Valida se cliente é um depositante e possui faturamento triangular
+    @type  Function
+    @author TOTVS IP
+    @since 17/10/2023
+    @version 1.0
+    @param cCodigo, character, codigo do cliente
+    @param cLoja, character, loja do client
+    @return lRet, logical, identifica se cliente é um depositante com faturamento triangulars
+
+    /*/
+User Function IsClienteDepositante(cCodigo as character, cLoja as character) as logical
+    Local lRet := .f.
+    Local aInfoCliente := {}
+
+    aInfoCliente := GetAdvFVal("SA1", { "A1_ZZDEPOS","A1_ZZTPFAT"}, FWxFilial("SA1")+cCodigo+cLoja, 1, { "", ""})
+    
+    If aInfoCliente[1] == 'S' .AND. aInfoCliente[2] == '1'
+        lRet := .t.
+    EndIf
+Return (lRet)

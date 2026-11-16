@@ -1,0 +1,540 @@
+#include 'totvs.ch'
+#include 'safx235.ch'
+#include 'safx.ch'
+#include 'dhl.ch'
+
+/*/{Protheus.doc} DHLPkgSafx235
+
+Respons‡vel pelas regras e montagem das informacoees para a exportacao
+	
+@author Gustavo Luiz
+@since 14/12/2018
+
+/*/
+user function _SafxPKG235;return
+
+class DHLPkgSafx235 from DHLSafx
+
+	method newDHLPkgSafx235 () constructor
+	method addLine()
+	method getSql()
+	method notFieldRequired()
+	method getDateDefault()
+	
+endclass
+
+//-----------------------------------------------------------------
+method newDHLPkgSafx235 () class DHLPkgSafx235
+
+return
+
+/*/{Protheus.doc} addLine
+
+Cria a lina ‡ ser impressa no arquivo txt
+	
+@author Gustavo Luiz
+@since 30/10/2014
+
+/*/
+method addLine() class DHLPkgSafx235	
+		
+	local cProduto 		:= allTrim(::getFieldValue("PRODUTO"))
+	local lTerceiro		:= iif(getTipoEstoque(self) == "TERCEIRO", .T., .F.)
+	local lFormatZero 	:= .f.	
+	local cQtd			:= StrTran(cValToChar(AllTrim(Transform(getQtd(self), "@E 99999999999.999999"))), ",", "")
+	
+	::addField(COD_EMPRESA				, "SOL")
+	::addField(COD_ESTAB				, alltrim(GetNewPar("ZZ_CDEMPDW", FwCodEmp())))
+	::addField(PERIODO_REF				, getPeriodoRef(self)) 
+	::addField(IND_TP_CORRECAO			, "1")
+
+	::addField(IND_PRODUTO				, getType(self, lTerceiro))
+	::addField(COD_PRODUTO				, cProduto)
+	::addField(DAT_ESTQ_FIM				, getDtEstFim(self))
+	::addField(GRUPO_CONTAGEM			, getGrupContag(self))
+	::addField(IND_FIS_JUR				, getIndFisJur(self, lTerceiro))
+	::addField(COD_FIS_JUR				, getCodFisJur(self, lTerceiro))
+	::addField(COD_MEDIDA				, allTrim(::getFieldValue("UM")))
+	::addField(QTD_CORRECAO				, cQtd)
+	::addField(IND_POS_NEG				, getTipoAjuste(self))
+
+	::notFieldRequired()
+
+return
+
+/*/{Protheus.doc} getSql
+
+Instrucao SQL para exportacao
+	
+@author Gustavo Luiz
+@since 14/12/2018
+
+@return string instrucao sql
+/*/
+method getSql(dDtFrom, dDtUntil) class DHLPkgSafx235
+	
+	local cQuery 		:= ""
+	local cMovDev		:= superGetMv("ZZ_TMDEV", .F., "")
+	local cMovReq		:= superGetMv("ZZ_TMREQ", .F., "")
+	local cD3TM			:= "'499', '999'"
+	local cTipoRec		:= LISTA_RECEITA_FEDERAL
+	local cTipoPar		:= getParBlocK()
+	local cTipo         := ""	
+	
+	cTipoRec := formatTipo(cTipoRec)
+	cTipo 	 := formatIn(cTipoRec + cTipoPar, ",") 
+	
+	if !empty(cMovDev)
+		cD3TM += ', ' +   "'" + cMovDev + "'"
+	endIf
+	
+	if !empty(cMovReq)
+		cD3TM += ', ' +   "'" + cMovReq + "'"
+	endIf
+	
+	cQuery:= " SELECT FILIAL, PRODUTO, UM, EMISSAO, QUANTIDADE, TIPO_ESTOQUE, ZZINDDW, CLIFOR, LOJA, TIPO FROM " 										+ CRLF
+	cQuery+= " ( SELECT " 																            											+ CRLF
+	cQuery+= "   SD3.D3_FILIAL FILIAL ,SD3.D3_COD PRODUTO , SD3.D3_UM UM, SB1.B1_ZZCDPRO, SB1.B1_ZZLJPRO, '-' ZZINDDW, SD3.D3_ZZCDPRO CLIFOR, SD3.D3_ZZLJPRO LOJA, SB1.B1_TIPO TIPO,   "						+ CRLF
+	cQuery+= "   MAX(SD3.D3_EMISSAO) EMISSAO, "											            											+ CRLF
+	cQuery+= "   SUM(CASE "																            											+ CRLF
+	cQuery+= "           WHEN SD3.D3_CF LIKE ( 'RE%' ) THEN ( SD3.D3_QUANT *-1 )  " 		            										+ CRLF	
+	cQuery+= "           ELSE SD3.D3_QUANT "												            										+ CRLF
+	cQuery+= "       END ) QUANTIDADE, "														            									+ CRLF
+	
+	cQuery+= "   (CASE "																            											+ CRLF
+	cQuery+= "            WHEN SD3.D3_ZZCDPRO = ' ' THEN ( 'PROPRIO')   " 		            													+ CRLF	
+	cQuery+= "            ELSE 'TERCEIRO' "												            											+ CRLF
+	cQuery+= "    END )  TIPO_ESTOQUE"														            										+ CRLF
+	
+	cQuery+= "   FROM " +retSqlName("SD3")+ " SD3 "										            											+ CRLF
+	cQuery+= "   INNER JOIN " +retSqlName("SB1")+ " SB1 ON 1 = 1 "															            		+ CRLF
+	cQuery+= "      AND SB1.B1_FILIAL = SD3.D3_FILIAL "															            					+ CRLF
+	cQuery+= "      AND SB1.B1_COD = SD3.D3_COD "															            						+ CRLF
+	cQuery+= "      AND SB1.D_E_L_E_T_= ' '  "															            							+ CRLF
+	cQuery+= "   WHERE 1 = 1 "															            											+ CRLF
+	cQuery+= "      AND SD3.D3_FILIAL ='" + cFilAnt + "' "								            											+ CRLF
+	//cQuery+= "      AND SD3.D3_FILIAL LIKE '%MUL%' "										            										+ CRLF
+	cQuery+= "      AND SD3.D3_ESTORNO = ' '	"											            										+ CRLF
+	cQuery+= "      AND SD3.D3_TM IN( " + cD3TM + ") "									            											+ CRLF
+	cQuery+= "      AND SD3.D3_EMISSAO BETWEEN '" + dTos(dDtFrom) + "' AND '" + dTos(dDtUntil) + "'" 											+ CRLF
+	cQuery+= "      AND SD3.D3_DOC = 'INVENT' "											            											+ CRLF
+	cQuery+= "      AND SB1.B1_TIPO IN " + cTipo  											            										+ CRLF
+	cQuery+= "      AND SB1.B1_FANTASM != 'S' "											            											+ CRLF
+	cQuery+= "      AND SB1.B1_COD NOT LIKE 'MOD%' "											            									+ CRLF
+	cQuery+= "      AND SD3.D_E_L_E_T_ = ' ' "											            											+ CRLF
+	cQuery+= "   GROUP BY D3_FILIAL,D3_COD, SD3.D3_UM , SB1.B1_ZZCDPRO, SB1.B1_ZZLJPRO, SD3.D3_ZZCDPRO, SD3.D3_ZZLJPRO, SB1.B1_TIPO "	    + CRLF
+	cQuery+= " ) "									           			 																		+ CRLF
+	cQuery+= " WHERE 1 = 1 "									           			 															+ CRLF
+	cQuery+= "    AND QUANTIDADE <> 0 "									           			 																		+ CRLF
+	
+	cQuery+= " UNION ALL " 																														+ CRLF
+	 
+	cQuery+= " SELECT FILIAL, PRODUTO, UM, EMISSAO, QUANTIDADE, TIPO_ESTOQUE, ZZINDDW, CLIFOR, LOJA, TIPO FROM " 										+ CRLF
+	cQuery+= " ( SELECT " 																            											+ CRLF
+	cQuery+= "   SD2.D2_FILIAL FILIAL ,SD2.D2_COD PRODUTO , SD2.D2_UM UM, SB1.B1_ZZCDPRO, SB1.B1_ZZLJPRO, SA1.A1_ZZINDDW ZZINDDW, SA1.A1_COD CLIFOR, SA1.A1_LOJA LOJA, SB1.B1_TIPO TIPO,  "			+ CRLF
+	cQuery+= "   MAX(SD2.D2_EMISSAO) EMISSAO, "											            											+ CRLF
+	cQuery+= "   SUM(CASE "																            											+ CRLF
+	cQuery+= "           WHEN SD2.D2_CF LIKE ( 'RE%' ) THEN ( SD2.D2_QUANT *-1 )  " 		            										+ CRLF	
+	cQuery+= "           ELSE SD2.D2_QUANT "												            										+ CRLF
+	cQuery+= "       END ) QUANTIDADE, "														            									+ CRLF
+	
+	cQuery+= "    'TERCEIRO_NEGATIVO'  TIPO_ESTOQUE"														            						+ CRLF
+	
+	cQuery+= "   FROM " +retSqlName("SF2")+ " SF2 "										            											+ CRLF
+	cQuery+= "   INNER JOIN " +retSqlName("SD2")+ " SD2 ON 1 = 1 "															            		+ CRLF
+	cQuery+= "      AND SF2.F2_FILIAL = SD2.D2_FILIAL "															            					+ CRLF
+	cQuery+= "      AND SF2.F2_DOC = SD2.D2_DOC "															            						+ CRLF
+	cQuery+= "      AND SF2.F2_SERIE = SD2.D2_SERIE  "															            					+ CRLF
+	cQuery+= "      AND SF2.F2_CLIENTE = SD2.D2_CLIENTE  "															            				+ CRLF
+	cQuery+= "      AND SF2.F2_LOJA = SD2.D2_LOJA  "															            					+ CRLF
+	cQuery+= "      AND SD2.D_E_L_E_T_ = ' '  "															            							+ CRLF
+	cQuery+= "   INNER JOIN " +retSqlName("SB1")+ " SB1 ON 1 = 1 "															            		+ CRLF
+	cQuery+= "      AND SB1.B1_FILIAL = SD2.D2_FILIAL "															            					+ CRLF
+	cQuery+= "      AND SB1.B1_COD = SD2.D2_COD "															            						+ CRLF
+	cQuery+= "      AND SB1.D_E_L_E_T_= ' '  "															            							+ CRLF
+	cQuery+= "   INNER JOIN " +retSqlName("SA1")+ " SA1 ON 1 = 1 "															            		+ CRLF
+	cQuery+= "      AND SA1.A1_FILIAL = SF2.F2_FILIAL "															            					+ CRLF
+	cQuery+= "      AND SA1.A1_COD = SF2.F2_CLIENTE "															            					+ CRLF
+	cQuery+= "      AND SA1.A1_LOJA = SF2.F2_LOJA "															            						+ CRLF
+	cQuery+= "      AND SA1.D_E_L_E_T_= ' '  "															            							+ CRLF
+	cQuery+= "   WHERE 1 = 1 "															            											+ CRLF
+	cQuery+= "      AND SF2.F2_FILIAL ='" + cFilAnt + "' "								            											+ CRLF
+	//cQuery+= "      AND SF2.F2_FILIAL LIKE '%MUL%' "										            										+ CRLF
+	cQuery+= "      AND SF2.F2_SERIE = 'INV'	"											            										+ CRLF
+	cQuery+= "      AND SF2.F2_TIPO = 'N'"									            														+ CRLF
+	cQuery+= "      AND SF2.F2_EMISSAO BETWEEN '" + dTos(dDtFrom) + "' AND '" + dTos(dDtUntil) + "'" 											+ CRLF
+	cQuery+= "      AND SF2.D_E_L_E_T_ = ' ' "											            											+ CRLF
+	cQuery+= "   GROUP BY D2_FILIAL,D2_COD, SD2.D2_UM , SB1.B1_ZZCDPRO, SB1.B1_ZZLJPRO, SA1.A1_ZZINDDW, SA1.A1_COD, SA1.A1_LOJA, SB1.B1_TIPO    "			+ CRLF
+	cQuery+= " ) "									           			 																		+ CRLF
+	cQuery+= " WHERE 1 = 1 "									           			 															+ CRLF
+	cQuery+= "    AND QUANTIDADE <> 0 "									           			 																		+ CRLF
+	
+	cQuery+= " UNION ALL " 																														+ CRLF
+	 
+	cQuery+= " SELECT FILIAL, PRODUTO, UM, EMISSAO, QUANTIDADE, TIPO_ESTOQUE, ZZINDDW, CLIFOR, LOJA, TIPO FROM " 										+ CRLF
+	cQuery+= " ( SELECT " 																            											+ CRLF
+	cQuery+= "   SD1.D1_FILIAL FILIAL ,SD1.D1_COD PRODUTO , SD1.D1_UM UM, SB1.B1_ZZCDPRO, SB1.B1_ZZLJPRO, SA1.A1_ZZINDDW ZZINDDW, SA1.A1_COD CLIFOR, SA1.A1_LOJA LOJA, SB1.B1_TIPO TIPO,  "			+ CRLF
+	cQuery+= "    MAX(SD1.D1_DTDIGIT) EMISSAO, "											            										+ CRLF
+	cQuery+= "   SUM(CASE "																            											+ CRLF
+	cQuery+= "           WHEN SD1.D1_CF LIKE ( 'RE%' ) THEN ( SD1.D1_QUANT *-1 )  " 		            										+ CRLF	
+	cQuery+= "           ELSE SD1.D1_QUANT  "												            										+ CRLF
+	cQuery+= "       END ) QUANTIDADE, "														            									+ CRLF
+	
+	cQuery+= "  'TERCEIRO_POSITIVO' TIPO_ESTOQUE"														            							+ CRLF
+	
+	cQuery+= "   FROM " +retSqlName("SF1")+ " SF1 "										            											+ CRLF
+	cQuery+= "   INNER JOIN " +retSqlName("SD1")+ " SD1 ON 1 = 1 "															            		+ CRLF
+	cQuery+= "      AND SF1.F1_FILIAL = SD1.D1_FILIAL "															            					+ CRLF
+	cQuery+= "      AND SF1.F1_DOC = SD1.D1_DOC "															            						+ CRLF
+	cQuery+= "      AND SF1.F1_SERIE = SD1.D1_SERIE  "															            					+ CRLF
+	cQuery+= "      AND SF1.F1_FORNECE = SD1.D1_FORNECE  "															            				+ CRLF
+	cQuery+= "      AND SF1.F1_LOJA = SD1.D1_LOJA  "															            					+ CRLF
+	cQuery+= "      AND SD1.D_E_L_E_T_ = ' '  "															            							+ CRLF
+	cQuery+= "   INNER JOIN " +retSqlName("SB1")+ " SB1 ON 1 = 1 "															            		+ CRLF
+	cQuery+= "      AND SB1.B1_FILIAL = SD1.D1_FILIAL "															            					+ CRLF
+	cQuery+= "      AND SB1.B1_COD = SD1.D1_COD "															            						+ CRLF
+	cQuery+= "      AND SB1.D_E_L_E_T_= ' '  "															            							+ CRLF
+	cQuery+= "   INNER JOIN " +retSqlName("SA1")+ " SA1 ON 1 = 1 "															            		+ CRLF
+	cQuery+= "      AND SA1.A1_FILIAL = SF1.F1_FILIAL "															            					+ CRLF
+	cQuery+= "      AND SA1.A1_COD = SF1.F1_FORNECE "															            					+ CRLF
+	cQuery+= "      AND SA1.A1_LOJA = SF1.F1_LOJA "															            						+ CRLF
+	cQuery+= "      AND SA1.D_E_L_E_T_= ' '  "															            							+ CRLF
+	cQuery+= "   WHERE 1 = 1 "															            											+ CRLF
+	cQuery+= "      AND SF1.F1_FILIAL ='" + cFilAnt + "' "								            											+ CRLF
+	//cQuery+= "      AND SF1.F1_FILIAL LIKE '%MUL%' "										            										+ CRLF
+	cQuery+= "      AND SF1.F1_ESPECIE = 'INV'	"											            										+ CRLF
+	cQuery+= "      AND SF1.F1_FORMUL = 'S'"									            													+ CRLF
+	cQuery+= "      AND SF1.F1_TIPO = 'B'"									            														+ CRLF
+	cQuery+= "      AND SF1.F1_DTDIGIT BETWEEN '" + dTos(dDtFrom) + "' AND '" + dTos(dDtUntil) + "'" 											+ CRLF
+	cQuery+= "      AND SF1.D_E_L_E_T_ = ' ' "											            											+ CRLF
+	cQuery+= "   GROUP BY SD1.D1_FILIAL, SD1.D1_COD, SD1.D1_UM , SB1.B1_ZZCDPRO, SB1.B1_ZZLJPRO, SA1.A1_ZZINDDW, SA1.A1_COD, SA1.A1_LOJA, SB1.B1_TIPO    "	+ CRLF
+	cQuery+= " ) "									           			 																		+ CRLF
+	cQuery+= " WHERE 1 = 1 "									           			 															+ CRLF
+	cQuery+= "    AND QUANTIDADE <> 0 "									           			 													+ CRLF
+	
+return cQuery
+
+
+/*/{Protheus.doc} notFieldRequired
+
+Campos que não precisa passar valor
+	
+@author Gustavo Luiz
+@since 14/12/2018
+
+/*/
+method notFieldRequired()  class DHLPkgSafx235
+
+	::addField(DAT_INI_APUR		, ' ')
+	::addField(DAT_FIM_APUR		, ' ')
+	::addField(COD_OP			, ' ')
+	::addField(COD_DIF_PRODUCAO , ' ')
+	::addField(INSC_ESTADUAL    , ' ')	
+
+return
+
+/*/{Protheus.doc} getDateDefault
+
+Coleta a Data Padrão da Interface
+	
+@author Victor Hugo
+@since 11/12/2014
+
+@return Data Data padrão da interface
+/*/
+method getDateDefault() class DHLPkgSafx235
+
+return (FirstDay(Date()) - 1)
+
+/**
+* obtém o período de referencia no fornmato mmaaaa
+**/
+static function getPeriodoRef(self)
+	
+	local cEmissao  := self:getFieldValue("EMISSAO")
+	local cMes		:= padl(month(sTod(cEmissao)), 2, "0")
+	local cAno		:= cValToChar(year(sTod(cEmissao)))
+	local cPeriodRef:= cMes + cAno
+	
+return cPeriodRef
+
+/**
+* obtém a data de estoque fim
+**/
+static function getDtEstFim(self) 
+	
+	local cDtEstFim  := dTos(lastDate(monthSub(sTod(self:getFieldValue("EMISSAO")), 1)))
+	
+return cDtEstFim
+
+/**
+* obtém o grupo de contagem
+**/
+static function getGrupContag(self)
+	
+	local cTipoEstoq  	:= allTrim(self:getFieldValue("TIPO_ESTOQUE"))
+	local cGrupContagem := ""
+	
+	if cTipoEstoq == "PROPRIO"
+		cGrupContagem := "1"
+	elseIf "TERCEIRO" $ cTipoEstoq 
+		cGrupContagem := "3"
+	endIf	
+	
+return cGrupContagem
+
+/**
+* Obtém o tipo de ajuste
+* Positivo
+* Negativo
+**/
+static function getTipoAjuste(self)
+	
+	local nQuant 		:= self:getFieldValue("QUANTIDADE")
+	local cTipoEstoq  	:= allTrim(self:getFieldValue("TIPO_ESTOQUE"))
+	local cTipoAjuste 	:= "1"  //POSITIVA
+	
+	if cTipoEstoq == "PROPRIO"		
+		
+		if nQuant < 0
+			cTipoAjuste := "2"		//NEGATIVA
+		endIf
+	
+	elseIf cTipoEstoq == "TERCEIRO_NEGATIVO" .OR. cTipoEstoq == "PROPRIO_NEGATIVO"
+		cTipoAjuste := "2"			//NEGATIVA
+	endIf
+	
+return cTipoAjuste
+
+/**
+* Obtém a quantidade
+**/
+static function getQtd(self)
+
+	local xQtd := ::getFieldValue("QUANTIDADE")	
+	
+return Abs(xQtd)
+
+/**
+* Obtém o tipo de estoque
+PROPRIO
+TERCEIRO
+**/
+static function getTipoEstoque(self)
+	
+	local cTipoEstoq  	:= allTrim(self:getFieldValue("TIPO_ESTOQUE"))
+	
+	if "TERCEIRO" $ cTipoEstoq 	
+		cTipoEstoq := "TERCEIRO"
+	endIf	
+	
+return allTrim(cTipoEstoq)
+
+
+/**
+* Obtém o IND_FIS_JUR
+**/
+static function getIndFisJur(self, lTerceiro)
+	
+	local cIndFisJur := ""
+	
+	if lTerceiro
+		cIndFisJur := self:getFieldValue("CLIFOR")
+		if empty(cIndFisJur)
+			cIndFisJur := "1"
+		else
+			cIndFisJur := "2"
+		endIf
+	else
+		cIndFisJur := "1"
+	endIf
+	
+return cIndFisJur
+
+/**
+* Obtém o COD_FIS_JUR
+**/
+static function getCodFisJur(self, lTerceiro)
+	
+	local cCodFisJur := "" 
+	local cZZCDPRO	 := allTrim(self:getFieldValue("B1_ZZCDPRO"))
+	local cZZLGPRO	 := allTrim(self:getFieldValue("B1_ZZLJPRO"))
+	
+	if lTerceiro 
+		if !empty(cZZCDPRO)
+			cCodFisJur := alltrim(GetNewPar("ZZ_CDEMPDW", FwCodEmp())) + cZZCDPRO + cZZLGPRO
+		else
+			cCodFisJur := alltrim(GetNewPar("ZZ_CDEMPDW", FwCodEmp())) + self:getFieldValue("CLIFOR") + self:getFieldValue("LOJA")
+		endIf 		
+	else
+		cCodFisJur := SM0->M0_CGC
+	endIf
+	
+return cCodFisJur
+
+/*
+** Obtém os valores dos parâmetros
+*/
+static function getParBlocK()	
+	
+	local oSql	 	:= IpSqlObject():newIpSqlObject()
+	local cQuery	:= ""
+	local nI		:= 0
+	local cContPar  := ""
+	local cRetPar	:= ""
+	local aContPar	:= {}
+	local aParBlocK := {}
+	local cNameTableSX6 := ""
+	
+	//NECESSÁRIO, POIS O RETSQLNAME RETORNAVA VAZIO QUANDO PASSAVA SX6
+	cNameTableSX6 := getNameTableSx6()
+	
+	cQuery := "SELECT " + CRLF
+	cQuery += "	X6_CONTEUD AS CONTEUD " + CRLF
+	cQuery += "FROM " + cNameTableSX6 + CRLF
+	cQuery += "WHERE 1=1" + CRLF
+	cQuery += "	AND X6_FIL = '" + FWxFilial("SX6") + "' " + CRLF
+	cQuery += "	AND X6_VAR LIKE 'MV_BLKTP%' " + CRLF
+	cQuery += "	AND X6_CONTEUD != ' ' " + CRLF
+	cQuery += "	AND D_E_L_E_T_ = ' ' " + CRLF
+	
+	oSql:newAlias(cQuery)
+	
+	While oSql:notIsEof()
+		
+		xContPar := oSql:getValue("CONTEUD")
+		aContPar := strToKarr(cRetPar, ",")			
+		cContPar := alltrim(aContPar[1])
+		
+		aAdd(aParBlocK, cContPar)
+		
+		oSql:skip()
+	EndDo
+	
+	oSql:close()
+	
+	if len(aParBlocK) > 1
+		
+		for nI := 1 to len(aParBlocK)
+			cContPar += aParBlocK[nI]
+		next nI
+		
+	endIf
+		
+return cContPar
+
+/*
+** Formata o tipo retirando espaços em branco
+*/
+static function formatTipo(cTipo)
+	
+	local aTipo 	:= strToKarr(cTipo, ",")
+	local nI		:= 1
+	local cTipoAux 	:= ""
+	local aTipoForm := {}
+	
+	for nI := 1 to len(aTipo)
+	
+		cTipoAux := allTrim(aTipo[nI]) 
+		
+		if !empty(cTipoAux)
+		
+			aAdd(aTipoForm, cTipoAux)
+		
+		endIf
+		
+	next nI
+	
+	cTipoAux := ""
+	
+	for nI := 1 to len(aTipoForm)
+		
+		if nI != len(aTipoForm)
+			cTipoAux += aTipoForm[nI] + ","  
+		else
+			cTipoAux += aTipoForm[nI] 
+		endIf
+		
+	next nI
+	
+return cTipoAux
+
+/*
+** Obtém o tipo (Tratamento bloco K)
+*/
+static function  getType(self, lTerceiro)	
+	
+	local cTipo 		:= ""
+	local cParBlocoK	:= ""
+	local aTiposPar		:= {}	
+	local lParametro	:= .F.
+	
+	if lTerceiro
+		cTipo := self:getFieldValue("TIPO") 
+	else
+		cTipo := self:getFieldValue("TIPO")
+	endIf
+	
+	if !cTipo $ LISTA_RECEITA_FEDERAL
+		
+		cParBlocoK := getTipoPar(cTipo)
+		if !empty(cParBlocoK)
+			aTiposPar := strToKarr(cParBlocoK, ",")
+			cTipo := aTiposPar[TIPO_RECEITA_FEDERAL] 
+			lParametro	:= .T.
+		endIf
+		
+	endIf
+	
+	cTipo := self:getProdType(cTipo, lParametro)
+	
+return cTipo
+
+/*
+** Obtém o parâmetro bloco K referente ao tipo
+*/
+static function getTipoPar(cTipo)
+	
+	local oSql	 	:= IpSqlObject():newIpSqlObject()
+	local cQuery	:= ""
+	local xContPar	:= ""
+	local cNameTableSX6 := ""
+	
+	//NECESSÁRIO, POIS O RETSQLNAME RETORNAVA VAZIO QUANDO PASSAVA SX6
+	cNameTableSX6 := getNameTableSx6()
+	
+	cQuery := "SELECT " + CRLF
+	cQuery += "	X6_CONTEUD AS CONTEUD " + CRLF
+	cQuery += "FROM " + cNameTableSX6 + CRLF
+	cQuery += "WHERE 1=1" + CRLF
+	cQuery += "	AND X6_FIL = '" + FWxFilial("SX6") + "' " + CRLF
+	cQuery += "	AND X6_VAR LIKE 'MV_BLKTP%' " + CRLF
+	cQuery += "	AND X6_CONTEUD != ' ' " + CRLF
+	cQuery += "	AND D_E_L_E_T_ = ' ' " + CRLF
+	
+	oSql:newAlias(cQuery)
+	
+	While oSql:notIsEof()
+		
+		xContPar := oSql:getValue("CONTEUD")
+		
+		if cTipo $ xContPar
+			exit
+		endIf
+		oSql:skip()
+	EndDo
+	
+	oSql:close()
+		
+return xContPar
+
+/**
+* retorna o nome da tabela físico no banco
+**/
+static function getNameTableSx6()
+	
+	local cNameTableSX6 := "SX6" + cEmpant + "0"
+	
+return cNameTableSX6
+
+

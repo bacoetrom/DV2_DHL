@@ -1,0 +1,162 @@
+// Partner das interfaces do Nulogy 
+#define OUT_FROMPARTNER						"PROTHEUS"
+#define OUT_TOPARTNER						"PACKING_T"
+
+// Advpl MVC
+#define MVC_MODEL_STRUCT					1
+#define MVC_VIEW_STRUCT						2
+
+// Advpl Opções
+#define DHL_OPC_INCLUSAO					3
+#define DHL_OPC_ALTERACAO					4
+#define DHL_OPC_EXCLUSAO					5
+
+//Controle de Diretórios
+#define PROCESSING_EXTENSION	".processing"
+#define PROCESSED_FOLDER		"PROCESSED"
+#define ERROR_FOLDER			"ERRORS"
+
+// Códigos das Aplicações (Tabela SZ1)
+#define APP_IMPORTADOR_XML					"01"
+#define APP_MASTERSAF_DW					"02"
+#define APP_MASTERSAF_NFE		 			"03"
+#define APP_SELECT							"04"
+#define APP_NULOGY					 		"05"
+#define APP_ORACLE_GL						"06"
+#define APP_ORACLE_AR						"07"
+#define APP_DLX                             "08"
+#define APP_SUPPLYME                        "09"
+#define APP_CEGEDIM							"10"
+#define APP_CTE								"11"
+#define APP_SAP								"12"
+#define APP_AUT                             "13"
+#define APP_BAIXA_XML                       "14"
+#define APP_SELECT_NEW						"15"    //RONI SILVA 10/2021
+
+
+// Tipos de Integrações
+#define DHL_IMPORTACAO						"01"
+#define DHL_EXPORTACAO						"02"
+
+// Tipos de Operações		
+#define DHL_INCLUSAO						1
+#define DHL_ALTERACAO						2
+#define DHL_EXCLUSAO						3
+
+// Tipos de Documentos 
+#define DHL_NF_SAIDA						1
+#define DHL_NF_ENTRADA						2	
+
+// Especies de documento
+#define DHL_ESPECIE_INVENTARIO				"INV"
+#define DHL_SERIE_INVENTARIO				"INV"
+#define DHL_ESPECIE_CUTOVER					"INI"
+#define DHL_SERIE_CUTOVER					"INI"
+#define DHL_ESPECIE_ESPELHO					"DEV"
+#define DHL_SERIE_ESPELHO					"DEV"
+
+// Status do Campo F1_ZZSTATU
+#define DHL_DOC_LIMPAR_STATUS               " "
+#define DHL_DOC_AGUARDANDO_CONFIRMACAO		"1"
+#define DHL_DOC_CONFIRMACAO_NEGADA			"2"
+#define DHL_DOC_PENDENTE_ACAO				"3"
+#define DHL_DOC_CANCELADO   				"4"
+#define DHL_DOC_CONFIRMACAO_PARCIAL   		"5"
+
+// Status do Campo C5_ZZSTATU
+#define DHL_PV_PENDENTE_INFORMACAO          "1"
+
+// Unidades de Negócios
+#define DHL_BUSINESSUNIT_SPL				"SPL"
+#define DHL_BUSINESSUNIT_PKG				"PKG"
+#define DHL_BUSINESSUNIT_REV				"REV"		
+#define DHL_BUSINESSUNIT_DIS				"DIS"
+#define DHL_BUSINESSUNIT_REP				"REP"
+#define DHL_BUSINESSUNIT_AGE				"AGE"
+#define DHL_BUSINESSUNIT_MUL				"MUL"
+#define DHL_BUSINESSUNIT_AG2				"AG2"
+#define DHL_BUSINESSUNIT_AGL				"AGL"
+#define DHL_BUSINESSUNIT_DI2				"DI2"
+
+
+// Códigos das Interfaces da Aplicação Select
+#define DHL_SELECT_ASN_CONFIRMATION			"4B2"
+#define DHL_SELECT_INVOICE_REQUEST			"3B2"
+#define DHL_SELECT_ITEM_MAINTENANCE			"2A1"
+#define DHL_SELECT_STOCK_ADJUSTMENT			"4C1"
+
+#define ERROR_QTD_CAMPOS					" Quantidade de colunas invalida para gravacao "
+
+// IDs de Produtos Good/Bad
+#define DHL_ID_GOOD							"G"
+#define DHL_ID_BAD							"B"
+#define DHL_ID_SITUACAO_NORMAL				"N"
+#define DHL_ID_SITUACAO_EXCLUIDO			"E"
+
+// Tags referentes a NFe
+#define DHL_NFE_VERSION 				"4.00"
+#define DHL_NFE_LAYOUT					"4.16"
+#define DHL_NFE_INVOICE_INFLOW 			"2"
+#define DHL_NFE_INVOICE_OUTFLOW 		"1"
+#define DHL_NFE_GENERATE_INVOICE 		1
+#define DHL_NFE_GENERATE_CANCELLATION 	2
+#define DHL_NFE_GENERATE_INUTILIZATION 	3
+#define DHL_NFE_FORMAT_ZERO				"0.00"
+
+
+#define DHL_NFE_FORM 'B'
+
+// Status Monitor NFe SEFAZ
+#define DHL_NFE_MONITOR_TRANSMITIDA 		  "T"
+#define DHL_NFE_MONITOR_AUTORIZADA			  "S"
+#define DHL_NFE_MONITOR_USO_DENEGADO 		  "D"
+#define DHL_NFE_MONITOR_NAO_AUTORIZADA 		  "N"
+#define DHL_NFE_MONITOR_CANCEL_NAO_AUTORIZADO "X"
+#define DHL_NFE_MONITOR_EM_CANCELAMENTO       "C"
+
+//Modelo 3
+#define COBRANCA_KIT 						  "1"
+#define RETORNO_INDUSTRIALIZACAO 			  "2"
+
+//SCJ
+#define REMESSA_CONTA_ORDEM					  "3"
+#define RETORNO_SIMBOLICO					  "4"
+#define RETORNO_EFETIVO						  "5"
+#define AJUSTE_FISCAL					  	  "6"
+//TIPO NF SCJ
+#define DEVOLUCAO							  "D"	
+
+//BLOCO K
+#define LISTA_RECEITA_FEDERAL  "ME,MP,EM,PP,PA,SP,PI,OI,"
+#define TIPO_RECEITA_FEDERAL	
+
+#define ARQUIVO_INVALIDO   "X"
+
+//***CONSTANTES UTILIZADAS PARA PROCESSAMENTO POR FILIAL***	
+#define AGE_MONDELEZ  		"130AGE013003"
+#define AGE_BRASKEM_MOV   	"160AGE016029"
+#define AGE_BRASKEM   		"L95AGE95LOTE"
+#define PEG			  		"137PKG013780"
+#define BAYER		  		"044MUL004417"
+#define AGE_PFIZER	  		"016DIS001663"
+#define AGL_LOTE	  		"A82AGL008271"
+#define AGL_LOTE_005  		"005AGL000500"
+#define REC	                "156PKG015642" //Emerson Holanda 28/05/21
+#define AG2_SCJ             "149AG2014901"
+
+//Parâmetros de conexão com o banco de dados V12 TESTE para acesso à Tabela SZ1
+//#define CCONN			"ORACLE/PROT12HO"
+//#define CSERVERADDR	"USQASWSTC000545"
+//#define NPORT			7891
+
+//Parâmetros de conexão com o banco de dados V12 HOMOLOGACAO para acesso à Tabela SZ1
+//#define CCONN			"ORACLE/PROTHOM"
+//#define CSERVERADDR	"USQASWSTC000033"
+//#define NPORT			7890
+
+//Parâmetros de conexão com o banco de dados V12 PRODUCAO para acesso à Tabela SZ1
+#define CCONN			"ORACLE/PROTPRD"
+#define CSERVERADDR		"USQASWSPC000541"
+#define NPORT			7890
+
+#define FAT_TRIANGULAR   '1'

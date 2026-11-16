@@ -1,0 +1,234 @@
+#include "totvs.ch"
+#include "dhl.ch"
+
+#define BLQ_TELA_SIM "1"
+#define ADD_PRODUCT  3
+#define UPD_PRODUCT  4
+
+
+/*/{Protheus.doc} Ag2ItemMaint
+
+Rotina responsável por ler e processar a interface Item Maintenance e atualizar os dados referentes ao produto.
+Processo para a Unidade de Negócio DIS(Pfizer)
+	
+@author Thiago Meschiatti
+@since 03/05/2017
+/*/
+user function Ag2ItemMaint(cFilePath)
+
+	Local nOpc			:= ADD_PRODUCT
+
+	private aDatas      := {}
+	private lMSErroAuto := .F.
+	private cFile       := cFilePath
+	
+	DbSelectArea("SB1")
+	SB1->(DbSetOrder(1))
+	
+	If existProduto()
+		nOpc := UPD_PRODUCT
+	Endif
+	
+	getDatas(nOpc)
+	
+	MSExecAuto({|x, y| Mata010(x, y)},aDatas,nOpc)
+	
+	if lMsErroAuto
+		DisarmTransaction()
+		setFileLog(cFile,"fail","Falha ao incluir o Produto."+CRLF+CRLF+oUtils:getErroAuto())
+		
+		lError := .T. 
+	Else
+		updEan()
+	endif
+	
+return
+
+
+/**
+* Cria o array com os dados para a rotina automatica
+**/
+static function getDatas(nOpc)
+	
+	If nOpc == ADD_PRODUCT
+		aAdd(aDatas,{"B1_FILIAL" , xFilial("SB1")  ,nil})
+		aAdd(aDatas,{"B1_COD"    , getId()         ,nil})
+		aAdd(aDatas,{"B1_DESC"   , getDescription(),nil})
+		aAdd(aDatas,{"B1_TIPO"   , getType()       ,nil})
+		aAdd(aDatas,{"B1_GRUPO"	 , getGroup()	   ,nil})
+		aAdd(aDatas,{"B1_UM"     , getUOM()        ,nil})
+		aAdd(aDatas,{"B1_LOCPAD" , getWareHouse()  ,nil})
+		aAdd(aDatas,{"B1_MSBLQL" , BLQ_TELA_SIM    ,nil})
+		aAdd(aDatas,{"B1_POSIPI" , getNCM()	        ,nil})
+		aAdd(aDatas,{"B1_ORIGEM" , getOrigin()     ,nil})
+		aAdd(aDatas,{"B1_PESBRU" , getGrossWeight(),nil})
+		aAdd(aDatas,{"B1_PESO"	   , getNetWeight()  ,nil})
+//		aAdd(aDatas,{"B1_CODBAR" , getEan()  	   ,nil})		
+		aAdd(aDatas,{"B1_ZZUTSAP", getTypeOfUse()  ,nil})
+		aAdd(aDatas,{"B1_ZZPLANT", getPlantId()	   ,nil})
+		aAdd(aDatas,{"B1_CODGTIN", getTRIB()	   ,nil})
+	Else
+		aAdd(aDatas,{"B1_COD"    , SB1->B1_COD     ,nil})
+		aAdd(aDatas,{"B1_PESBRU" , getGrossWeight(),nil})
+		aAdd(aDatas,{"B1_PESO"	 , getNetWeight()    ,nil})
+		aAdd(aDatas,{"B1_CODGTIN", getTRIB()	   ,nil})
+//		aAdd(aDatas,{"B1_CODBAR" , getEan()  	   ,nil})	
+	EndIf
+
+return
+
+
+/**
+* Coleta o Código do Produto
+**/
+static function getId()
+return Upper(AllTrim(oXml:_ITEM_MAINT:_BODY:_FILEHEADER:_ITEM:TEXT))
+
+
+/**
+* Coleta a Descrição do Produto
+**/
+static function getDescription()
+return Upper(AllTrim(oXml:_ITEM_MAINT:_BODY:_FILEHEADER:_DESCRIPTION:TEXT))
+
+
+/**
+* Coleta o Tipo do Produto
+**/
+static function getType()
+return AllTrim(oXml:_ITEM_MAINT:_BODY:_FILEHEADER:_TYPE:TEXT)
+
+
+/**
+* Coleta a Unidade de Medida
+**/
+static function getUOM()
+return AllTrim(oXml:_ITEM_MAINT:_BODY:_FILEHEADER:_UOM:TEXT)
+
+
+/**
+* Coleta o Armazem
+**/
+static function getWareHouse()
+return AllTrim(oXml:_ITEM_MAINT:_BODY:_FILEHEADER:_WAREHOUSE:TEXT)
+
+
+/**
+* Coleta o NCM
+**/
+static function getNCM()
+return AllTrim(oXml:_ITEM_MAINT:_BODY:_FILEHEADER:_NCM:TEXT)
+
+
+/**
+* Coleta a Origem do Produto
+**/
+static function getOrigin()
+return AllTrim(oXml:_ITEM_MAINT:_BODY:_FILEHEADER:_ORIGIN:TEXT)
+
+
+/**
+* Coleta o Peso Bruto do Produto
+**/
+static function getGrossWeight()
+return val(oXml:_ITEM_MAINT:_BODY:_FILEHEADER:_GROSS_WEIGHT:TEXT)
+
+
+/**
+* Coleta o Peso Liquido do Produto
+**/
+static function getNetWeight()
+return val(oXml:_ITEM_MAINT:_BODY:_FILEHEADER:_NET_WEIGHT:TEXT)
+
+
+/**
+* Coleta o Tipo de Uso do Material
+**/
+static function getTypeOfUse()
+return oXml:_ITEM_MAINT:_BODY:_FILEHEADER:_TYPE_OF_USE:TEXT
+
+
+/**
+* Coleta o Grupo do Material
+**/
+static function getGroup()
+return oXml:_ITEM_MAINT:_BODY:_FILEHEADER:_GROUP:TEXT
+
+
+/**
+* Coleta o Plant Id do Produto
+**/
+static function getPlantId()
+return oXml:_ITEM_MAINT:_BODY:_FILEHEADER:_PLANT_ID:TEXT
+
+/**
+* Coleta o EAN do Produto
+**/
+static function getEan()
+return oXml:_ITEM_MAINT:_BODY:_FILEHEADER:_EAN_CODE:TEXT
+
+/**
+* Coleta o TRIB do Produto
+**/
+static function getTRIB()
+return oXml:_ITEM_MAINT:_BODY:_FILEHEADER:_EAN_TRIB:TEXT
+
+
+/**
+ * Define os Logs de acordo com os tipos de arquivos
+ */
+static function setFileLog(cFile,cLogType,cLogText,cTag,cValue)
+	
+	local cInterface := "Item Maintenance"
+	
+	oLog:start(APP_DLX,DHL_IMPORTACAO,cFile)
+	
+	if !(Empty(cTag))
+		cLogText += CRLF+CRLF+"Tag: "+cTag
+	endIf
+	
+	if !(Empty(cValue))
+		cLogText += CRLF+CRLF+"Valor: "+cValue
+	endIf
+	
+	if (cLogType == "fail")
+		oLog:fail(cInterface, cLogText)
+	elseIf (cLogType == "warn")
+		oLog:warn(cInterface, cLogText)
+	endIf	
+	
+return
+
+
+
+/*
+** Verifica se ja existe produto cadastrado para o código 
+*/
+Static Function existProduto()
+	Local oSql 		:= IpSqlObject():newIpSqlObject()
+	Local cCodPrd 	:= getId()
+	Local lRet		:= .f.
+	
+	oSql:newTable("SB1", "B1_FILIAL || B1_COD PRODUTO", "%SB1.XFILIAL% AND B1_COD = '" + cCodPrd + "'")
+	
+	If oSql:hasRecords()
+		SB1->(DbSeek(oSql:getValue("PRODUTO")))
+		lRet := .t.
+	Endif
+	
+	oSql:close()
+Return (lRet)
+
+
+/*
+** Atualização do EAN - preenchimento exato do conteúdo enviado pelo cliente.
+*/
+Static Function updEan()
+	Local oSql 		:= IpSqlObject():newIpSqlObject()
+	Local cCodPrd 	:= getId()
+	Local cEAN	 	:= Iif(Empty(getEan()), CriaVar("B1_CODBAR", .F.), getEan()) 
+	
+	oSql:update("SB1", "B1_CODBAR = '"+cEAN+"' ", 	"B1_COD = '" + cCodPrd + "'" )
+	
+	oSql:close()
+Return

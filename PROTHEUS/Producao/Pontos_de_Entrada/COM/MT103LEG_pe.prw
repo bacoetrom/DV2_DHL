@@ -1,0 +1,66 @@
+#include "totvs.ch"
+#include "dhl.ch"
+
+/*/{Protheus.doc} MT103LEG
+
+Ponto de entrada para adicionar legendas da pré nota
+	
+@author Renato Castro
+@since 22/10/2014
+
+@return Array Novas cores
+/*/
+User Function MT103LEG()
+
+	local aLegenda    := aClone(Paramixb[1])
+	local nI          := 0
+	local nQtdLeg     := 0
+	local lSelect_new := Iif(SF1->F1_ZZSTATU == "3",.T.,.F.)    //SuperGetMV("ZZ_SELECTN",,.F.,xFilial("SD1"))  //RONI SILVA
+	
+	if 	(FWUnitBusiness() == DHL_BUSINESSUNIT_PKG) .or. ;
+		(FWUnitBusiness() == DHL_BUSINESSUNIT_REP) .or. ;
+		(FWUnitBusiness() == DHL_BUSINESSUNIT_DIS) .or. ;
+		(FWUnitBusiness() == DHL_BUSINESSUNIT_AGE) .or. ;
+		(FWUnitBusiness() == DHL_BUSINESSUNIT_MUL) .or. ;
+		(FWUnitBusiness() == DHL_BUSINESSUNIT_AGL) .or. ;
+		(FWUnitBusiness() == DHL_BUSINESSUNIT_AG2) .or. ;
+		(FWUnitBusiness() == DHL_BUSINESSUNIT_SPL .AND. lSelect_new) .or. ; //RONI SILVA
+		(FWUnitBusiness() == DHL_BUSINESSUNIT_DI2)
+		
+		nQtdLeg := 6
+	elseif (FWUnitBusiness() == DHL_BUSINESSUNIT_SPL .AND. !lSelect_new)
+		nQtdLeg := 4
+	elseif (FWUnitBusiness() == DHL_BUSINESSUNIT_REV)
+		nQtdLeg := 1
+	endif
+	
+	for nI := 1 to nQtdLeg
+		aAdd(aLegenda,{"",""})
+		aIns(aLegenda,1)
+	next nI
+	if nQtdLeg > 0
+		aLegenda[1]	:= {"PMSEDT4" , "Ajuste de Inventário"         }
+		if FWUnitBusiness() != DHL_BUSINESSUNIT_REV
+			aLegenda[2]	:= {"BR_BRANCO", "Docto. Aguardando Confirmação"}
+			aLegenda[3]	:= {"BR_CANCEL", "Docto. Confirmação Negada"    }
+		endif
+		if (FWUnitBusiness() == DHL_BUSINESSUNIT_SPL .AND. !lSelect_new)
+			aLegenda[4]	:= {"PMSEDT2", "Docto. Confirmação Parcial"    }
+		endIf
+		if 	(FWUnitBusiness() == DHL_BUSINESSUNIT_PKG) .or. ;
+			(FWUnitBusiness() == DHL_BUSINESSUNIT_REP) .or. ;
+			(FWUnitBusiness() == DHL_BUSINESSUNIT_DIS) .or. ;
+			(FWUnitBusiness() == DHL_BUSINESSUNIT_AGE) .or. ;
+			(FWUnitBusiness() == DHL_BUSINESSUNIT_MUL) .or. ;
+			(FWUnitBusiness() == DHL_BUSINESSUNIT_AGL) .or. ;
+			(FWUnitBusiness() == DHL_BUSINESSUNIT_AG2) .or. ;
+			(FWUnitBusiness() == DHL_BUSINESSUNIT_SPL .AND. lSelect_new) .or. ; //RONI SILVA
+			(FWUnitBusiness() == DHL_BUSINESSUNIT_DI2)
+			
+			aLegenda[4]	:= {"PMSEDT3"  			, "Docto. Pendente de Ação"       }
+			aLegenda[5]	:= {"PMSEDT1"  			, "Docto. Cancelado"             }
+			aLegenda[6]	:= {"BR_MARRON_OCEAN"   , "Docto. Espelho"             }
+		endIf
+	endif
+
+return aLegenda

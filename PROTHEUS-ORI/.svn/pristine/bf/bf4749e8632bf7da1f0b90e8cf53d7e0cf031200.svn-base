@@ -1,0 +1,56 @@
+#include 'protheus.ch'
+#include 'parmtype.ch'
+#include 'dhl.ch'
+
+/*/{Protheus.doc} Item_PE
+Ponto de entrada referente ao fonte MATA010 em MVC
+@author gusluiz_supplier
+@since 01/07/2019
+@version 1.0
+@return ${return}, ${return_description}
+
+@type function
+/*/
+user function Item()
+
+	local xRet := .T.
+
+	if FWUnitBusiness() == DHL_BUSINESSUNIT_AGE
+
+		xRet := geraArqItemMaintence()
+
+	endIf
+
+Return xRet
+
+/**
+* Gera o arquivo ItemMaintence
+**/
+static function geraArqItemMaintence()
+
+	Local aParam 	:= PARAMIXB
+	Local xRet 		:= .T.
+	Local oObj 		:= ""
+	Local cIdPonto 	:= ""
+	Local cIdModel 	:= ""	
+	Local cMsg 		:= ""
+	Local nOper 	:= -1 
+
+	If aParam != NIL
+
+		oObj 		:= aParam[1]
+		cIdPonto 	:= aParam[2]
+		cIdModel 	:= aParam[3]
+
+		if cIdPonto == "MODELCOMMITNTTS"
+			nOper := oObj:nOperation 
+
+			if nOper == 3 .or. nOper == 4
+				u_AgeItemMaint()
+			endIf
+
+		endIf
+
+	endIf
+
+return xRet

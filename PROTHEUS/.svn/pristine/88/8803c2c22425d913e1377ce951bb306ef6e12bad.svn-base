@@ -1,0 +1,58 @@
+#include 'protheus.ch'
+#include 'dhl.ch'
+
+#define TES 	27
+
+/*/{Protheus.doc} TagProcRef
+Preechimento das tags nfe - nProc / indProc / tpAto (proc_referenciado)
+@author TOTVS IP
+@since 28/05/2024
+@version 1.0
+@type function
+/*/
+user function TagProcRef()
+	local oSql 		:= IpSqlObject():newIpSqlObject()
+	local aProd	    := PARAMIXB[01]
+	local aProcRef	:= PARAMIXB[02]
+	local aNota     := PARAMIXB[03]
+	local cTipo		:= aNota[04]
+    local aAuxProcRef := {}
+	local nI        := 0
+
+	if cTipo == DHL_NFE_INVOICE_OUTFLOW
+		for nI := 1 to len(aProd)
+			if !empty(aProd[nI, TES])
+				cMsgMed := ""
+				oSql:newTable("SF4", "F4_CODIGO, F4_ZZNPROC, F4_ZZINDPR, F4_ZZTPATO", retQrySF4(aProd[nI, TES]))
+
+				if oSql:hasRecords()
+					If !Empty(oSql:getValue("F4_ZZNPROC")) .or. !Empty(oSql:getValue("F4_ZZINDPR")) .or.;
+							!Empty(oSql:getValue("F4_ZZTPATO"))
+						aadd(aAuxProcRef, {oSql:getValue("F4_ZZNPROC"), oSql:getValue("F4_ZZINDPR"),;
+							oSql:getValue("F4_ZZTPATO")})
+					EndIf
+				endif
+
+				oSql:close()
+			endif
+		next nI
+        //aEval(aAuxProcRef, {|x| iif(aScan(aProcRef,  {|y| y[1]+y[2]+y[3] == x[1]+x[2]+x[3]}) == 0, aadd(aProcRef, x),  .f.) })
+        aEval(aAuxProcRef, {|x| iif(!isDuplicados(x, aProcRef), aadd(aProcRef, x),  nil) })
+    endif
+return aClone(aProcRef)
+
+/*
+** Where para tabela SF4
+*/
+static function retQrySF4(cTes)
+	local cQuery := ""
+
+	cQuery += "%SF4.XFILIAL% AND F4_CODIGO = '" + cTes + "' "
+
+return (cQuery)
+
+/*
+** Fitro para aeval de duplicados
+*/
+Static Function isDuplicados(aItem, aUnicos)
+Return aScan(aUnicos, {|x| x[1]+x[2]+x[3] == aItem[1]+aItem[2]+aItem[3]}) > 0

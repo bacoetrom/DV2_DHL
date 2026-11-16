@@ -1,0 +1,152 @@
+#Include 'Protheus.ch'
+#Include 'DHL.ch'
+#define DHL_CAMPO 		1
+#define DHL_CONTEUDO	2
+
+#define DHL_POS_SALDO   4
+#define DHL_POS_ITEM    3
+#define DHL_POS_PRODUTO  2
+
+/*/{Protheus.doc} ProcPcProt
+
+Rotina responsável pelo retorno do número do pedido e itens
+	
+@author Diego de Angelo
+@since 06/06/2016
+
+@param xParam, TipoParam, DescricaoDoParam
+
+@return Array Array de itens para execução da rotina automática.
+/*/
+User Function ProcPcProt(aItens)
+	
+	local aRet	:= ajustaItens(aItens)
+	
+Return aRet
+
+
+/*
+*	Função responsável pelo ajuste dos itens com o numero do pedido e item.
+*/
+static function ajustaItens(aItens)
+	local nI		:= 1
+	local oLog      := DHLLogManager():newDHLLogManager()
+	local oSqlUtil	:= IpSqlObject():newIpSqlObject()
+	local cPoExt	:= ""
+	local cCodProd	:= ""
+	local cPcProt	:= ""
+	local cCodProd	:= ""
+	local cItemPc	:= ""
+	local nPosPo	:= 0
+	local nPosPc	:= 0
+	local nPosCod	:= 0
+	local nPosItPc	:= 0
+	local nPosPc	:= 0
+	local nPosQtd	:= 0
+	local nQuant	:= 0
+	local cItemNf	:= ""
+	local oItemPc	:= DHLRetItemPc():newDHLRetItemPc()
+	local nPQtdIni	:= aScan(aItens[1],{|x| alltrim(x[DHL_CAMPO]) == "D1_QUANT"})
+	local nPcQtdIni	:= aScan(aItens[1],{|x| alltrim(x[DHL_CAMPO]) == "D1_ZZPOEXT"})
+	local nPosItem	:= 0
+	local cDoc		:= If(Type("oNFe:_NFEPROC:_NFE")=="O",oNFe:_NFEPROC:_NFE:_INFNFE:_IDE:_nNF:text,"")
+	local lItemOk	:= .T.
+	local lExistPc	:= .T.
+	
+	// Inicio - Correção error.log array out of bounds ( 0 of 19 ) on { | X,Y | X[NPCQTDINI][2] + STR(X[NPQTDINI][2]) < Y[NPCQTDINI][2] + STR(Y[NPQTDINI][2]) }(PROCPCPROT.PRW)
+	if nPQtdIni == 0
+		nPQtdIni	:= aScan(aItens[1],{|x| alltrim(x[DHL_CAMPO]) == "D1_QTSEGUM"})
+	endIf
+	// Fim - Correção error.log array out of bounds ( 0 of 19 ) on { | X,Y | X[NPCQTDINI][2] + STR(X[NPQTDINI][2]) < Y[NPCQTDINI][2] + STR(Y[NPQTDINI][2]) }(PROCPCPROT.PRW)
+	
+	aItens:=ASORT(aItens, , , { | x,y | x[nPcQtdIni][2] + str(x[nPQtdIni][2]) < y[nPcQtdIni][2] + str(y[nPQtdIni][2]) } )
+	
+	for nI := 1 to len(aItens)
+		
+		nPosPo		:= aScan(aItens[nI],{|x| alltrim(x[DHL_CAMPO]) == "D1_ZZPOEXT"})
+		nPosCod		:= aScan(aItens[nI],{|x| alltrim(x[DHL_CAMPO]) == "D1_COD"})
+		nPosQtd		:= aScan(aItens[nI],{|x| alltrim(x[DHL_CAMPO]) == "D1_QUANT"})
+
+		// Nova regra para tratamento da 1a UM ou da 2a UM
+		if nPosQtd == 0 
+			nPosQtd := aScan(aItens[nI],{|x| alltrim(x[DHL_CAMPO]) == "D1_QTSEGUM"})
+		Endif
+		// FIM - Se 2a UM, alimenta os campos D1_SEGUM e D1_QTSEGUM, caso contrário alimenta os campos D1_UM e D1_QUANT
+
+		nPosItem	:= aScan(aItens[nI],{|x| alltrim(x[DHL_CAMPO]) == "D1_ITEM"})
+	
+		cItemNf		:= aItens[nI, nPosItem, DHL_CONTEUDO]
+		/*
+		cPoExt		:= aItens[nI, nPosPo, DHL_CONTEUDO]
+		*/
+		cCodProd	:= aItens[nI, nPosCod, DHL_CONTEUDO]
+		nQuant		:= aItens[nI, nPosQtd, DHL_CONTEUDO]
+		
+		if  !empty(cPoExt)
+			cPcProt		:= oSqlUtil:getFieldValue("SC7", "C7_NUM", " %SC7.NOTDEL% AND C7_FILIAL = '%SC7.FILIAL%' AND C7_ZZPOEXT = '"+cPoExt+"' ")
+			
+			if !empty(cPcProt)
+				oItemPc:iniciaProcesso(cPcProt)
+				oItemPc:retornaInfoPc(cPcProt, cCodProd, nQuant)
+					
+				lItemOk := oItemPc:getSuccess()
+				
+				nPosPc		:= aScan(aItens[nI],{|x| alltrim(x[DHL_CAMPO]) == "D1_PEDIDO"})
+				nPosItPc	:= aScan(aItens[nI],{|x| alltrim(x[DHL_CAMPO]) == "D1_ITEMPC"})
+					
+				if lItemOk
+					cItemPc	:= oItemPc:getItem()
+					
+					if nPosPc > 0
+						aItens[nI, nPosPc	, DHL_CONTEUDO]	:= cPcProt
+					else
+						aADD(aItens[nI], {"D1_PEDIDO",cPcProt,nil})
+					endIf
+					
+					nPosItPc	:= aScan(aItens[nI],{|x| alltrim(x[DHL_CAMPO]) == "D1_ITEMPC"})
+					
+					if nPosItPc	> 0
+						aItens[nI, nPosItPc	, DHL_CONTEUDO]	:= cItemPc
+					else
+						aADD(aItens[nI], {"D1_ITEMPC",cItemPc,nil})
+					endIf
+				else
+					oLog:start(APP_IMPORTADOR_XML, DHL_IMPORTACAO)
+					oLog:warn("Atencao", "Não foi possivel vincular o item "+cItemNf+ " da nota "+cDoc+" ao pedido de compra pois não existe saldo suficiente.")			
+				endIf
+			else				
+				lExistPc	:= .F.
+			endIf
+		else
+			lExistPc	:= .F.
+		endIf
+		
+		if !lItemOk .OR. !lExistPc
+			nPosPc		:= aScan(aItens[nI],{|x| alltrim(x[DHL_CAMPO]) == "D1_PEDIDO"})
+				
+			if nPosPc > 0
+				aDel(aItens[nI],nPosPc)
+				aSize(aItens[nI],Len(aItens[nI]) - 1)
+			endIf
+			
+			nPosItPc	:= aScan(aItens[nI],{|x| alltrim(x[DHL_CAMPO]) == "D1_ITEMPC"})
+			
+			if nPosItPc > 0
+				aDel(aItens[nI],nPosItPc)
+				aSize(aItens[nI],Len(aItens[nI]) - 1)
+			endIf
+		endIf
+		
+		nPosPo		:= aScan(aItens[nI],{|x| alltrim(x[DHL_CAMPO]) == "D1_ZZPOEXT"})
+	
+		if nPosPo > 0
+			aDel(aItens[nI],nPosPo)
+			aSize(aItens[nI],Len(aItens[nI]) - 1)
+		endIf
+		
+		cPcProt	:= Space(TamSx3("D1_PEDIDO")[1])
+		cItemPc	:= Space(TamSx3("D1_ITEMPC")[1])
+	next nI
+	oItemPc:finalizaProcesso()
+	FreeObj(oItemPc)
+return aItens

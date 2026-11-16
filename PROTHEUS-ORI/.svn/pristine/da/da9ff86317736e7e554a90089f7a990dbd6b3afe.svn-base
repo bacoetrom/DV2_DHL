@@ -1,0 +1,277 @@
+#include 'protheus.ch'
+#include 'dhl.ch'
+
+
+/*/{Protheus.doc} MulImpSG1
+//TODO Descrição auto-gerada.
+@author Thiago Meschiatti
+@since 16/03/2017
+@version undefined
+
+@type function
+/*/
+user function MulImpSG1()
+
+	local	lErro		:= .f.
+	local	oImpArq		:=	DHLImpCsv():New()
+	local	oProcess	:=  MsNewProcess():New({|| fProc(@oProcess, @oImpArq, cBarraX) },"Estrutura de Produto","Lendo Registros do Arquivo...",.T.)
+	local	cBarraX		:=	Iif(IsSrvUnix(), "/", "\")
+	private oParamBox 	:=  nil
+
+	if !(showParam())
+		return
+	endif
+
+	oProcess:Activate()
+
+	if (oImpArq:lError)
+		MsgStop(oImpArq:cError)
+	else
+		oImpArq:lShowValid	:= .f.
+		oImpArq:lRemocAcen	:= .t.
+		oImpArq:lShwFields	:= .t.
+		oImpArq:mShowData()
+	endif
+
+return ()
+
+
+/*
+** Processamento
+*/
+static function fProc(oProcess, oImpArq, cBarraX)
+
+	local	lImported	:=	.f.
+	local	bSair		:=	{ || oImpArq:oDlg:end() }
+	local	bProcessa	:=	{ || Processa( { || fImportacao(@oImpArq, @lImported, cBarraX) },"Gravando os registros...") }
+
+	oImpArq:bSair		:=	bSair
+	oImpArq:bProcessa	:=	bProcessa
+	oImpArq:cFile		:=	alltrim(oParamBox:getValue("file"))
+	oImpArq:lHasCabec	:= .f.
+	oImpArq:aCabec 		:= {"G1_COD", "QUANT_PAI", "G1_QUANT", "G1_COMP"}
+	oImpArq:mImport(@oProcess)
+
+return
+
+
+/*
+** Processamento
+*/
+static function fImportacao(oImpArq,lImported,cBarraX)
+
+	local	nI			:=	0
+	local	nRecs		:=	Len(oImpArq:aData)
+	local	cFolderLOG	:=	AllTrim(MV_PAR03)
+	local	aTamanho	:=	{}
+	local	nContador	:=	0
+	local	aTamSX3		:=	{}
+	local	cCampo
+
+	private	cMsgFim		:=	""
+	private	aComponentes:= {}
+	private aCabec		:= {}
+	private nPos		:= 0
+
+	//	Obtendo previamente o tamanho dos campos no SX3.
+	for nContador	:=	1 To Len(oImpArq:aCabec)
+		cCampo		:=	Upper(AllTrim(oImpArq:aCabec[nContador]))
+		aTamSX3		:=	InfoSX3(cCampo)	
+
+		//	Campos informados no arquivo .CSV. e inexistentes no SX3 serao desprezados
+		if aTamSX3[1] <> NIL .and. aTamSX3[1] > 0
+			aAdd(aTamanho, {cCampo, aTamSX3[3], aTamSX3[1], aTamSX3[2]} )	// cCampo, cTipo, nTamanho, nCasaDecim
+		endif
+	next nContador
+
+	cFolderLOG	+=	Iif(Right(AllTrim(cFolderLOG),1)==cBarraX, "", cBarraX)
+
+	MakeDir(cFolderLOG)
+
+	if !lImported
+		if oImpArq:lStatus
+			lImported := .T.
+			ProcRegua(nRecs)
+
+			for nI := 1 to nRecs
+				IncProc("Importando " + AllTrim(Str(nI)) + " de " + AllTrim(Str(nRecs)) + "...")
+				fRotAuto(oImpArq, nI,cFolderLOG,aTamanho,nRecs)
+			next nI
+
+			aviso("Log Final", cMsgFim, {"OK"})
+		Else
+			MsgStop("O Arquivo ESTA com INCONSISTENCIA(S). A Importacao nao sera realizada.")
+		endif
+	Else
+		MsgStop("Os dados ja foram PROCESSADOS.")
+	endif
+Return
+
+
+/*
+** Execução da rotina automática
+*/
+static function fRotAuto(oImpArq, nLinha, cFolderLOG, aTamanho, nRecs)
+
+	local	lRetorno	:=	.t.
+	local	lContinua	:= .f.
+	local	aVetor		:=	{}
+	local	aTamSX3		:=	{}
+	local	cTipo		:=	""
+	local	cCampo		:=	""
+	local	cProdAtual	:= 	""	
+	local	cCompAtual	:= 	""
+	local	cVldUser	:=	NIL
+	local	nContador	:=	0
+	local	nTamanho	:=	""
+	local	nCasaDecim	:=	0
+	local	nPosicao	:=	0
+	local 	nCont		:= 	0
+	local	nPosComp	:=	0
+	local	uConteudo
+
+	lMsErroAuto	:=	.F.
+	lMsHelpAuto	:=	.T.
+
+	//	Montagem DINAMICA do vetor que sera passado para Rotina Automatica, na ordem informada no arquivo .CSV.
+	for nContador	:=	1 To Len(oImpArq:aCabec)
+		cCampo		:=	Upper(AllTrim(oImpArq:aCabec[nContador]))
+		nPosicao	:=	aScan(aTamanho, {|X| AllTrim(X[1]) == Upper(cCampo)})
+
+		//	Campos informados no arquivo .CSV. e inexistentes no SX3 serao desprezados
+		if nPosicao > 0
+			aTamSX3		:=	aTamanho[nPosicao]
+			cTipo		:=	aTamSX3[2]
+			nTamanho	:=	aTamSX3[3]
+			nCasaDecim	:=	aTamSX3[4]
+			cVldUser	:=	NIL
+
+			if 		cTipo == "C"
+				if len(oImpArq:aData[nLinha][nContador]) > nTamanho 
+					uConteudo	:= SubStr(	oImpArq:aData[nLinha][nContador], 01, nTamanho)
+				else
+					uConteudo	:= padr(oImpArq:aData[nLinha][nContador], nTamanho, ' ')
+				endif	
+
+			Elseif	cTipo == "N"
+				uConteudo	:=	Val(	oImpArq:aData[nLinha][nContador])
+			Elseif	cTipo == "D"
+				uConteudo	:=	CtoD(	oImpArq:aData[nLinha][nContador])
+			endif
+
+			aAdd(aVetor, {cCampo, uConteudo, cVldUser})
+		else
+			nQuantPai := Val(	oImpArq:aData[nLinha][nContador])
+		endif
+	next nContador
+
+	if cProdAtual == "" 
+		for nCont := 1 to len(aVetor)
+			if aVetor[nCont][1] == "G1_COD"
+				nPos := nCont
+			endif
+
+			if aVetor[nCont][1] == "G1_COMP"
+				nPosComp := nCont
+			endif
+		next nCont	
+
+		cProdAtual 	:= aVetor[nPos][2]
+		cCompAtual	:= aVetor[nPosComp][2]
+
+		if temSG1(cProdAtual, cCompAtual)
+			lContinua := .t.
+
+			aCabec 		:= {{"G1_COD",cProdAtual,NIL},;
+			{"G1_QUANT", nQuantPai,NIL},;
+			{"NIVEL1","S",NIL},;
+			{"NIVALT","S",NIL}}
+		else
+			cMsgFim += "Erro atualização do produto " + alltrim(cProdAtual) + " da linha " + AllTrim(Str(nLinha)) + " do arquivo importado." + CRLF
+		endif
+
+	endif
+
+	if lContinua
+
+		aAdd(aVetor, {"G1_TRT", 	CriaVar("G1_TRT", .f.), cVldUser})
+		aAdd(aVetor, {"G1_INI", 	dDataBase	, cVldUser})
+		aAdd(aVetor, {"G1_FIM", 	SG1->G1_FIM, cVldUser})
+		aAdd(aVetor, {"G1_NIV", 	SG1->G1_NIV, cVldUser})
+		aAdd(aVetor, {"G1_NIVINV", 	SG1->G1_NIVINV, cVldUser})
+		aAdd(aComponentes,aVetor)
+
+		BEGIN TRANSACTION
+
+			MSExecAuto({|x,y,z| mata200(x,y,z)},aCabec,aComponentes,4) 
+
+			if lMsErroAuto
+				DisarmTransaction()
+				cMsgFim += "Erro atualização do produto " + alltrim(cProdAtual) + " da linha " + AllTrim(Str(nLinha)) + " do arquivo importado." + CRLF
+				lRetorno := .t.
+			else
+				cMsgFim += "Estrutura do produto " + alltrim(cProdAtual) + " da linha " + AllTrim(Str(nLinha)) + " atualizada com sucesso!" + CRLF
+			endif
+
+		END TRANSACTION 
+	endif
+
+	aCabec 			:= {}
+	aComponentes 	:= {}
+	cProdAtual 		:= ""
+	cCompAtual 		:= ""
+Return
+
+
+/*
+** Retorna informações do campo
+*/
+static function InfoSX3(cCampo)
+	local	aRetorno	:=	{0,0,""}
+
+	aRetorno[1] := getSX3Cache(cCampo, "X3_TAMANHO")
+	aRetorno[2] := getSX3Cache(cCampo, "X3_DECIMAL")
+	aRetorno[3] := getSX3Cache(cCampo, "X3_TIPO")
+
+Return(aRetorno)
+
+
+/*
+** Verifica existencia do cadastro da estrutura
+*/
+static function temSG1(cPai, cComponente)
+	local	oSql 	:= IpSqlObject():newIpSqlObject()
+	local	cQuery	:= ""
+	local	lRet	:= .f.
+
+	oSql:newTable("SG1", "G1_COD", " %SG1.XFILIAL% AND G1_COD = '" + cPai + "' AND G1_COMP = '" + cComponente + "'")
+
+	if oSql:hasRecords()
+		lRet := .t.
+		dbSelectArea("SG1")
+		SG1->(dbSetOrder(1))
+		SG1->(dbSeek(xFilial('SG1') + oSql:getValue("G1_COD")))
+	endif
+
+	oSql:close()
+return (lRet)
+
+
+/*
+*	Função responsável pela exibição da tela de parâmetros.
+*/
+static function showParam()
+	local cNome		:= "Estrutura de Produto"
+	local cTitulo	:= "Informe o arquivo"
+
+	oParamBox 	:= IpParamBoxObject():newIpParamBoxObject(cNome)
+
+	oParamBox:setTitle(cTitulo)
+
+	oParam := IpParamObject():newIpParamObject("file", "file", "Diretório", "C", 80)
+	oParam:setFileStartDirectory("C:\")
+	oParam:setFileTypes("Arquivos CSV |*.csv")
+	oParam:setFileParams(GETF_LOCALFLOPPY+GETF_LOCALHARD+GETF_NETWORKDRIVE)
+	oParamBox:addParam(oParam)
+
+return oParamBox:show()

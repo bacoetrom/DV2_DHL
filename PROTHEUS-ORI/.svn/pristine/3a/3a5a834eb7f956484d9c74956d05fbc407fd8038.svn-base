@@ -1,0 +1,60 @@
+#include 'protheus.ch'
+#include 'dhl.ch'
+
+#define LOTE	 	19
+#define INF_ADIC 	25
+
+/*/{Protheus.doc} InfMedPrd
+Inclusão de informacao de lote nos dados adicionais do produto.
+@author Thiago Meschiatti
+@since 28/07/2016
+@version undefined
+@type function
+/*/
+user function InfMedPrd(aProd, aInfoItem, aNota)
+	local oSql 		:= IpSqlObject():newIpSqlObject()
+	local cSeries	:= aNota[01]
+	local cDoc		:= aNota[02]
+	local cTipo		:= aNota[04]
+	local cTipoNF	:= aNota[05]
+	local cMsgMed	:= ""
+	
+	if cTipo == DHL_NFE_INVOICE_OUTFLOW
+	
+		for nI := 1 to len(aProd)
+			if !empty(aProd[nI, LOTE])
+				cMsgMed := ""
+				oSql:newTable("CD7", "*", retQrySD2(cDoc, cSeries, aInfoItem[nI, 4]))
+				
+				if oSql:hasRecords()
+					cMsgMed += "Lote: " + alltrim(oSql:getValue("CD7_LOTE")) + " "
+					cMsgMed += "Qtd.: " + alltrim(str(oSql:getValue("CD7_QTDLOT"))) + " "
+					cMsgMed += "Dt. Valid.: " + dtoc(stod(oSql:getValue("CD7_VALID"))) + " "
+					cMsgMed += "Dt. Fabric.: " + dtoc(stod(oSql:getValue("CD7_FABRIC"))) + " "
+				endif
+				
+				
+				if empty(aProd[nI,INF_ADIC])
+					aProd[nI,INF_ADIC] := cMsgMed
+				else
+					aProd[nI,INF_ADIC] += " / " + cMsgMed
+				endif
+				oSql:close()
+			endif
+		next nI
+		
+	endif
+return
+
+
+
+/*
+** Where para tabela SD2
+*/
+static function retQrySD2(cDoc, cSeries, cItem)
+	local cQuery := ""
+	
+	cQuery += "%CD7.XFILIAL% AND CD7_TPMOV = 'S' AND CD7_DOC = '" + cDoc + "' AND CD7_SERIE = '" + cSeries + "'"
+	cQuery += " AND CD7_ITEM = '" + cItem + "' "
+	
+return (cQuery)

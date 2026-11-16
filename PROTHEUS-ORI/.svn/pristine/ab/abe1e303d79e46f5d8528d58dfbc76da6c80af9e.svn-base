@@ -1,0 +1,38 @@
+{
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"type": "totvs_language_debug",
+			"request": "launch",
+			"name": "TOTVS Language Debug",
+			"program": "${command:AskForProgramName}",
+			"cwb": "${workspaceFolder}",
+			"smartclientBin": "E:\\totvs\\protheus\\teste\\protheus12\\bin\\smartclient_X64\\smartclient.exe",
+			"isMultiSession": true,
+			"enableTableSync": true
+		}
+	],
+	"lastPrograms": [
+		{
+			"label": "SIGAADV",
+			"description": "<nil>"
+		},
+		{
+			"label": "SIGACFG",
+			"description": "<nil>"
+		},
+		{
+			"label": "U_DHLDLX",
+			"description": "<nil>"
+		},
+		{
+			"label": "MPSDU",
+			"description": "<nil>"
+		},
+		{
+			"label": "U_",
+			"description": "<nil>"
+		}
+	],
+	"lastProgramExecuted": "SIGAADV"
+}

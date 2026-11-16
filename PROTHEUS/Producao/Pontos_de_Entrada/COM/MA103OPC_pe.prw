@@ -1,0 +1,29 @@
+#include "totvs.ch"
+#include "dhl.ch"
+
+/*/{Protheus.doc} MA103OPC
+
+Ponto de entrada para adicionar itens no menu da Nota Fiscal de Entrada
+	
+@author Winston Dellano de Castro
+@since 28/11/2014
+
+@return Array Rotinas a serem adicionadas
+/*/
+user function MA103OPC()
+
+	local aButtons := {}
+	
+	if (FWUnitBusiness() == DHL_BUSINESSUNIT_PKG) .OR. (FWUnitBusiness() == DHL_BUSINESSUNIT_MUL) 
+		aAdd(aButtons,{"Reenv. F. Coverage","U_FiscalCoverage()",0,5})
+	Elseif FWUnitBusiness() == DHL_BUSINESSUNIT_DIS
+		aAdd(aButtons,{"Reenv. F. Coverage","U_DisFiscalCoverage()",0,5})
+		aAdd(aButtons,{"Enviar ASN","U_CallDisASNGen()",0,5})
+		aAdd(aButtons,{"Inc. Chave NFe","U_INCHVNFE()",0,5})
+	ElseIf FWUnitBusiness() == DHL_BUSINESSUNIT_AGE .or. FWUnitBusiness() == DHL_BUSINESSUNIT_AG2 
+		aAdd(aButtons,{"Reenv. F. Coverage","U_AgeFiscalCoverage()",0,5})		
+	Elseif FWUnitBusiness() == DHL_BUSINESSUNIT_DI2
+		aAdd(aButtons,{"Enviar ASN","U_CallDi2ASNGen()",0,5})
+	endif
+	
+return aButtons

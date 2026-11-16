@@ -1,0 +1,427 @@
+#Include 'Totvs.ch'
+#Include 'DHL.ch'
+
+#Define GETF_ONLYSERVER 1
+
+/*/{Protheus.doc} RepXMLTerceiro (REP)
+		@author 	Cassandra J. Silva 
+		@version 	1.0
+		@since 		22/08/2016	
+/*/
+******************************************************************************************************************
+User Function RepXMLTerceiro()
+******************************************************************************************************************
+	Local cXML		:= ""
+	Local cArquivo	:= ""
+	Local cDirectory:= ""
+	Local cCFLocacao:= ""
+	Local cCFComod  := ""
+	Local cUnidade	:= DHL_BUSINESSUNIT_REP
+	private lVldEstr	:= SuperGetMV("ZZ_VLDESTR",,.F.)
+	private lNewAge       := SuperGetMV("ZZ_NEWAGE",,.F.) //adicionado por Edson Deluca - FIT Gestão	
+	private lAutomatic    := SuperGetMV("ZZ_AUTOMAT",,.F.) //adicionado por Edson Deluca - FIT Gestão	
+    
+	If FWUnitBusiness() == cUnidade
+
+		Tela(@cXML, @cDirectory, @cArquivo, @cCFLocacao, @cCFComod)
+	    
+		If !Empty(cXML) .and. !Empty(cDirectory) .and. !Empty(cArquivo) .and. !Empty(cCFLocacao) .and. !Empty(cCFComod)
+		
+			Processa({|| GravaHist(cXML, cDirectory, cArquivo, cCFLocacao, cCFComod) },"Processando...")
+			
+		Endif	
+
+	Else
+		Aviso("Unidade "+cUnidade,"Rotina específica da unidade REP.",{"OK"})
+	Endif
+
+Return Nil
+
+******************************************************************************************************************
+Static Function GravaHist(cXML, cDirectory, cArquivo, cCFLocacao, cCFComod)
+******************************************************************************************************************
+	Local oLog 		:= Nil
+	Local cError	:= ""
+	Local aPedido	:= {}
+	Private oImpNfe	:= Nil
+	Private aLogAuto:= {}
+	
+	ProcRegua(1)
+	
+	IncProc()
+	
+	oLog := DHLLogManager():newDHLLogManager()
+	oDir := DHLDirectoryManager():newDHLDirectoryManager(cDirectory)
+	
+	If oDir:startProcess(cXML)
+		oLog:start(APP_IMPORTADOR_XML, DHL_IMPORTACAO, cXML)
+		oImpNfe	:= TImpNfe():new(cDirectory, cArquivo+".processing", .T.)
+		IF LEN(oImpNfe:aCab) > 0
+			oLog:success(cXML)
+			oDir:setProcessed(cXML)
+			aPedido := GrvDados(oImpNfe, cCFLocacao, cCFComod)
+			If Len(aPedido) > 0
+				U_RepGeraPedido(1,aPedido,Nil)
+			Endif
+		endif
+	Endif
+	
+Return Nil
+		
+******************************************************************************************************************
+Static Function retError(aLogAuto)
+******************************************************************************************************************
+	Local cError := ""
+	Local nI	 := 0
+	
+	For nI:=1 To Len(aLogAuto)
+		If Substr(aLogAuto[nI],1,1) $ "A|E|"
+			cError += aLogAuto[nI] +CRLF
+		Endif
+	Next nI
+	
+Return (cError)
+
+******************************************************************************************************************                                 
+Static Function GrvDados(oImpNfe, cCFLocacao, cCFComod)
+******************************************************************************************************************
+	Local aRetorno 	:= {}
+	Local aItens	:= {}
+	Local cCliFor	:= ""
+	Local cLoja		:= ""
+	Local nCont		:= 0
+	Local aCliEx    := {}
+	
+	If lVldEstr .and. TYPE("oImpNfe:Dest:_CNPJ:Text") == "U"
+		If TYPE("oImpNfe:Dest:_idEstrangeiro:Text") != "U"
+			If oImpNfe:Dest:_idEstrangeiro:Text != ""
+				aCliEx := getCliEx(oImpNfe:Dest:_idEstrangeiro:Text)
+				If len(aCliEx) > 0 
+					cCliFor  := aCliEx[1]
+					cLoja    := aCliEx[2]	
+				Else
+					MsgAlert("Não foi possível identificar o codigo de cliente com ID Estrangeiro: " + oImpNfe:Dest:_idEstrangeiro:Text)
+					Return aRetorno
+				EndIf
+			Else
+				MsgAlert("Tag IdEstrangeiro no XML está vazia.")
+				Return aRetorno
+			EndIf
+		Else
+			MsgAlert("Tag IdEstrangeiro no XML inexistente.")
+			Return aRetorno	
+		EndIf
+	Else
+		//--- Destinatário:
+		If TYPE("oImpNfe:Dest:_CNPJ:Text") != "U"
+			SA1->(dbSetOrder(3))
+			If SA1->(dbSeek( xFilial("SA1") + Padr(oImpNfe:Dest:_CNPJ:Text,Len(SA1->A1_CGC)) ))		
+				cCliFor  := SA1->A1_COD
+				cLoja    := SA1->A1_LOJA
+			Else
+				msgalert("Destinatário não encontrado! Verifique o cadastro de CLIENTES.")
+				return aRetorno		
+			Endif
+		Else
+			msgalert("Não foi possível identificar a tag CNPJ do Destinatário.")
+			return aRetorno		
+		EndIf
+		
+	EndIf
+	
+	SZ8->(dbSetOrder(1))
+	If !SZ8->(dbSeek( xFilial("SZ8") + oImpNfe:aCab[01,2] + oImpNfe:aCab[02,2] + cCliFor + cLoja ))
+		
+		aItens := oImpNfe:aItens //--- Vetor contendo os itens da nota fiscal
+		
+		//--- Cabecalho:
+		RecLock("SZ8",.T.)
+		SZ8->Z8_FILIAL	:= xFilial("SZ8")
+		SZ8->Z8_DOC 	:= oImpNfe:aCab[01,2]
+		SZ8->Z8_SERIE   := oImpNfe:aCab[02,2]
+		
+		SZ8->Z8_CLIENTE := cCliFor 
+		SZ8->Z8_LOJA    := cLoja   
+		
+		SZ8->Z8_EMISSAO := oImpNfe:aCab[05,2] // oImpNfe:aCab[8,2]
+		SZ8->Z8_EST		:= oImpNfe:aCab[06,2]
+		SZ8->Z8_TIPO	:= oImpNfe:aCab[07,2]
+		SZ8->Z8_ESPECIE	:= oImpNfe:aCab[09,2]
+		SZ8->Z8_CHVNFE	:= oImpNfe:aCab[10,2]
+		SZ8->Z8_TPNF   	:= If(aItens[1,ascan(aItens[1], {|x| x[1] == "D1_ZZCFOP"}),2] $ cCFLocacao,"L","C") //--- Locacal ou Comodato
+		SZ8->Z8_USUARIO	:= cUserName
+		SZ8->Z8_STATUS	:= "I"
+			
+		//--- Emitente:
+		SA1->(dbSetOrder(3))
+		SA1->(dbSeek( xFilial("SA1") + Padr(oImpNfe:Emitente:_CNPJ:Text,Len(SA1->A1_CGC)) ))
+		SZ8->Z8_CLIEMIT := SA1->A1_COD
+		SZ8->Z8_LOJEMIT := SA1->A1_LOJA
+		SZ8->Z8_EMITENT := oImpNfe:Emitente:_xNome:Text
+		SZ8->(MsUnLock())
+			
+		//--- Itens:
+		For nCont:=1 To Len(aItens)
+			SB1->(dbSetOrder(1))
+			If SB1->(dbSeek( xFilial("SB1") + Padr(aItens[nCont,ascan(aItens[nCont], {|x| x[1] == "D1_COD"}),2],Len(SB1->B1_COD)) ))
+				RecLock("SZ9",.T.)
+				SZ9->Z9_FILIAL 		:= xFilial("SZ9")
+				SZ9->Z9_DOC			:= SZ8->Z8_DOC
+				SZ9->Z9_SERIE		:= SZ8->Z8_SERIE
+				SZ9->Z9_CLIENTE     := SZ8->Z8_CLIENTE
+				SZ9->Z9_LOJA        := SZ8->Z8_LOJA
+				SZ9->Z9_ITEM		:= StrZero(Val(aItens[nCont,ascan(aItens[nCont], {|x| x[1] == "D1_ITEM"}),2]),Len(SZ9->Z9_ITEM))
+				SZ9->Z9_COD			:= SB1->B1_COD
+				SZ9->Z9_DESCRIC		:= SB1->B1_DESC
+				SZ9->Z9_UM			:= IIF(lNewAge .And. lAutomatic,aItens[nCont,ascan(aItens[nCont], {|x| x[1] == "D1_UM"}),2],SB1->B1_UM)
+				SZ9->Z9_QUANT		:= aItens[nCont,ascan(aItens[nCont], {|x| x[1] == "D1_QUANT"}),2]				
+				SZ9->Z9_PRCVEN		:= aItens[nCont,ascan(aItens[nCont], {|x| x[1] == "D1_VUNIT"}),2]
+				SZ9->Z9_TOTAL		:= aItens[nCont,ascan(aItens[nCont], {|x| x[1] == "D1_TOTAL"}),2]
+				SZ9->Z9_CF			:= aItens[nCont,ascan(aItens[nCont], {|x| x[1] == "D1_ZZCFOP"}),2]								
+				SZ9->Z9_TP   		:= If(aItens[nCont,ascan(aItens[nCont], {|x| x[1] == "D1_ZZCFOP"}),2] $ cCFLocacao,"L","C") //--- Locacal ou Comodato
+				
+				if isProdutLote(SB1->B1_COD) //Gustavo Luiz 17/05/2019 Ajustes 
+					SZ9->Z9_LOTE		:= aItens[nCont,ascan(aItens[nCont], {|x| x[1] == "D1_LOTECTL"}),2]
+					SZ9->Z9_DTVALID		:= aItens[nCont,ascan(aItens[nCont], {|x| x[1] == "D1_DTVALID"}),2]
+					SZ9->Z9_DTFABR		:= aItens[nCont,ascan(aItens[nCont], {|x| x[1] == "D1_ZZDFABR"}),2]
+				endIf
+				
+				SZ9->(MsUnLock()) 
+			Endif
+		Next
+			
+		If SZ8->Z8_TPNF == "L" //--- Somente Locacao vai gerar Pedido de Venda
+			aAdd(aRetorno, xFilial("SZ8") + SZ8->Z8_DOC + SZ8->Z8_SERIE + SZ8->Z8_CLIENTE + SZ8->Z8_LOJA )
+		Endif
+	Else
+		Alert("Nota já importada. Verifique!")
+		lRetorno := .F.
+	Endif
+	
+Return aRetorno
+
+******************************************************************************************************************                                 
+User Function RepGeraPedido(nOpt, aPedido, oModel)
+******************************************************************************************************************
+	Local nOperation:= 0
+	
+	If nOpt == 2 //--- Inclusao Manual
+		FWFormCommit(oModel)
+		nOperation:= oModel:GetOperation()
+		
+		If nOperation == 3   
+			If SZ8->Z8_TPNF == "L"
+				aAdd(aPedido, xFilial("SZ8") + SZ8->Z8_DOC + SZ8->Z8_SERIE + SZ8->Z8_CLIENTE + SZ8->Z8_LOJA )
+			Endif
+			
+		ElseIf nOperation == 5  
+			If SZ8->Z8_TPNF == "L"
+				SC5->(dbSetOrder(1))
+				SC5->(dbSeek( xFilial("SC5") + SZ8->Z8_PEDIDO ))
+				GravaPed(5,nOpt)    
+			Endif
+		Endif
+	Endif
+	
+	If Len(aPedido) > 0
+		SZ8->(dbSetOrder(1))
+		If SZ8->(dbSeek( aPedido[1] ))
+			SZ9->(dbSetOrder(1))
+			If SZ9->(dbSeek( aPedido[1] ))
+				GravaPed(3,nOpt)
+			Endif
+		Endif
+	Endif
+	
+Return .T.
+
+******************************************************************************************************************
+Static Function GravaPed(nOperacao,nOpt)
+******************************************************************************************************************
+	Local aSC5 		:= {}
+	Local aSC6 		:= {}
+	Local aDetail 	:= {}
+	Local cTesNfp4	:= GetMv("ZZ_TESNFP4")
+	Private lMsErroAuto	:= .F.
+	
+	//--- Cabecalho Pedido Venda:
+	aAdd(aSC5,{"C5_FILIAL" 	, If(nOperacao == 5, SC5->C5_FILIAL , xFilial("SC5"))			,Nil})
+	aAdd(aSC5,{"C5_NUM"	  	, If(nOperacao == 5, SC5->C5_NUM 	, getNextSalesOrderNumber()),Nil})
+	aAdd(aSC5,{"C5_TIPO"   	, If(nOperacao == 5, SC5->C5_TIPO 	, "N")                      ,Nil})
+	aAdd(aSC5,{"C5_CLIENTE"	, If(nOperacao == 5, SC5->C5_CLIENTE, SZ8->Z8_CLIEMIT)  		,Nil})
+	aAdd(aSC5,{"C5_LOJACLI"	, If(nOperacao == 5, SC5->C5_LOJACLI, SZ8->Z8_LOJEMIT) 	 		,Nil})
+	aAdd(aSC5,{"C5_CONDPAG"	, If(nOperacao == 5, SC5->C5_CONDPAG, Alltrim(GetMv("ZZ_CONDINT"))),Nil})
+	aAdd(aSC5,{"C5_ZZNFTER"	, If(nOperacao == 5, SC5->C5_ZZNFTER, SZ8->Z8_DOC) 	 			,Nil}) //--- NF Origem
+	aAdd(aSC5,{"C5_ZZSETER"	, If(nOperacao == 5, SC5->C5_ZZSETER, SZ8->Z8_SERIE)	 		,Nil}) //--- Série da NF Origem
+	aAdd(aSC5,{"C5_ZZCLTER"	, If(nOperacao == 5, SC5->C5_ZZCLTER, SZ8->Z8_CLIEMIT)  		,Nil}) //--- Emitente
+	aAdd(aSC5,{"C5_ZZLJTER"	, If(nOperacao == 5, SC5->C5_ZZLJTER, SZ8->Z8_LOJEMIT)  		,Nil}) //--- Loja do Emitente	
+			
+	//--- Itens Pedido Venda:
+	If nOperacao == 5
+		SC6->(dbSetOrder(1))
+		SC6->(dbSeek( xFilial("SC6") + SC5->C5_NUM ))
+		While SC6->(!Eof()) .and. SC6->C6_FILIAL == SC5->C5_FILIAL .and. SC6->C6_NUM == SC5->C5_NUM
+			aDetail := {}
+			aAdd(aDetail, {"C6_ITEM"	, SC6->C6_ITEM		, Nil})
+			aAdd(aDetail, {"C6_PRODUTO"	, SC6->C6_PRODUTO	, Nil})
+			aAdd(aDetail, {"C6_QTDVEN"	, SC6->C6_QTDVEN	, Nil})
+			aAdd(aDetail, {"C6_PRCVEN"	, SC6->C6_PRCVEN	, Nil})
+			aAdd(aDetail, {"C6_VALOR"	, SC6->C6_VALOR 	, Nil})
+			aAdd(aDetail, {"C6_TES"		, SC6->C6_TES		, Nil})
+			aAdd(aSC6, aDetail)
+			SC6->(dbSkip())
+		Enddo
+	Else
+		While SZ9->(!Eof()) .and. SZ9->Z9_FILIAL+SZ9->Z9_DOC+SZ9->Z9_SERIE+SZ9->Z9_CLIENTE+SZ9->Z9_LOJA == SZ8->Z8_FILIAL+SZ8->Z8_DOC+SZ8->Z8_SERIE+SZ8->Z8_CLIENTE+SZ8->Z8_LOJA				
+			aDetail := {}
+			aAdd(aDetail, {"C6_ITEM"	, StrZero(Len(aSC6)+1,Len(SC6->C6_ITEM))			, Nil})
+			aAdd(aDetail, {"C6_PRODUTO"	, SZ9->Z9_COD		, Nil})
+			aAdd(aDetail, {"C6_QTDVEN"	, SZ9->Z9_QUANT		, Nil})
+			aAdd(aDetail, {"C6_PRCVEN"	, SZ9->Z9_PRCVEN	, Nil})
+			aAdd(aDetail, {"C6_VALOR"	, A410Arred(SZ9->Z9_PRCVEN * SZ9->Z9_QUANT,"C6_VALOR") , Nil})
+			aAdd(aDetail, {"C6_TES"		, Alltrim(cTesNfp4), Nil})
+			aAdd(aSC6, aDetail)					
+			SZ9->(dbSkip())
+		Enddo
+	Endif
+			
+	If Len(aSC5) > 0 .and. Len(aSC6) > 0
+
+		lMsErroAuto := .F.
+		MsExecAuto({|x,y,z| MATA410(x,y,z)}, aSC5, aSC6, nOperacao)
+		
+		If lMsErroAuto
+			MostraErro()
+		ElseIf nOperacao == 3
+			RecLock("SZ8",.F.)
+			SZ8->Z8_PEDIDO 	:= SC5->C5_NUM
+			SZ8->(MsUnLOck()) 
+			
+			Aviso("LOCAÇÃO","Gerado pedido de venda no. "+SC5->C5_NUM+".",{"OK"})
+		ElseIf nOperacao == 5
+			RecLock("SZ8",.F.)
+			SZ8->Z8_PEDIDO 	:= " "
+			SZ8->(MsUnLOck()) 
+			
+			Aviso("LOCAÇÃO","EXCLUÍDO o pedido de venda no. "+SC5->C5_NUM+".",{"OK"})
+		EndIf
+	Endif
+			
+Return Nil
+
+******************************************************************************************************************
+Static Function getNextSalesOrderNumber()
+******************************************************************************************************************	
+	Local cMaxNumber  := ""
+	Local cNextNumber := ""
+	Local oSql		  := IpSqlObject():newIpSqlObject()
+	
+	oSql:newAlias(" SELECT MAX(C5_NUM) MAXNUMBER "+;
+		" FROM %SC5.SQLNAME% "+;
+		" WHERE %SC5.XFILIAL% ")
+	
+	cMaxNumber := oSql:getValue("MAXNUMBER")
+	
+	If Empty(cMaxNumber)
+		cNextNumber := StrZero(1, Len(SC5->C5_NUM))
+	Else
+		cNextNumber := Soma1(cMaxNumber)
+	EndIf
+	
+	oSql:close()
+	
+Return cNextNumber
+
+******************************************************************************************************************
+Static Function Tela(cXML, cDirectory, cArquivo, cCFLocacao, cCFComod)
+******************************************************************************************************************
+	Local oFont, oTela, oGrp1, oGet1, oGrp2, oGet2, oGrp3, oGet3, oBtn1, oBtn2
+	Local lConfirma := .F.
+	
+	cCFLocacao	:= Alltrim(GetMv("ZZ_CFLOCAG")) //--- CFOP Locacao AGE
+	cCFComod	:= Alltrim(GetMv("ZZ_CFCOMAG")) //--- CFOP Comodato AGE
+	
+	oFont:= TFont():New( "MS Sans Serif",0,-13,,.T.,0,,700,.F.,.F.,,,,,, )
+	oTela:= MSDialog():New( 092,232,353,823,"Importa XML Terceiro",,,.F.,,,,,,.T.,,,.T. )
+	
+	oGrp1:= TGroup():New( 004,008,028,280,"CFOP Locação (ZZ_CFLOCAG):",oTela,CLR_BLACK,CLR_WHITE,.T.,.F. )
+	oGet1:= TGet():New( 012,012,{|u| If(PCount()>0,cCFLocacao:=u,cCFLocacao)},oGrp1,264,010,'',,CLR_BLACK,CLR_WHITE,oFont,,,.T.,"",,,.F.,.F.,,.F.,.F.,"","cCFLocacao",,)
+	oGet1:Disable()
+	
+	oGrp2:= TGroup():New( 040,008,064,280,"CFOP Comodato (ZZ_CFCOMAG):",oTela,CLR_BLACK,CLR_WHITE,.T.,.F. )
+	oGet2:= TGet():New( 048,012,{|u| If(PCount()>0,cCFComod:=u,cCFComod)},oGrp2,264,010,'',,CLR_BLACK,CLR_WHITE,oFont,,,.T.,"",,,.F.,.F.,,.F.,.F.,"","cCFComod",,)
+	oGet2:Disable()
+	
+	oGrp3:= TGroup():New( 076,008,100,280,"Arquivo XML:",oTela,CLR_BLACK,CLR_WHITE,.T.,.F. )
+	oGet3:= TGet():New( 084,012,{|u| If(PCount()>0,cXML:=u,cXML)},oGrp3,264,010,'',,CLR_BLACK,CLR_WHITE,oFont,,,.T.,"",,,.F.,.F.,,.F.,.F.,"","cXML",,)
+	oGet3:Disable()
+	                                                                                                            
+	oBtn1:= TButton():New( 104,050,"Seleciona XML"  ,oTela,{|x| cXML := cGetFile('Arquivos (*.XML) | *.XML',"Selecione o arquivo para importação",0,,.F.,nOr(GETF_ONLYSERVER,GETF_LOCALHARD)), oGet3:Refresh()},060,012,,,,.T.,,"",,,,.F. )
+	oBtn1:= TButton():New( 104,200,"OK"     		,oTela,{|x| oTela:End(), lConfirma:=.T.},037,012,,,,.T.,,"",,,,.F. )
+	oBtn2:= TButton():New( 104,244,"Cancela"		,oTela,{|x| oTela:End()},037,012,,,,.T.,,"",,,,.F. )
+	
+	oTela:Activate(,,,.T.)
+	
+	If lConfirma .and. !Empty(cXML)
+		cDirectory	:= Substr(cXML,1,Rat("\",cXML))
+		cArquivo	:= Substr(cXML,Rat("\",cXML)+1,Len(cXML))
+		
+		If !Empty(cCFLocacao)
+			PutMv("ZZ_CFLOCAG", cCFLocacao) //--- CFOP Locacao AGE
+		Endif
+	    
+		If !Empty(cCFComod)
+			PutMv("ZZ_CFCOMAG",cCFComod) 	//--- CFOP Comodato AGE
+		Endif
+	Endif
+	
+Return Nil
+
+/*
+Retorna o codigo do cliente, com base no ID Extrangeiro.
+*/
+
+static function getCliEx(cIdEx)
+	local aRet := {}
+	local oSql	  	  	:= IpSqlObject():newIpSqlObject()	
+	local cQuery 		:= ""
+	
+	cQuery += " SELECT A1_COD, A1_LOJA  "		+CRLF
+	cQuery += " 	FROM  " + RETSQLTAB("SA1")	+CRLF
+	cQuery += " WHERE D_E_L_E_T_ = ' ' AND A1_FILIAL = '"+xFilial("SA1")+"'   "		+CRLF
+	cQuery += " AND A1_PFISICA = '"+cIdEx+"' "  +CRLF
+	
+	oSql:newAlias(changeQuery(cQuery)) 
+	
+	if oSql:hasRecords()
+		aRet := {oSql:getValue("A1_COD"),oSql:getValue("A1_LOJA")}
+	endif
+	
+	oSql:Close()
+return aRet
+
+/**
+** Verifica se o produto controla lote
+**/
+static function  isProdutLote(cCodProd)
+	
+	local lIsProdlote	:= .F.
+	local aArea 		:= getArea()
+	local aAreaSB1 		:= SB1->(getArea())
+	local cChaveSB1		:= ""
+	
+	cCodProd := padr(cCodProd, tamSx3("B1_COD")[1], "")
+	cChaveSB1:= fwxFilial("SB1") + cCodProd
+	
+	SB1->(dbSetOrder(1))
+	
+	if SB1->(dbSeek(cChaveSB1))
+		if SB1->B1_RASTRO = "L"
+			lIsProdlote := .T.
+		endif
+	endIf
+	
+	restArea(aAreaSB1)
+	restArea(aArea)
+	
+return lIsProdlote

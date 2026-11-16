@@ -1,0 +1,366 @@
+#include "protheus.ch"
+#include "dhl.ch"
+
+/*/{Protheus.doc} DHLMaTes
+
+Busca de Tes inteligente
+	
+@author Thiago Meschiatti
+@since 24/11/2014
+
+@param nEntSai, numérico, tipo de documento
+@param cTpOper, caracter, não utilizado
+@param cClieFor, caracter, codigo do cliente
+@param cLoja, caracter, loja do cliente
+@param cTipoCF, caracter, tipo - cliente('C') ou fornecedor('F') 
+@param cTipoCF, caracter, tipo - cliente('C') ou fornecedor('F') 
+@param cProduto, caracter, codigo do produto 
+
+@return caraceter codigo da tes
+/*/
+User Function DHLMaTes(nEntSai,cTpOper,cClieFor,cLoja,cTipoCF,cProduto,cCampo)
+
+Local aArea		:= GetArea()
+Local aAreaSA1	:= SA1->(GetArea())
+Local aAreaSA2	:= SA2->(GetArea())
+Local aAreaSB1	:= SB1->(GetArea())
+Local aTes 		:= {}
+Local aDadosCfo	:= {} 
+Local cTesRet	:= "   "
+Local cGrupo	:= ""                                            
+Local cGruProd	:= ""
+Local cQuery	:= ""  
+Local cProg     := "MT100"
+Local cNCM      := ""
+Local cEstado   := ""
+Local cAliasSFM := "SFM"         
+Local cTabela   := ""
+Local cCfop		:= ""
+Local lQuery	:= .F.
+Local nPosCpo	:= 0                                                        
+Local nPosCfo   := 0   
+Local nFM_POSIPI := SFM->(FieldPos("FM_POSIPI"))
+Local nFM_EST    := SFM->(FieldPos("FM_EST"))
+Local nFM_MSBLQL := SFM->(FieldPos("FM_MSBLQL"))
+Local cAlias	 := ""		//Tabela a ser utiliza para informacoes do produto
+Local c_GRTRIB   := ""		//SBI->BI_GRTRIB	/ 	SB1->B1_GRTRIB
+Local c_POSIPI   := "" 		//SBI->BI_POSIPI	/	SB1->B1_POSIPI
+Local c_TS		:=	""
+Local c_TE		:=	""	 
+Local cSb1Sbz   := SuperGetMV("MV_ARQPROD",.F.,"SB1")
+Local lArqProp  := SuperGetMV("MV_ARQPROP",.F.,.F.)
+Local bCond		:=	{||.T.}
+Local bCondAux	:=	{||.T.}
+Local bSort		:=	{||}
+Local bAddTes	:=	{||.T.}
+Local bAtTes	:=	{||.T.}
+Local bIFWhile	:=	{||.T.}
+Local aRet		:=	{}
+Local lRet		:= .T.
+Local cTesSaiB1	:= ""
+Local cTesEntB1	:= "" 
+Local lGrade    :=  MaGrade() .And. SFM->(FieldPos("FM_REFGRD")) > 0 .And. SFM->(FieldPos("FM_DESREF")) > 0  
+
+
+
+//DEFAULT cTpOper  := &(ReadVar())
+DEFAULT cClieFor := ""
+DEFAULT cLoja	 := ""
+DEFAULT cProduto := ""
+DEFAULT nEntSai  := 0                                                                                                  	
+DEFAULT cTipoCF  := "C"
+DEFAULT cCampo	 := ""     
+
+If !Empty(cCampo) .AND. ValType(aHeader) == "A" 
+	nPosCpo	:= aScan(aHeader,{|x| AllTrim(x[2]) == AllTrim(cCampo) })
+	If nPosCpo > 0
+		cTabela := getSX3Cache(aHeader[nPosCpo,2],"X3_ARQUIVO")
+	EndIf
+EndIf
+
+//ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+//³ Verifica o grupo de tributacao do cliente/fornecedor         ³
+//ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+dbSelectArea(IIf(cTipoCF == "C","SA1","SA2"))
+dbSetOrder(1)
+MsSeek(xFilial()+cClieFor+cLoja)
+If cTipoCF == "C"
+	cGrupo  := SA1->A1_GRPTRIB
+	cEstado := SA1->A1_EST
+Else
+	cGrupo  := SA2->A2_GRPTRIB
+	cEstado := SA2->A2_EST
+EndIf
+
+//ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+//³Verifica se o codigo do produto informado eh de grade³
+//ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+If lGrade
+	MatGrdPrrf(@cProduto)
+EndIf
+
+If nModulo == 23 
+	dbSelectArea("SBI")
+	dbSetOrder(1)
+	If dbSeek(xFilial("SBI") + cProduto)
+		cGruProd := SBI->BI_GRTRIB
+		If SBI->(FieldPos("BI_POSIPI")) > 0
+			cNCM := SBI->BI_POSIPI
+		Endif
+	Endif
+Else  
+	dbSelectArea("SB1")
+	dbSetOrder(1)
+	If dbSeek(xFilial("SB1") + cProduto)
+			
+		cAlias 	  := "SB1"
+		c_GRTRIB  := "SB1->B1_GRTRIB"
+		c_POSIPI  := "SB1->B1_POSIPI"
+		c_TS	  := "SB1->B1_TS"
+		c_TE	  := "SB1->B1_TE"            
+		
+		If cSb1Sbz == "SBZ"
+			// Se existir registro no SBZ (Indicadores de Produtos) busca as informacoes desta tabela 
+		  	c_GRTRIB  := "SBZ->BZ_GRTRIB"	   
+			dbSelectArea("SBZ")
+		 	SBZ->(dbSetOrder(1)) 	//BZ_FILIAL+BZ_PRODUTO
+		   		
+		   		If DbSeek(xFilial("SBZ") + cProduto) .And. lArqProp .And.!Empty(SBZ->(FieldGet(FieldPos("BZ_GRTRIB"))))//O parametro eh true e o campo esta preenchido?
+		   	    	// sim
+		   		 	cGruProd := &(c_GRTRIB)   
+			       	
+			    ElseIf !lArqProp  // O parametro eh false busca o conteudo vazio da tabela SBZ
+			       	cGruProd := &(c_GRTRIB)
+			    	
+			    Else // Neste caso o parametro eh true e busca as informacoes na Tabela SB1
+			    	c_GRTRIB  := "SB1->B1_GRTRIB"
+					cGruProd := &(c_GRTRIB)
+				EndIf
+		Else // neste caso busca as informacoes na tabela SB1 apenas	
+			cGruProd := &(c_GRTRIB)
+			cTesSaiB1:= &(c_TS)
+			cTesEntB1:= &(c_TE)
+	   	EndIf
+	   	// Como não existe o campo NCM na SBZ, não sendo o módulo 23, será verificado na SB1
+		If !Empty(c_POSIPI)
+			cNCM := &(c_POSIPI)
+		Endif
+	   	
+   	EndIf
+EndIf
+ 
+If cTipoCF == "C"
+	bCond		:=	{|| Empty(Alltrim((cAliasSFM)->FM_PRODUTO)+(cAliasSFM)->FM_CLIENTE+(cAliasSFM)->FM_LOJACLI+(cAliasSFM)->FM_GRTRIB+(cAliasSFM)->FM_GRPROD+(cAliasSFM)->FM_POSIPI+(cAliasSFM)->FM_EST+(cAliasSFM)->FM_FORNECE+(cAliasSFM)->FM_REFGRD) .Or.;
+					((Alltrim((cAliasSFM)->FM_PRODUTO) == Alltrim(cProduto)  .Or. Empty(Alltrim((cAliasSFM)->FM_PRODUTO))) .And.;
+					(Iif(lGrade,(cAliasSFM)->FM_REFGRD == Alltrim(cProduto)  .Or. Empty((cAliasSFM)->FM_REFGRD),.T.)) .And.;
+					(Alltrim(cGruProd) == Alltrim((cAliasSFM)->FM_GRPROD) .Or. Empty((cAliasSFM)->FM_GRPROD)) .And.;
+					(cClieFor+cLoja == (cAliasSFM)->FM_CLIENTE+(cAliasSFM)->FM_LOJACLI .Or. Empty((cAliasSFM)->FM_CLIENTE+(cAliasSFM)->FM_LOJACLI)) .And.;
+					(AllTrim(cGrupo) == AllTrim((cAliasSFM)->FM_GRTRIB) .Or. Empty((cAliasSFM)->FM_GRTRIB)) .And.;
+					(nFM_EST==0 .Or. cEstado == (cAliasSFM)->FM_EST .Or. Empty((cAliasSFM)->FM_EST)) .And.;	
+					(nFM_POSIPI==0 .Or. cNCM == (cAliasSFM)->FM_POSIPI .Or. Empty((cAliasSFM)->FM_POSIPI)))}
+	
+	bAddTes		:=	{||aadd(aTes, {Alltrim((cAliasSFM)->FM_PRODUTO),;
+				 	(cAliasSFM)->FM_GRPROD,;
+				 	IIf(nFM_POSIPI>0,(cAliasSFM)->FM_POSIPI,""),;
+					(cAliasSFM)->FM_CLIENTE,;
+					(cAliasSFM)->FM_LOJACLI,;
+					(cAliasSFM)->FM_GRTRIB,;
+				 	IIf(nFM_EST>0,(cAliasSFM)->FM_EST,""),;
+					(cAliasSFM)->FM_TE,;
+					(cAliasSFM)->FM_TS,;
+					Iif(lGrade,(cAliasSFM)->FM_REFGRD,"")})}
+					
+	bSort		:=	{|x,y| x[1]+x[2]+x[3]+x[4]+x[5]+x[6]+x[7]+x[10] > y[1]+y[2]+y[3]+y[4]+y[5]+y[6]+y[7]+y[10]}
+Else
+	bCond		:=	{|| Empty(Alltrim((cAliasSFM)->FM_PRODUTO)+(cAliasSFM)->FM_FORNECE+(cAliasSFM)->FM_LOJAFOR+(cAliasSFM)->FM_GRTRIB+(cAliasSFM)->FM_GRPROD+(cAliasSFM)->FM_POSIPI+(cAliasSFM)->FM_EST+(cAliasSFM)->FM_CLIENTE+(cAliasSFM)->FM_REFGRD) .Or.;
+					((Alltrim((cAliasSFM)->FM_PRODUTO) == Alltrim(cProduto) .Or. Empty(Alltrim((cAliasSFM)->FM_PRODUTO))) .And.;
+					(Iif(lGrade,(cAliasSFM)->FM_REFGRD == Alltrim(cProduto) .Or. Empty((cAliasSFM)->FM_REFGRD),.T.)) .And.;
+					(Alltrim(cGruProd) == Alltrim((cAliasSFM)->FM_GRPROD) .Or. Empty((cAliasSFM)->FM_GRPROD)) .And.;
+					(cClieFor+cLoja == (cAliasSFM)->FM_FORNECE+(cAliasSFM)->FM_LOJAFOR .Or. Empty((cAliasSFM)->FM_FORNECE+(cAliasSFM)->FM_LOJAFOR)) .And.;
+					(AllTrim(cGrupo) == AllTrim((cAliasSFM)->FM_GRTRIB) .Or. Empty((cAliasSFM)->FM_GRTRIB)) .And.;
+					(nFM_EST==0 .Or. cEstado == (cAliasSFM)->FM_EST .Or. Empty((cAliasSFM)->FM_EST)) .And.;	
+					(nFM_POSIPI==0 .Or. cNCM == (cAliasSFM)->FM_POSIPI .Or. Empty((cAliasSFM)->FM_POSIPI)))}
+ 			 
+ 	bAddTes		:=	{|| aadd(aTes,{Alltrim((cAliasSFM)->FM_PRODUTO),;
+					(cAliasSFM)->FM_GRPROD,;
+					IIf(nFM_POSIPI>0,(cAliasSFM)->FM_POSIPI,""),;
+					(cAliasSFM)->FM_FORNECE,;
+					(cAliasSFM)->FM_LOJAFOR,;
+					(cAliasSFM)->FM_GRTRIB,;
+					IIf(nFM_EST>0,(cAliasSFM)->FM_EST,""),;
+					(cAliasSFM)->FM_TE,;
+					(cAliasSFM)->FM_TS,;
+					Iif(lGrade,(cAliasSFM)->FM_REFGRD,"")})}
+
+
+	bSort		:=	{|x,y| x[1]+x[2]+x[3]+x[4]+x[5]+x[6]+x[7]+x[10] > y[1]+y[2]+y[3]+y[4]+y[5]+y[6]+y[7]+y[10]}
+EndIf
+
+bIRWhile		:=	{||((cAliasSFM)->(!Empty(FM_GRTRIB) .And. !Empty(FM_GRPROD)) .And. AllTrim(cGrupo)+AllTrim(cGruProd)==(cAliasSFM)->(AllTrim(FM_GRTRIB)+AllTrim(FM_GRPROD))) .Or.;
+					(cAliasSFM)->(Empty(FM_GRTRIB) .Or. Empty(FM_GRPROD))}
+
+//ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+//³Ponto de entrada que permite alterar a regra de selecao do TES,³
+//³alterar a ordem do array com os elementos encontrados pela     ³
+//³rotina e alterar o conteudo do array com os campos do SFM.     ³
+//³Todos os retornos tem que ser em forma de CodBlock.            ³
+//³Caso seja incluido campo novo para ser tratado na regra, se faz³
+//³necessario incluir no X2_UNICO do SFM.                         ³
+//ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+
+If ExistBlock("DHL089CD")
+	aRet		:=	Execblock("DHL089CD",.T.,.T.,{bCond,bSort,bIRWhile,bAddTes,cTabela,cTpOper,cCfop})
+	bCondAux 	:= 	aRet[1]
+	bSort 		:= 	aRet[2]
+	bIFWhile	:= 	aRet[3]
+	bAtTes		:=	aRet[4]
+	If Len(aRet) > 4 
+		cTpOper	:=	aRet[5]		
+	EndIf		
+	If Len(aRet) > 5
+		cCfop	:= aRet[6]
+	Endif
+EndIf
+
+//ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+//³ Pesquisa por todas as regras validas para este caso          ³
+//ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+#IFDEF TOP
+//ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+//³ Ponto de entrada para tratar seleção da tes inteligente ³
+//ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+	If (ExistBlock("DHL89TES"))
+		cRet := ExecBlock("DHL89TES",.F.,.F.,{nEntSai,cTpOper,cClieFor,cLoja,cProduto})
+			If Valtype( cRet ) == "C"
+				cQuery := cRet
+				lQuery := .T.
+				lRet := .F.
+			EndIf
+	EndIf
+	
+	If(lRet)
+		lQuery := .T.
+		cAliasSFM := GetNextAlias() 
+		cQuery += "SELECT * FROM " + RetSqlName("SFM") + " SFM "
+		cQuery += "WHERE SFM.FM_FILIAL = '" + xFilial("SFM") + "'"
+//		cQuery += "AND SFM.FM_TIPO = '" + cTpOper + "'"
+		cQuery += "AND SFM.D_E_L_E_T_=' ' "
+		cQuery += "ORDER BY "+SqlOrder(SFM->(IndexKey()))
+	EndIf  
+	cAliasSFM := GetNextAlias()
+	cQuery := ChangeQuery(cQuery)
+	dbUseArea(.T.,"TOPCONN",TcGenQry(,,cQuery),cAliasSFM,.T.,.T.) 
+	
+#ELSE
+	dbSelectArea("SFM")
+	dbSetOrder(1)
+	MsSeek(xFilial("SFM")+cTpOper)
+#ENDIF
+While !Eof() 
+	 
+	 // Verificar se esta Bloqueado
+	 If nFM_MSBLQL > 0 .And. (cAliasSFM)->FM_MSBLQL == '1'
+	 	dbSelectArea(cAliasSFM)
+		dbSkip()	 
+	 	LOOP
+	 EndIf
+	
+	IF Eval(bCond) .And. Eval(bCondAux)
+	 	If Eval(bIRWhile) .and. Eval(bIFWhile)
+			Eval(bAddTes)//Adiciono o conteudo original da rotina
+			Eval(bAtTes) //Caso o ponto de entrada MT089CD esteja ativo, adiciono o retorno dele
+		EndIf		
+	EndIf
+	
+	dbSelectArea(cAliasSFM)
+	dbSkip()
+EndDo
+If ( lQuery )
+	dbSelectArea(cAliasSFM)
+	dbCloseArea()
+	dbSelectArea("SFM")
+EndIf
+//ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+//³ Pesquisa por todas as regras validas para este caso          ³
+//ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+aSort(aTES,,,bSort) //Ordena o array conforme passado na regra do bSort, podendo ser alterardo pelo PE MT089CD
+If Len(aTes) <> 0
+	cTesRet := If(nEntSai==1,aTes[1][8],aTes[1][9])
+	//CUSTOM INI
+	if FWUnitBusiness() == DHL_BUSINESSUNIT_DIS .OR. FWUnitBusiness() == DHL_BUSINESSUNIT_AGE
+		if empty(cTesRet)
+			for nK:=2 to len(aTes)
+				cTesRet := If(nEntSai==1,aTes[nK][8],aTes[nK][9])
+				if !empty(cTesRet)
+					exit
+				endif 
+			next nK
+		endif
+	endif
+	//CUSTOM FIM
+EndIf
+If nPosCpo > 0 .And. !Empty(cTesRet) .And. Type('aCols') <> "U"
+	aCols[n][nPosCpo] := cTesRet
+	Do Case
+		Case cTabela == "SD1"
+			nPosCfo := aScan(aHeader,{|x| AllTrim(x[2]) == AllTrim("D1_CF") })
+		Case cTabela == "SD2"
+			nPosCfo := aScan(aHeader,{|x| AllTrim(x[2]) == AllTrim("D2_CF") })
+		Case cTabela == "SC6"     
+			dbSelectArea("SF4")
+			dbSetOrder(1)
+			nPosCfo := aScan(aHeader,{|x| AllTrim(x[2]) == AllTrim("C6_CF") })
+			If nPosCfo > 0 .And. MsSeek(xFilial("SF4")+cTesRet)
+				aDadosCfo := {} 
+			 	AAdd(aDadosCfo,{"OPERNF","S"})
+			 	AAdd(aDadosCfo,{"TPCLIFOR",If(cTipoCF == "C", SA1->A1_TIPO , SA2->A2_TIPO )})
+			 	AAdd(aDadosCfo,{"UFDEST"  ,If(cTipoCF == "C", SA1->A1_EST  , SA2->A2_EST  )})
+			 	AAdd(aDadosCfo,{"INSCR"   ,If(cTipoCF == "C", SA1->A1_INSCR, SA2->A2_INSCR)})
+			 	AAdd(aDadosCfo,{"CONTR"   ,If(cTipoCF == "C", SA1->A1_CONTRIB, "")})
+				aCols[n][nPosCfo] := MaFisCfo( ,SF4->F4_CF,aDadosCfo ) 
+			EndIf
+			nPosCfo := 0      
+		Case cTabela == "SC7"
+			cProg := "MT120"
+		Case cTabela == "SC8"
+			cProg := "MT150"
+		Case cTabela == "SUB"
+			nPosCfo := aScan(aHeader,{|x| AllTrim(x[2]) == AllTrim("UB_CF") })
+			cProg := "TK273"
+	EndCase
+	If nPosCfo > 0
+		aCols[n][nPosCfo] := Space(Len(aCols[n][nPosCfo]))
+	EndIf
+	If MaFisFound("IT",N)
+		MaFisAlt("IT_TES",cTesRet,n)
+		MaFisRef("IT_TES",cProg,cTesRet)
+	EndIf
+EndIf
+If !Empty(cTesRet)
+	dbSelectArea("SF4")
+	If MsSeek(xFilial("SF4")+cTesRet)
+		If !RegistroOK("SF4")
+			cTesRet := Space(Len(cTesRet))
+		EndIf
+	EndIf
+Else
+	//ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+	//³Caso NENHUMA regra tenha sido aplicada, ao inves de retornar uma TES em ³
+	//³branco, a instrucao a seguir MANTEM a TES existente no aCols, ANTES da  ³
+	//³execucao do gatilho do campo ??_OPER que executou esta funcao MaTesInt()³
+	//ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ 
+    If Type("aCols") == "A" .AND. !(nModulo == 12)  .And. (!Empty(cTesSaiB1) .Or. !Empty(cTesEntB1))
+		nPosTes := aScan(aHeader,{|x| AllTrim( Substr( x[2] , AT("_TES" , x[2] ) , AT("_TES" , x[2] )+ 4  ))  == AllTrim("_TES") } )
+        If nPosTes > 0
+	        cTesRet := aCols[N,nPosTes]
+        EndIf
+  	EndIf
+EndIf
+//ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+//³ Restaura a integridade da rotina                             ³
+//ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+RestArea(aAreaSA2)
+RestArea(aAreaSA1)
+RestArea(aAreaSB1)
+RestArea(aArea)
+Return(cTesRet)

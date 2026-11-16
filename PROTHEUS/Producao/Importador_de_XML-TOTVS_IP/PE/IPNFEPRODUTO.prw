@@ -1,0 +1,193 @@
+#Include 'Protheus.ch'
+#Include 'TopConn.ch'
+#include 'dhl.ch'
+
+/*/{Protheus.doc} IPNFEPRODUTO
+	Ponto de entrada executado para cada item do XML, permitindo que seja alimentado o campo de Codigo do produto Protheus e sua descrição.	
+	@author DGO-Angelo
+	@since 06/07/2016
+	@type function
+	@param PARAMIXB, Array, array com as informações (Código do Produto Fornecedor , Descrição do Produto ,Unidade de Medida, Código do Produto Protheus)
+	@return Array  Retorna array contendo Código do Produto, Descrição do Produto e Unidade de Medida
+	@example
+	(examples)
+	@see (links_or_references)
+
+	@history 01/08/2025, TOTVS IP, adaptado o PE para a unidade de negócio DHL_BUSINESSUNIT_DI2, para obter o cód. do produto a partir da informação entre '#', contida na descrição do produto
+/*/
+User Function IPNFEPRODUTO()
+	Local aRet			:= {}
+	private lNewAge	:= SuperGetMV("ZZ_NEWAGE",,.F.)
+
+	aRet := retProdProt()
+
+Return aRet
+
+
+/*
+*	Função responsável pelo ajuste do código do produto, conforme amarração.
+*/
+static function retProdProt()
+
+	Local aArea     := GetArea()
+    Local aAreaLj7  := Lj7GetArea({"SB1"})
+	Local aProduto	:= PARAMIXB
+	Local cProduto	:= aProduto[1]
+	Local cProdDesc	:= aProduto[2]
+	Local cUm		:= aProduto[3]
+	Local cProdSB1	:= aProduto[4]
+	Local cCodFor	:= cFornece
+	Local cLojaFor	:= cLoja
+	Local cQuery	:= ""
+	Local cUmSinal	:= ""
+	Local cDesc		:= ""
+	Local aRet		:= {cProdSB1,cProdDesc,cUm}
+	Local aAux		:= {}
+	Local cCodSB1	:= ""
+	
+	If Alltrim(FunName()) == "XMLTERCEIR"
+		
+		if (FWUnitBusiness() == DHL_BUSINESSUNIT_AGE) .AND. lNewAge
+			if type("__cItem") == "U" // Undefined
+				public __cItem := StrZero(1,TamSX3("C6_ITEM")[1])
+			else
+				__cItem := Soma1(__cItem)	
+			endif			
+			
+			aAux := getCodPrd(If(Type("oXml:_NFEPROC:_NFE")=="O",oXml:_NFEPROC:_NFE:_INFNFE:_IDE:_nNF:text,""), If(Type("oXml:_NFEPROC:_NFE")=="O",oXml:_NFEPROC:_NFE:_INFNFE:_IDE:_Serie:text,""), cCodFor, cLojaFor, __cItem)
+			if !empty(aAux)
+				aRet := aAux
+			endif
+		else
+			If lFornece
+				//--- Amarracao Fornecedor x Produto
+				cQuery	:= " SELECT"
+				cQuery 	+=		" A5_PRODUTO AS PRODUTO, A5_UMNFE AS UMNFE, A5_UNID AS UNID, B1_UM, B1_SEGUM, B1_DESC"
+				cQuery	+= " FROM " + retSqlName("SA5") + " SA5"
+				cQuery	+= 		" INNER JOIN " + retSqlName("SB1") + " SB1 ON"
+				cQuery	+= 				" SB1.B1_FILIAL = '"+xFilial("SB1")+"' AND"
+				cQuery	+= 				" SB1.B1_COD = SA5.A5_PRODUTO AND"
+				cQuery	+= 				" SB1.D_E_L_E_T_ = ' '"
+				cQuery	+= " WHERE"
+				cQuery	+= 		" SA5.A5_FILIAL = '"+xFilial("SA5")+"' AND"
+				cQuery	+= 		" SA5.A5_FORNECE = '"+cCodFor+"' AND"
+				cQuery	+= 		" SA5.A5_LOJA = '"+cLojaFor+"' AND"
+				cQuery	+= 		" SA5.A5_CODPRF = '"+cProduto+"' AND"
+				cQuery	+= 		" SA5.D_E_L_E_T_ = ' '"
+			Else
+				//--- Amarracao Cliente x Produto
+				cQuery	:= " SELECT"
+				cQuery 	+=		" A7_PRODUTO AS PRODUTO, A7_UMNFE AS UMNFE, '' AS UNID, B1_UM, B1_SEGUM, B1_DESC"
+				cQuery	+= " FROM " + retSqlName("SA7") + " SA7"
+				cQuery	+= 		" INNER JOIN " + retSqlName("SB1") + " SB1 ON"
+				cQuery	+= 				" SB1.B1_FILIAL = '"+xFilial("SB1")+"' AND"
+				cQuery	+= 				" SB1.B1_COD = SA7.A7_PRODUTO AND"
+				cQuery	+= 				" SB1.D_E_L_E_T_ = ' '"
+				cQuery	+= " WHERE"
+				cQuery	+= 		" SA7.A7_FILIAL = '"+xFilial("SA7")+"' AND"
+				cQuery	+= 		" SA7.A7_CLIENTE = '"+cCodFor+"' AND"
+				cQuery	+= 		" SA7.A7_LOJA = '"+cLojaFor+"' AND"
+				cQuery	+= 		" SA7.A7_CODCLI = '"+cProduto+"' AND"
+				cQuery	+= 		" SA7.D_E_L_E_T_ = ' '"		
+			Endif
+			
+			If Select("TMQRY") <> 0
+				TMQRY->(dbCloseArea())
+			Endif
+			
+			TcQuery cQuery Alias "TMQRY" New
+			
+			TMQRY->(dbGoTop())
+			If TMQRY->(!Eof())
+				If !Empty(TMQRY->UNID)
+					cUmSinal := TMQRY->UNID
+				Else
+					If TMQRY->UMNFE <> '2'
+						cUmSinal := TMQRY->B1_UM
+					Else
+						cUmSinal := TMQRY->B1_SEGUM
+					EndIf
+				EndIf
+				cProdProt	:= TMQRY->PRODUTO
+				cDesc		:= TMQRY->B1_DESC
+				aRet		:= {cProdProt,cDesc,cUmSinal}			
+			EndIf
+		endif
+	Else
+
+		if FWUnitBusiness() == DHL_BUSINESSUNIT_DI2
+			cCodSB1 := upper(getCodigoHash(cProdDesc))
+        
+			dbSelectArea("SB1")
+			SB1->(dbSetOrder(1)) //B1_FILIAL+B1_COD
+			if SB1->(dbSeek(xFilial("SB1")+padr(cCodSB1,tamSX3("B1_COD")[1])))
+				aRet := {SB1->B1_COD,SB1->B1_DESC,SB1->B1_UM}
+			endIf
+		endIf	
+
+	EndIf
+	
+	Lj7RestArea(aAreaLj7)
+    RestArea(aArea)
+	
+return aRet
+
+/**
+ * Obtem o código do produto a partir do pedido de venda, considerando a sequencia do item no arquivo XML do terceiro.
+ */
+Static Function getCodPrd(cNota, cSerie, cClieFor, cLoja, cItem)
+
+	local oSql	  	  	:= IpSqlObject():newIpSqlObject()	
+	local cQuery 		:= ""
+	local cOrdex		:= alltrim(cNota) + "-" + alltrim(cSerie)
+	local aRet			:= {}
+	
+	cQuery += " SELECT "										+CRLF
+	cQuery += " 	C5_ZZORDEX, "								+CRLF
+	cQuery += " 	C6_PRODUTO, "								+CRLF
+	cQuery += "	B1_DESC, "									+CRLF
+	cQuery += "	B1_UM "									+CRLF
+	cQuery += " FROM %SC5.SQLNAME% "						+CRLF
+	cQuery += " INNER JOIN %SC6.SQLNAME% ON "				+CRLF
+	cQuery += " 	1=1	"										+CRLF
+	cQuery += " 	AND C6_FILIAL = C5_FILIAL "				+CRLF
+	cQuery += " 	AND C6_NUM 	= C5_NUM "					+CRLF
+	cQuery += " 	AND C6_ITEM	= '" + cItem + "'	"		+CRLF
+	cQuery += " 	AND %SC6.NOTDEL%	"						+CRLF
+	cQuery += " INNER JOIN %SB1.SQLNAME% ON "				+CRLF
+	cQuery += " 	1=1	"										+CRLF
+	cQuery += " 	AND %SB1.XFILIAL%	"						+CRLF
+	cQuery	+= "	AND B1_COD = C6_PRODUTO "				+CRLF
+	cQuery += " 	AND %SB1.NOTDEL%	"						+CRLF
+	cQuery += " WHERE	"										+CRLF
+	cQuery += " 	1=1	"										+CRLF
+	cQuery += " 	AND %SC5.XFILIAL%	"						+CRLF
+	cQuery += " 	AND C5_CLIENTE = '" + cClieFor + "' "	+CRLF
+	cQuery += " 	AND C5_LOJACLI = '" + cLoja + "' "		+CRLF
+	cQuery += " 	AND C5_ZZORDEX = '" + cOrdex + "' "	+CRLF
+	cQuery += " 	AND %SC5.NOTDEL% "						+CRLF
+	
+	oSql:newAlias(changeQuery(cQuery)) 
+	
+	if oSql:hasRecords()
+		aRet := {oSql:getValue("C6_PRODUTO"),oSql:getValue("B1_DESC"),oSql:getValue("B1_UM")}
+	endif
+	
+	oSql:Close()	
+	
+Return (aRet)
+
+/**
+* getCodigoHash
+**/
+Static Function getCodigoHash(cTexto)
+ 
+    local nIni := At("#", cTexto)
+    local nFim := At("#", cTexto, nIni + 1)
+    local cRet := ""
+ 
+    if nIni > 0 .and. nFim > nIni
+        cRet := SubStr(cTexto, nIni + 1, nFim - nIni - 1)
+    endIf
+ 
+Return cRet

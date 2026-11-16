@@ -1,0 +1,92 @@
+#Include 'Protheus.ch'
+#Include 'rwmake.ch'
+#Include 'dhl.ch'
+
+
+/*/{Protheus.doc} MT100GRV
+
+Executado antes de iniciar o processo de gravação / exclusão de Nota de Entrada.
+
+@author Thiago Meschiatti
+@since 07/11/2014
+
+@return lógico Se permite ou não a gravação da Nota de Entrada
+/*/
+
+
+
+User Function MT100GRV()
+	local lExclu	 := PARAMIXB[1]
+	local lRet		 := .t.
+	local oIdManager := DHLIdManager():newDHLIdManager()
+	
+	Public _lAvanca := .T.
+	
+	FWLogMsg("INFO", , "BusinessObject", funName(), "", "01", "ENTROU NO P.E. MT100GRV", 0, 0, {})
+	
+	if FWUnitBusiness() == DHL_BUSINESSUNIT_SPL
+		if lExclu
+			lRet := oIdManager:validExclusion(DHL_NF_ENTRADA)
+			if !lRet
+				MsgBox(oIdManager:getMsg(), "Atenção", "ALERT")
+			endif
+		endif
+	endif
+	
+	if (FWUnitBusiness() == DHL_BUSINESSUNIT_PKG) .or. (FWUnitBusiness() == DHL_BUSINESSUNIT_MUL)
+		if lExclu
+			lRet := U_ValidCob()
+		endif
+	elseif FWUnitBusiness() == DHL_BUSINESSUNIT_DIS
+		if lExclu
+			lRet := u_ValidExc()
+			_lAvanca:=lRet
+			if lRet
+				if !(l103Auto)
+					lRet := U_ValidExEsp()
+					if lRet
+						lRet := U_ValidCob()
+					endif
+				endif
+			endif
+		else
+			lRet := u_ProcDevRec()
+		endif
+	elseif (FWUnitBusiness() == DHL_BUSINESSUNIT_AGE) .or. (FWUnitBusiness() == DHL_BUSINESSUNIT_AG2)
+		if lExclu
+			lRet := U_ValidCob()
+		endif
+	elseif(FWUnitBusiness() == DHL_BUSINESSUNIT_AGL .and. !isRepair(SF1->F1_FORNECE,SF1->F1_LOJA,SF1->F1_TIPO))
+		if lExclu
+			lRet := U_ValidCob()
+		endif
+	endif
+	
+Return (lRet)
+
+/**
+* Verifica se o depositante é do tipo Reparador
+**/
+static function isRepair(cClieFor,cLoja,cTipo)
+	
+	local oSqlUtil	:= IpSqlObject():newIpSqlObject()
+	local lRet	 	:= .f.
+	
+	if AllTrim(cTipo) $ "D/B"
+		oSqlUtil:newTable("SA1", "A1_COD, A1_LOJA, A1_ZZREPAR", "A1_FILIAL = '%SA1.FILIAL%' AND A1_COD = '" + cClieFor + "' AND A1_LOJA = '" + cLoja + "' ")
+		if oSqlUtil:hasRecords()
+			if oSqlUtil:getValue("A1_ZZREPAR") == "S"
+				lRet := .t.
+			endIf
+		endIf
+	else
+		oSqlUtil:newTable("SA2", "A2_COD, A2_LOJA, A2_ZZREPAR", "A2_FILIAL = '%SA2.FILIAL%' AND A2_COD = '" + cClieFor + "' AND A2_LOJA = '" + cLoja + "' ")
+		if oSqlUtil:hasRecords()
+			if oSqlUtil:getValue("A2_ZZREPAR") == "S"
+				lRet := .t.
+			endIf
+		endIf
+	endIf
+	oSqlUtil:close()
+	
+return lRet

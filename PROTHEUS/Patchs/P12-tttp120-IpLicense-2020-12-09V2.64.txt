@@ -1,0 +1,27 @@
+[WARN] Geração de pacote de atualização
+[INFO] Parâmetros da solicitação
+[INFO] Servidor    : P12 - FSW
+[INFO] Ambiente    : P12_FSW_TOP_PORT
+[INFO] Processo    : Por fontes selecionados em projetos
+[INFO] Selecionados: 19 fontes(s)
+[INFO]             : IPLicense
+[INFO]             : FSWLicencas.prw
+[INFO]             : IPLicense.prw
+[INFO]             : ipartifacts.ch
+[INFO]             : iplicense.ch
+[INFO]             : IPExportLicense.prw
+[INFO]             : IPLicenseView.prw
+[INFO]             : IPMakeLicense.prw
+[INFO]             : IPMakeSMSLicense.prw
+[INFO]             : Fonte Modelo de Simplificação IPLicense.rar
+[INFO]             : IPLic01Sample.prw
+[INFO]             : IPLic02Sample.prw
+[INFO]             : IPLic03Sample.prw
+[INFO]             : IPLic04Sample.prw
+[INFO]             : IPLic05Sample.prw
+[INFO]             : IPLic06Sample.prw
+[INFO]             : IPLic07Sample.prw
+[INFO]             : IPLic08Sample.prw
+[INFO]             : IPLic09Sample.prw
+[WARN] Geração do pacote de atualização efetuada com sucesso.
+Pacote salvo: [local] C:\Users\Usuario\Desktop\tttp120.ptm

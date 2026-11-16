@@ -1,0 +1,766 @@
+#Include 'Protheus.ch'
+#include 'dhl.CH'
+
+//POSICOES ARRAY aNfVinc
+#define EMISSAO 	1
+#define SERIE 	2
+#define DOC	 	3
+#define CNPJ 		4
+#define ESTCOB 	5
+#define ESPECIE 	6
+#define CHAVENFE 	7
+#define INF_ADIC 	25
+#define PEDIDO      1
+
+
+/*/{Protheus.doc} PE01NFESEFAZ
+
+Ponto de Entrada para customização dos dados do XML da Nota Fiscal Eletrônica
+
+@author Diego de Angelo
+@since 17/11/2014
+/*/
+user function PE01NFESEFAZ()
+
+	local aRetorno		:= {}
+	local aParam 		:= PARAMIXB
+	local aProd			:= PARAMIXB[01]
+	local cMensCli		:= PARAMIXB[02]
+	local cMensFis		:= PARAMIXB[03]
+	local aDest			:= PARAMIXB[04]
+	local aNota   		:= PARAMIXB[05]
+	local aInfoItem		:= PARAMIXB[06]
+	local aDupl			:= PARAMIXB[07]
+	local aTransp		:= PARAMIXB[08]
+	local aEntrega		:= PARAMIXB[09]
+	local aRetirada		:= PARAMIXB[10]
+	local aVeiculo		:= PARAMIXB[11]
+	local aReboque		:= PARAMIXB[12]
+	local aNfVincRur	:= PARAMIXB[13]
+	local aEspVol       := PARAMIXB[14]
+	local aNfVinc       := PARAMIXB[15]
+	local aFCI          := PARAMIXB[16]
+	local aMed	        := PARAMIXB[17]
+	Local aDetPag		:= {} //aParam[18] //Elmo, em 20/03/2022: acrescentar tags xCampo e xTexto
+	Local aObsCont      := {} //aParam[19]  //Elmo, em 20/03/2022: acrescentar tags xCampo e xTexto
+
+	local aAreas 		:= Lj7GetArea({"SC5","SC6","SF1","SF2","SD1","SD2","SA1","SA2","SB1","SB5","SF4","SA3"})
+	private lNewAge	:= SuperGetMV("ZZ_NEWAGE",,.F.)
+
+	infAdicionais(aNota,aInfoItem,aProd,@cMensCli,@cMensFis)
+
+	unidadeMedida(aNota,@aProd)
+
+	setFCI(aNota,aInfoItem,aProd,@aFCI)
+
+	refNfe(aNota, aProd, @aNfVinc, aDest)
+
+	if (FWUnitBusiness() == DHL_BUSINESSUNIT_DIS)
+		u_InfMedPrd(@aProd, aInfoItem, aNota)
+		u_PrcEndEnt(@aDest, @aEntrega)
+	elseif (FWUnitBusiness() == DHL_BUSINESSUNIT_MUL)
+		u_MulInfMed(@aProd, aInfoItem, aNota, @aMed)
+	elseif (FWUnitBusiness() == DHL_BUSINESSUNIT_AG2)
+		getEANData(@aProd, aNota, aInfoItem)
+		u_Ag2NfCarrier(@aProd, aInfoItem, aNota, @aTransp)
+		If SF2->F2_ZZTPNF == REMESSA_CONTA_ORDEM
+			aObsCont := CarregaXTexto(@aProd, aNota, aInfoItem)  //Elmo, em 20/03/2022: acrescentar tags xCampo e xTexto
+		Endif
+	elseif (FWUnitBusiness() == DHL_BUSINESSUNIT_AGE)
+		if lNewAge
+			getDepara(aProd, aNota)
+			u_InfLtAgePrd(@aProd, aNota)
+		endif
+	endif
+
+	aAdd(aRetorno , aProd)  //01
+	aAdd(aRetorno , cMensCli) //02
+	aAdd(aRetorno , cMensFis) //03
+	aAdd(aRetorno , aDest) //04
+	aAdd(aRetorno , aNota) //05
+	aAdd(aRetorno , aInfoItem) //06
+	aAdd(aRetorno , aDupl) //07
+	aAdd(aRetorno , aTransp) //08
+	aAdd(aRetorno , aEntrega) //09
+	aAdd(aRetorno , aRetirada) //10
+	aAdd(aRetorno , aVeiculo) //11
+	aAdd(aRetorno , aReboque) //12
+	aAdd(aRetorno , aNfVincRur) //13
+	aAdd(aRetorno , aEspVol) //14
+	aAdd(aRetorno , aNfVinc) //15
+	aAdd(aRetorno , aFCI) //16
+	aAdd(aRetorno , aMed) //17
+	aAdd(aRetorno , aDetPag) //18   //Elmo, em 20/03/2022: acrescentar tags xCampo e xTexto
+	aAdd(aRetorno , aObsCont) //19 //Elmo, em 20/03/2022: acrescentar tags xCampo e xTexto
+
+	Lj7RestArea(aAreas)
+
+return aRetorno
+
+
+/**
+* Tratativa das Mensagens Adicionais
+*/
+static function infAdicionais(aNota, aInfoItem, aProd, cMensCli, cMensFis)
+
+	local nCont		:= 0
+	local cCliFor	:= ""
+	local cLoja		:= ""
+	local cProduto	:= ""
+	local cItem		:= ""
+	local cMsg		:= ""
+	local cSerie	:= aNota[01]
+	local cDoc		:= aNota[02]
+	local cTipo		:= aNota[04]
+	local cTipoNF	:= aNota[05]
+	local lModelo2	:= alltrim(GetNewPar("ZZ_MODEFAT", "1")) $ "2"
+	local lModelo3	:= alltrim(GetNewPar("ZZ_MODEFAT", "1")) $ "3"
+	local nCount	:= 0
+	local cPedido	:= ""
+	local _cQry     := ""
+	local cAliasNew := GetNextAlias()
+	local _cCliSA5 	:= SuperGetMv( "ZZ_SA5XML" , .F. , " " ,  )
+
+	if cTipo == DHL_NFE_INVOICE_INFLOW .or. cTipo == DHL_NFE_FORM
+
+		cCliFor	:= SF1->F1_FORNECE
+		cLoja	:= SF1->F1_LOJA
+
+		if cTipoNF $ "BD"
+			dbSelectArea("SA1")
+			SA1->(dbSetOrder(1))
+			SA1->(dbSeek(xFilial("SA1")+SF1->F1_FORNECE+SF1->F1_LOJA))
+		else
+			dbSelectArea("SA2")
+			SA2->(dbSetOrder(1))
+			SA2->(dbSeek(xFilial("SA2")+SF1->F1_FORNECE+SF1->F1_LOJA))
+		endIf
+
+		dbSelectArea("SZZ")
+		SZZ->(dbsetorder(1))
+		If dbSeek(xFilial("SZZ")+"E"+SF1->F1_DOC+SF1->F1_SERIE+SF1->F1_FORNECE+SF1->F1_LOJA)
+			While !Eof() .and. SZZ->ZZ_TIPODOC == "E"  .and.	SZZ->ZZ_DOC     == SF1->F1_DOC         .and.;
+					SZZ->ZZ_SERIE   == SF1->F1_SERIE       .and.	SZZ->ZZ_CLIFOR  == SF1->F1_FORNECE     .and.;
+					SZZ->ZZ_LOJA 	== SF1->F1_LOJA
+
+				putMsg(@cMensCli, SZZ->ZZ_TXTMENS)
+				dbSkip()
+			Enddo
+		Endif
+
+	elseIf cTipo == DHL_NFE_INVOICE_OUTFLOW
+
+		cCliFor	:= SF2->F2_CLIENTE
+		cLoja	:= SF2->F2_LOJA
+		//RONI SILVA BUSCAR MODELO3 CLIENTE
+		CMODFAT3 := POSICIONE("SA1",1,XFILIAL("SA1")+cCliFor+cLoja,"A1_ZZMODFA")
+		IF alltrim(CMODFAT3) $ "1" .AND. FWUnitBusiness() == DHL_BUSINESSUNIT_MUL
+			lModelo3 := .T.
+		endif
+
+		if (FWUnitBusiness() == DHL_BUSINESSUNIT_PKG .or. FWUnitBusiness() == DHL_BUSINESSUNIT_MUL) .and. lModelo2
+			fMsgPed(@cMensCli)
+		endif
+
+		if FWUnitBusiness() == DHL_BUSINESSUNIT_PKG .and. lModelo3 .or. FWUnitBusiness() == DHL_BUSINESSUNIT_MUL .and. lModelo3
+			cPedido := aInfoItem[1][PEDIDO]
+			fMsgModelo3(@cMensCli, cPedido)
+		endif
+
+		if FWUnitBusiness() == DHL_BUSINESSUNIT_AG2
+			if SF2->F2_ZZTPNF == AJUSTE_FISCAL
+				cPedido 	:= aInfoItem[1][PEDIDO]
+				getMsgRegEsp(@cMensCli, DHL_NFE_INVOICE_OUTFLOW, cPedido)
+			endIf
+		endIf
+
+		dbSelectArea("SZZ")
+		SZZ->(dbsetorder(1))
+		cMensCli  += +CRLF
+		if FWUnitBusiness() == DHL_BUSINESSUNIT_AG2 //Emerson Holanda 14/04/20 --- Tratamento para ordenar corretamente as mensagens
+			_cQry:= "SELECT ZZ_TXTMENS TEXTOMENS "
+			_cQry+= "FROM "+RetSqlName('SZZ')+" SZZ "
+			_cQry+= "WHERE SZZ.ZZ_FILIAL = '"+xFilial("SZZ")+"' "
+			_cQry+= "AND SZZ.ZZ_TIPODOC = 'S' "
+			_cQry+= "AND SZZ.ZZ_DOC = '"+SF2->F2_DOC+"' "
+			_cQry+= "AND SZZ.ZZ_SERIE = '"+SF2->F2_SERIE+"' "
+			_cQry+= "AND SZZ.ZZ_CLIFOR = '"+SF2->F2_CLIENTE+"' "
+			_cQry+= "AND SZZ.ZZ_LOJA = '"+SF2->F2_LOJA+"' "
+			_cQry+= "ORDER BY SZZ.ZZ_CODMENS, SZZ.R_E_C_N_O_ "
+			_cQry:= ChangeQuery(_cQry)
+
+			DbUseArea(.T.,'TOPCONN',TCGENQRY(,,_cQry),cAliasNew,.F.,.T.)
+			(cAliasNew)->(DbGoTop())
+			If !(cAliasNew)->(Eof())
+				While !(cAliasNew)->(Eof())
+					putMsg(@cMensCli, (cAliasNew)->(TEXTOMENS) )
+					(cAliasNew)->(DbSkip())
+				end
+			EndIf
+		else
+			if SZZ->(dbSeek(xFilial("SZZ")+"S"+SF2->F2_DOC+SF2->F2_SERIE+SF2->F2_CLIENTE+SF2->F2_LOJA))
+				While !Eof() .and. SZZ->ZZ_TIPODOC == "S"  .and.	SZZ->ZZ_DOC     == SF2->F2_DOC         .and.;
+						SZZ->ZZ_SERIE   == SF2->F2_SERIE       .and.	SZZ->ZZ_CLIFOR  == SF2->F2_CLIENTE     .and.;
+						SZZ->ZZ_LOJA 	== SF2->F2_LOJA
+
+					if FWUnitBusiness() == DHL_BUSINESSUNIT_SPL
+						if at("*", SZZ->ZZ_TXTMENS) > 0
+							ajustaProd(@aProd)
+							putMsg(@cMensCli, msgSPL(SZZ->ZZ_TXTMENS, aProd, @cMensCli, @nCount))
+						else
+							putMsg(@cMensCli, SZZ->ZZ_TXTMENS)
+						endif
+					else
+						putMsg(@cMensCli, SZZ->ZZ_TXTMENS)
+					endif
+
+					dbSkip()
+				Enddo
+			endif
+		endif
+
+		if (FWUnitBusiness() == DHL_BUSINESSUNIT_AGL) .and. (Alltrim(cCliFor + cLoja) $ Alltrim(_cCliSA5))
+			fMsgDesDocType(@cMensCli)
+		endif
+
+	endIf
+
+	cMensCli := AvTrocaChar(cMensCli)
+
+return
+
+/**
+* Concatena as Mensagens Adicionais
+*/
+static function putMsg(cMsg, cNewStr)
+
+	cNewStr := AllTrim(cNewStr)
+
+	if !Empty(cNewStr) .and. !(Upper(cNewStr) $ Upper(AllTrim(cMsg)))
+		if !Empty(cMsg)
+			cMsg += " "
+		endIf
+		if Right(cNewStr, 1) != "." .and. FWUnitBusiness() != DHL_BUSINESSUNIT_AG2 //Emerson Holanda 02/06/20 -- Só inclui o "." na quebra de linha para as operações que são a SCJ
+			cNewStr += "."
+		endIf
+		cMsg += cNewStr
+	endIf
+
+return
+
+/**
+* Ajusta as Unidades de Medida dos Produtos
+*/
+static function unidadeMedida(aNota, aProd)
+
+	local nI			:= 0
+	local nQtd1UM	 	:= 0
+	local nVlrTotal		:= 0
+	local nPrcUnit 		:= 0
+	local cSegUM	 	:= ""
+	local cCliFor		:= ""
+	local cLoja			:= ""
+	local cProduto		:= ""
+	local cCpoCliFor 	:= ""
+	local cCpoLoja   	:= ""
+	local cCpoProduto 	:= ""
+	local cCpoUmNfe		:= ""
+	local cWhere		:= ""
+	local cTipo			:= aNota[04]
+	local cTipoNF		:= aNota[05]
+	local cAlias		:= ""
+	local oSql 			:= IpSqlObject():newIpSqlObject()
+
+	if (cTipo == DHL_NFE_INVOICE_INFLOW) .or. (cTipo == DHL_NFE_FORM)
+		cCliFor := SF1->F1_FORNECE
+		cLoja   := SF1->F1_LOJA
+		cAlias	:= "SA5"
+		if (cTipoNF $ "DB")
+			cAlias	:= "SA7"
+		endIf
+	elseIf (cTipo == DHL_NFE_INVOICE_OUTFLOW)
+		cCliFor := SF2->F2_CLIENTE
+		cLoja   := SF2->F2_LOJA
+		cAlias	:= "SA7"
+		if (cTipoNF $ "DB")
+			cAlias	:= "SA5"
+		endIf
+	endIf
+
+	if (cAlias == "SA5")
+		cCpoCliFor 	:= "A5_FORNECE"
+		cCpoLoja   	:= "A5_LOJA"
+		cCpoProduto := "A5_PRODUTO"
+		cCpoUmNfe	:= "A5_UMNFE"
+	elseIf (cAlias == "SA7")
+		cCpoCliFor 	:= "A7_CLIENTE"
+		cCpoLoja   	:= "A7_LOJA"
+		cCpoProduto := "A7_PRODUTO"
+		cCpoUmNfe	:= "A7_UMNFE"
+	endIf
+
+	for nI := 1 to Len(aProd)
+
+		cProduto := aProd[nI,2]
+		nQtd1UM	 := aProd[nI,9]
+		nVlrTotal:= aProd[nI,10]
+		nPrcUnit := aProd[nI,16]
+		cSegUM	 := oSql:getFieldValue("SB1", "B1_SEGUM", "%SB1.XFILIAL% AND B1_COD = '"+cProduto+"'")
+
+		cWhere := " %"+cAlias+".XFILIAL% AND "+cCpoCliFor+" = '"+cCliFor+"' AND "+cCpoLoja+" = '"+cLoja+"' AND "
+		cWhere += cCpoProduto+" = '"+cProduto+"' "
+
+		oSql:newTable(cAlias, cCpoUmNfe+" UMNFE ", cWhere)
+
+		if oSql:hasRecords() .and. oSql:getValue("UMNFE == '2'")
+			nQtd2UM 	:= round(ConvUM(cProduto, nQtd1UM, 0, 2),4)
+			aProd[nI,8] := cSegUM
+			aProd[nI,9] := nQtd2UM
+			aProd[nI,16]:= NoRound(nVlrTotal / nQtd2UM, 8)
+		endIf
+
+	next nI
+
+	oSql:close()
+
+return
+
+
+/**
+* Preenche a tag nFCI
+**/
+
+static function setFCI(aNota,aInfoItem,aProd,aFCI)
+
+	local cSerie  := aNota[01]
+	local cDoc    := aNota[02]
+	local cTipo   := aNota[04]
+	local nCont   := 0
+	local cCliFor := ""
+	local cLoja   := ""
+
+	if cTipo == DHL_NFE_INVOICE_OUTFLOW
+
+		cCliFor	:= SF2->F2_CLIENTE
+		cLoja	:= SF2->F2_LOJA
+
+		for nCont := 1 to Len(aFCI)
+
+			cItem    := aInfoItem[nCont][04]
+			cProduto := aProd[nCont][02]
+
+			dbSelectArea("SB1")
+			SB1->(dbSetOrder(1))
+			SB1->(MsSeek(xFilial("SB1")+cProduto))
+
+			dbSelectArea("SD2")
+			SD2->(dbSetOrder(3)) // D2_FILIAL+D2_DOC+D2_SERIE+D2_CLIENTE+D2_LOJA+D2_COD+D2_ITEM
+			SD2->(dbSeek(xFilial("SD2")+cDoc+cSerie+cCliFor+cLoja+cProduto+cItem))
+
+			dbSelectArea("SD1")
+			SD1->(dbSetOrder(1)) // D1_FILIAL+D1_DOC+D1_SERIE+D1_FORNECE+D1_LOJA+D1_COD+D1_ITEM
+
+			if SD1->(dbSeek(xFilial("SD1")+SD2->D2_NFORI+SD2->D2_SERIORI+cCliFor+cLoja+cProduto+SD2->D2_ITEMORI))
+				aFCI[nCont]:= {AllTrim(SD1->D1_ZZFCI)}
+			endIf
+		next nCont
+
+	endif
+return
+
+
+/*
+** Mensagem SPL
+*/
+static function msgSPL(cMsg, aProd, cMensCli, nCount)
+	local nI	 	:= 0
+	local aItens 	:= separa(alltrim(cMsg), ";")
+	local cMsgAux	:= aItens[1]
+
+	for nI:=2 to len(aItens)
+		nCount++
+		aProd[val(aItens[nI]), 04] += "["+cvaltochar(nCount)+"]"
+		if "Retorno de peca BAD, conforme NF(s)" $ cMensCli
+			if nI == 2
+				cMensCli := substr(cMensCli, 1, len(cMensCli)-2)
+				cMsgAux  := " / " + substr(cMsgAux, at("-", cMsgAux)-tamsx3("F2_DOC")[1], len(cMsgAux))
+			endif
+		endif
+		cMsgAux := stuff(cMsgAux, at("-", cMsgAux)-tamsx3("F2_DOC")[1], 0, "["+cvaltochar(nCount)+"]")
+
+	next nI
+
+	cMsgAux += " * "
+return (cMsgAux)
+
+
+/*
+**
+*/
+static function ajustaProd(aProd)
+	local nI := 0
+
+	for nI:=1 to len(aProd)
+		if at("[", aProd[nI, 4]) > 0
+			aProd[nI, 4] := substr(aProd[nI, 4], 1, at("[", aProd[nI, 4])-1)
+		endif
+	next nI
+return
+
+/*
+* Coleta vTrib, vUnTrib da IP040
+*/
+static function getEANData(aProd, aNota, aInfoItem)
+	local aAreaSD2	:= SD2->(GetArea())
+	local nI		:= 0
+	local cLine		:= ""
+	local cProduto	:= ""
+	local cKey040	:= ""
+	local cQuery	:= ""
+	local cUtrib	:= ""
+	local cQtrib	:= ""
+	local cRCOOrig	:= ""
+	local cQuery	:= ""
+	local cSerie	:= aNota[01]
+	local cDoc		:= aNota[02]
+	local oSql		:= IpSqlObject():newIpSqlObject()
+
+	If SF1->F1_TIPO == DEVOLUCAO //Para buscar a chave da referencia quando for IP210
+		cQuery := "SELECT         ZA_KENFSCJ "								+ CRLF
+		cQuery += "FROM           SZA100 SZA " 								+ CRLF
+		cQuery += "INNER JOIN     SD1100 SD1 ON " 							+ CRLF
+		cQuery += "    SZA.ZA_NFRCO = SD1.D1_NFORI AND " 					+ CRLF
+		cQuery += "    SZA.ZA_SERIRCO = SD1.D1_SERIE AND " 					+ CRLF
+		cQuery += "    SZA.ZA_FILIAL = SD1.D1_FILIAL " 						+ CRLF
+		cQuery += "WHERE SD1.D1_DOC 	= '" + cDoc + "' AND "  			+ CRLF
+		cQuery += "		 SD1.D1_SERIE 	= '" + cSerie + "' AND " 			+ CRLF
+		cQuery += "		 SD1.D1_FORNECE = '" + SF1->F1_FORNECE + "' AND " 	+ CRLF
+		cQuery += "		 SD1.D1_LOJA 	= '" + SF1->F1_LOJA + "' AND " 		+ CRLF
+		cQuery += "		%SD1.XFILIAL% AND %SD1.NOTDEL% "
+
+		oSql:newAlias(cQuery)
+
+		While oSql:notIsEof()
+
+			cKey040 := AllTrim(oSql:getValue("ZA_KENFSCJ"))
+
+			oSql:skip()
+		EndDo
+
+		oSql:close()
+		//Para buscar a chave da referencia quando for IP210
+	Else
+		If SF2->F2_ZZTPNF == REMESSA_CONTA_ORDEM
+			cKey040	 := oSql:getFieldValue("SZA", "ZA_KENFSCJ", "ZA_NFRCO = '" + cDoc + "' AND ZA_SERIRCO = '" + cSerie + "' AND %SZA.XFILIAL% AND %SZA.NOTDEL%")
+		Else
+			cKey040	 := oSql:getFieldValue("SZA", "ZA_KENFSCJ", "ZA_NFRET = '" + cDoc + "' AND ZA_SERIRET = '" + cSerie + "' AND %SZA.XFILIAL% AND %SZA.NOTDEL%")
+		EndIf
+	EndIf
+
+	for nI := 1 to Len(aProd)
+
+		cLine	 := AllTrim(Str(aProd[nI,1]))
+		cProduto := AllTrim(aProd[nI,2])
+
+		If SF1->F1_TIPO == DEVOLUCAO
+			oSql:NewTable("SB1", "B1_SEGUM,B1_CONV", "%SB1.XFILIAL% AND B1_COD = '" + cProduto + "'  AND %SB1.NOTDEL%")
+			aProd[nI,11] = AllTrim(oSql:getValue("B1_SEGUM"))
+
+			aProd[nI,12] = oSql:getValue("B1_CONV") * aProd[nI,09]
+		elseIf SF2->F2_ZZTPNF == REMESSA_CONTA_ORDEM
+			cUtrib 	:= oSql:getFieldValue("SZB", "ZB_UTRIB", "ZB_KENFSCJ = '" + cKey040 + "' AND ZB_ITEM = '" + cProduto + "' AND ZB_LINITEM = '" + cLine + "' AND %SZB.XFILIAL% AND %SZB.NOTDEL%")
+			aProd[nI,11] = AllTrim(cUtrib)
+
+			cQtrib	:= oSql:getFieldValue("SZB", "ZB_QTRIB", "ZB_KENFSCJ = '" + cKey040 + "' AND ZB_ITEM = '" + cProduto + "' AND ZB_LINITEM = '" + cLine + "' AND %SZB.XFILIAL% AND %SZB.NOTDEL%")
+			aProd[nI,12] = cQtrib
+
+		Elseif SF2->F2_ZZTPNF == RETORNO_SIMBOLICO .or. SF2->F2_ZZTPNF == AJUSTE_FISCAL
+			DbSelectArea("SD2")
+			SD2->(DbSetOrder(3))
+			If SD2->(DbSeek(xFilial("SD2") + SF2->(F2_DOC + F2_SERIE + F2_CLIENTE + F2_LOJA) + PadR(cProduto, TamSx3("D2_COD")[1]) + aInfoItem[nI, 4]))
+
+				oSql:NewTable("SD1", "D1_ZZUTRIB, D1_ZZQTRIB, D1_QUANT", "D1_DOC = '" + SD2->D2_NFORI + "' "+;
+					"AND D1_SERIE = '" + SD2->D2_SERIORI + "' AND D1_ITEM = '" + SD2->D2_ITEMORI + "' "+;
+					"AND D1_IDENTB6 = '" + SD2->D2_IDENTB6 + "' "+;
+					"AND %SD1.XFILIAL% AND %SD1.NOTDEL%")
+
+				If oSql:hasRecords() .And. !Empty(oSql:getValue("D1_ZZUTRIB")) .And. oSql:getValue("D1_ZZQTRIB") # 0 //Para as notas referenciadas da versão 3.10 não existe UTRIB e QTRIB e deve-se buscar da IP040
+					aProd[nI,11] = AllTrim(oSql:getValue("D1_ZZUTRIB"))
+
+					aProd[nI,12] = aProd[nI,09] * (oSql:getValue("D1_ZZQTRIB") / oSql:getValue("D1_QUANT"))
+				Else
+					/*		oSql:NewTable("SZB", "ZB_UTRIB, ZB_QTRIB", "ZB_PEDIDO = '" + SD2->D2_PEDIDO + "' "+;
+					"AND ZB_ITEMPV = '" + SD2->D2_ITEMPV + "' "+;											
+					"AND %SZB.XFILIAL% AND %SZB.NOTDEL%")	
+
+					If oSql:hasRecords() .And. !Empty(oSql:getValue("ZB_UTRIB")) .And. oSql:getValue("ZB_QTRIB") # 0
+					aProd[nI,11] = AllTrim(oSql:getValue("ZB_UTRIB"))
+
+					aProd[nI,12] = oSql:getValue("ZB_QTRIB") / aProd[nI,09]
+					Else*/
+					oSql:NewTable("SB1", "B1_SEGUM,B1_CONV", "%SB1.XFILIAL% AND B1_COD = '" + cProduto + "'  AND %SB1.NOTDEL%")
+					aProd[nI,11] = AllTrim(oSql:getValue("B1_SEGUM"))
+
+					aProd[nI,12] = oSql:getValue("B1_CONV") * aProd[nI,09]
+					/*EndIf*/											 		
+				EndIf
+
+			EndIf										
+		EndIf
+
+	next nI	
+
+	oSql:close()
+
+	RestArea(aAreaSD2)
+
+return
+
+/*
+** Ajusta chave Nfe
+*/
+static function refNfe(aNota, aProd, aNfVinc, aDest)
+	local aAreaSD1	:= SD1->(GetArea())
+	local aRemov		:= {}
+	local oSql		:= IpSqlObject():newIpSqlObject()
+	local cTipo		:= aNota[04]
+	local nI,nJ		:= 0
+	local cQuery		:= ""
+	local cCodCli		:= ""
+	local cLojaCli	:= ""
+	local cID		:= ""
+	local oDHLIp210	:= nil
+	local oDHLIp040	:= nil
+
+	cCodCli		:= SF2->F2_CLIENTE
+	cLojaCli	:= SF2->F2_LOJA
+
+	if FWUnitBusiness() == DHL_BUSINESSUNIT_SPL
+		if alltrim(upper(cTipo)) == DHL_NFE_INVOICE_OUTFLOW
+			if SF2->F2_TIPO $ 'N' .and. oSql:getFieldValue("SA1", "A1_ZZDEPOS", " %SA1.XFILIAL% AND A1_COD = '"+SF2->F2_CLIENTE+"' AND A1_LOJA = '"+SF2->F2_LOJA+"' ") == 'S'
+				for nI := 1 to len(aNfVinc)
+					cID := ""
+					if !empty(aNfVinc[nI, CHAVENFE])
+						for nJ := 1 to len(aProd)
+							cID += "'" + oSql:getFieldValue("SD2", "D2_ZZID", "%SD2.XFILIAL% AND D2_DOC = '"+SF2->F2_DOC+"' AND D2_SERIE = '"+SF2->F2_SERIE+"' "+;
+								" AND D2_ITEM = '"+strZero(aProd[nJ, 1], TAMSX3("D2_ITEM")[1])+"' AND D2_COD = '"+aProd[nJ, 2]+"' ") + "',"
+						next nJ
+
+						if !empty(cID)
+							cQuery := "	SELECT F1_CHVNFE FROM %SD1.SQLNAME%  "
+							cQuery += "	INNER JOIN %SF1.SQLNAME%  ON "
+							cQuery += "		%SD1.NOTDEL% AND D1_FILIAL = F1_FILIAL AND D1_DOC = F1_DOC AND D1_SERIE = F1_SERIE "
+							cQuery += "	WHERE "
+							cQuery += "		%SD1.NOTDEL% "
+							cQuery += "		AND D1_ZZID 	IN ("+substr(cID, 1, len(cID)-1)+") "
+							//cQuery += "		AND D1_COD 		= '"+aProd[2]+"' "
+							cQuery += "		AND D1_FORNECE 	= '"+cCodCli+"' AND D1_LOJA =  '"+cLojaCli+"' AND F1_CHVNFE <> ' '"
+
+							oSql:newAlias(cQuery)
+							if oSql:hasRecords()
+								while oSql:notIsEof()
+									if aScan(aNfVinc, {|x| alltrim(x[CHAVENFE]) == alltrim(oSql:getValue("F1_CHVNFE")) }) > 0
+										osql:skip()
+									else
+										aNfVinc[nI, CHAVENFE] := oSql:getValue("F1_CHVNFE")
+										exit
+									endif
+								end
+							else
+								aNfVinc[nI, CHAVENFE] := "DELETA"
+							endif
+						endif
+					endif
+				next nI
+				while ascan(aNfVinc, {|x| Upper(Alltrim(x[CHAVENFE])) == "DELETA" }) > 0
+					aDel(aNfVinc, ascan(aNfVinc, {|x| Upper(Alltrim(x[CHAVENFE])) == "DELETA" }))
+					aSize(aNfVinc, len(aNfVinc)-1)
+				end
+			endif
+		endif
+	elseIf FWUnitBusiness() == DHL_BUSINESSUNIT_AG2
+		If SF2->F2_ZZTPNF == AJUSTE_FISCAL
+			oDHLIp210 := DHLIp210():NewDHLIp210()
+			oDHLIp210:AtualizNfVinc(aNota, aProd, aNfVinc, aDest)
+		ElseIf SF2->F2_ZZTPNF == REMESSA_CONTA_ORDEM
+			oDHLIp040 := DHLIp040Sap():newDHLIp040Sap()
+			oDHLIp040:AtualizNfVinc(aNota, @aNfVinc)
+			FreeObj(oDHLIp040)
+		EndIf
+	endif
+
+	restArea(aAreaSD1)
+return
+
+/*
+** Retorna Mensagem Modelo3
+*/
+static function fMsgModelo3(cMensCli, cPedido)
+
+	local oModelo3 		:= DHLModelo3():NewDHLModelo3()
+	local cMensInsumo 	:= ""
+	local cInfAdicional	:= ""
+	local cChave		:= SF2->(F2_FILIAL+F2_DOC+F2_SERIE+F2_CLIENTE+F2_LOJA+F2_FORMUL+F2_TIPO)
+
+	oModelo3:VerifItNF1(SF2->(Recno()))
+
+	if !oModelo3:IsTesTransferencia()
+
+		cMensInsumo 	:= oModelo3:GetZZMsgIN(cPedido)
+		cInfAdicional 	:= oModelo3:GetInfAdicional(cPedido)
+
+	endIf
+
+	cMensCli += cMensInsumo
+	cMensCli += cInfAdicional
+
+return
+
+/*
+** Retorna Mensagem do Pedido de Venda
+*/
+static function fMsgPed(cMensCli)
+	local cPed		:= ""
+	local cChave	:= SF2->F2_DOC + SF2->F2_SERIE + SF2->F2_CLIENTE + SF2->F2_LOJA
+
+	dbSelectArea("SD2")
+	dbSetOrder(3)
+	dbSeek(xFilial("SD2") + cChave)
+
+	While SD2->D2_DOC + SD2->D2_SERIE + SD2->D2_CLIENTE + SD2->D2_LOJA == cChave
+		cPed := SD2->D2_PEDIDO
+		if !empty(cPed)
+			exit
+		endif
+		SD2->(DbSkip())
+	end
+
+	cMsg := alltrim(Posicione("SC5", 1, xFilial("SC5") + cPed, "C5_ZZMSGIN"))
+	cMensCli += cMsg + CRLF
+return
+
+/*
+** Obtém as mesagens extras referente ao regime especial
+*/
+static function getMsgRegEsp(cMensCli, cTipoNota, cPedido)
+
+	local cDoc			:= SF2->F2_DOC
+	local cSerie		:= SF2->F2_SERIE
+	local cCliente		:= SF2->F2_CLIENTE
+	local cLoja			:= SF2->F2_LOJA
+	local oDHLIp210 	:= DHLIp210():NewDHLIp210()
+
+	default cTipoNota 	:= ""
+	default cPedido 	:= ""
+
+	cMensCli += oDHLIp210:getInfNotaRCO(cDoc, cSerie, cCliente, cLoja, cTipoNota, cPedido)
+
+return
+
+/*
+** Obtém as mesagens extras referente ao regime especial
+*/
+static function getDepara(aProd, aNota)
+
+	local nI 				:= 1
+	local oDhlPrdDepara 	:= DhlPrdDepara():newDhlPrdDepara()
+	local cProdutoProtheus	:= ""
+	local cProdutoCliente 	:= ""
+	local cMsg				:= ""
+	local cTipo	:= aNota[04]
+
+	if cTipo == DHL_NFE_INVOICE_OUTFLOW
+
+		for nI := 1 to len(aProd)
+
+			cProdutoProtheus 	:= aProd[nI][2]
+			cProdutoCliente 	:= oDhlPrdDepara:getPrdCliente(cProdutoProtheus)
+
+			if !empty(cProdutoCliente)
+				if oDhlPrdDepara:isExecDepara()
+					if nI == 1
+						aProd[nI][25] 	+= cProdutoCliente + " "
+					else
+						aProd[nI][25] 	+= "|" + cProdutoCliente
+					endIf
+				endIf
+			endIf
+
+		next nI
+
+	endIf
+
+return
+
+/*
+** Retorna Mensagem do campo personalizado C5_ZZDEDOT do Pedido de Vendas
+*/
+static function fMsgDesDocType(cMensCli)
+	local cPed		:= ""
+	local cChave	:= SF2->F2_DOC + SF2->F2_SERIE + SF2->F2_CLIENTE + SF2->F2_LOJA
+
+	dbSelectArea("SD2")
+	dbSetOrder(3)
+	dbSeek(xFilial("SD2") + cChave)
+
+	While SD2->D2_DOC + SD2->D2_SERIE + SD2->D2_CLIENTE + SD2->D2_LOJA == cChave
+		cPed := SD2->D2_PEDIDO
+		if !empty(cPed)
+			exit
+		endif
+		SD2->(DbSkip())
+	end
+
+	cMsg := "Núm. do Fornecimento " + Alltrim(Posicione("SC5", 1, xFilial("SC5") + cPed, "C5_ZZDEDOT"))
+	cMensCli += cMsg + CRLF
+return
+
+/*
+
+Elmo, em 21/03/2022: acrescentar tags xCampo e xTexto
+
+aRetObs := {xCampo,xTexto}
+
+SZAe SZB
+o número da nota de venda fica no campo ZA_DOCSCJ
+
+*/
+Static Function CarregaXTexto(aProd, aNota, aInfoItem)
+	local aAreaSD2	:= SD2->(GetArea())
+	local nI		:= 0
+	local cLine		:= ""
+	local cProduto	:= ""
+	local cKey040	:= ""
+	local cQuery	:= ""
+	local cUtrib	:= ""
+	local cQtrib	:= ""
+	local cRCOOrig	:= ""
+	local cQuery	:= ""
+	local cSerie	:= aNota[01]
+	local cDoc		:= aNota[02]
+	local oSql		:= IpSqlObject():newIpSqlObject()
+    Local cRet      := ""
+	Local aRetObs := {} //{xCampo,xTexto}
+	Local cCpoxCampo := GetMv("ZZ_XCAMPO",,"NFE_Cliente")
+
+    oSql:newTable("SZA", "ZA_DOCSCJ, ZA_SERISCJ, ZA_DTEMSCJ, ZA_NFRCO, ZA_SERIRCO, ZA_KENFSCJ, ZA_BUYCODE, ZA_DUEDATE", "ZA_NFRCO = '" + cDoc + "' AND ZA_SERIRCO = '" + cSerie + "' AND %SZA.XFILIAL% AND %SZA.NOTDEL%")
+        
+    If oSql:hasRecords()
+		cDocScj := oSql:getValue("ZA_DOCSCJ")
+		cSerScj := oSql:getValue("ZA_SERISCJ")
+		dEmiScj := oSql:getValue("ZA_DUEDATE")
+		cKeySCJ := oSql:getValue("ZA_KENFSCJ")
+	
+		/*dEmiScj := oSql:getValue("ZA_DUEDATE")
+		cDocRco := oSql:getValue("ZA_NFRCO")
+		cSerRco := oSql:getValue("ZA_SERIRCO")
+		cBuyCod := oSql:getValue("ZA_BUYCODE")*/
+		If !empty(cDocScj)
+			cRefSCJ := alltrim(cKeySCJ)
+			aRetObs := {{cCpoxCampo,cRefSCJ}}
+		Endif
+    EndIf
+
+    oSql:close()
+
+Return(aRetObs)

@@ -1,0 +1,846 @@
+#include "totvs.ch"
+#include "dhl.ch"
+
+#define OPC_INCLUSAO   3
+#define INTERFACE_NAME "Stock Adjustment"
+
+
+/*/{Protheus.doc} DisImpInv
+
+@author Alberto Diorio
+@since 18/02/2020
+
+@param cFilePath,Caractere,XML a ser importado
+@param cApp,Caractere,Se o XML é do Nulogy ou do Select
+
+@return Logico Indica se foi importado com sucesso
+/*/
+user function AglImpInv(cFilePath,cApp)
+
+	local lOk 	 	       := .F.
+	local cError 	       := ""
+	local cWarning 	       := ""
+	local aAux             := {}
+
+	private cXmlArq        := cFilePath	
+	private oLogImp        := DHLLogManager():newDHLLogManager()
+	private oXmlIp 	       := IpXmlObject():newIpXmlObject(cXmlArq)
+	private oSql	       := IpSqlObject():newIpSqlObject()
+	private cApplication   := cApp
+	
+	private lMsErroAuto    := .F.
+	private lMsHelpAuto    := .T.
+	private lAutoErrNoFile := .T.		
+	private lTemPoder3 	   := .T.
+	
+	if !(oXmlIp:doParse())
+		oLogImp:start(cApplication,DHL_IMPORTACAO,cXmlArq)
+		oLogImp:fail(INTERFACE_NAME,"Falha ao ler XML"+CRLF+CRLF+"Error: "+oXmlIp:getError()+CRLF+CRLF+"Aviso: "+oXmlIp:getWarning())
+		return .f.
+	endif
+	
+	/* Necessário realizar testes de execução, mesmo o depositante sendo REP, para verificar se o processamento já realizado pelo código-fonte AglImpInv.prw atende.
+	aAux := isRepair(cApp)
+	if aAux[1]
+		if aAux[2]
+			return u_DlxImpInv(cFilePath,APP_DLX)
+		endIf
+	else
+		return .f.
+	endIf
+	*/
+
+	lOk := procXml(APP_DLX)
+	
+return lOk
+
+
+/**
+ * Processa os Arquivos
+ */
+static function procXml(cApp)
+	
+	local lOk  := .F.
+	
+	If isPreNota(cApp)		
+		lOk := geraPreNota(cApp)
+	elseIf isPedidoVenda(cApp)
+		lOk := geraPedidoVenda(cApp)	
+	else
+		oLogImp:start(cApplication,DHL_IMPORTACAO,cXmlArq)
+		oLogImp:fail(INTERFACE_NAME,"Não foi possível definir o movimento de Ajuste a ser gerado")
+	endif
+								
+return lOk
+
+
+/**
+ * Verifica se deve gerar uma Pre-Nota
+ */
+static function isPreNota(cApp)
+	
+	local lIsPreNota := .F.
+	
+	if (cApp == APP_DLX)
+		lIsPreNota := Upper(AllTrim(oXmlIp:getNodeValue("STK_ADJ:_BODY:_FILEHEADER:_TYPE:text")))=="P"
+	endif	
+	
+return lIsPreNota
+
+
+/**
+ * Verifica se deve gerar um pedido de venda
+ */
+static function isPedidoVenda(cApp)
+	
+	local lIsPedVenda := .F.
+	
+	if (cApp == APP_DLX)
+		lIsPedVenda := Upper(AllTrim(oXmlIp:getNodeValue("STK_ADJ:_BODY:_FILEHEADER:_TYPE:text"))) == "N"
+	endif	
+	
+return lIsPedVenda
+
+
+/**
+ * Gera a Pre-Nota de Entrada
+ */
+static function geraPreNota(cApp)
+	
+	local lOk    := .F.
+	local aCab   := {}
+	local aItens := {}
+	local cErro  := ""
+	local cModuloBkp	:= cModulo
+	
+	cModulo      := "EIC"
+	
+	getDadosPreNota(cApp,@aCab,@aItens)
+	
+	lMsErroAuto := .F.
+	MSExecAuto({|x,y,z| MATA140(x,y,z)},aCab,aItens,OPC_INCLUSAO)
+	
+	cModulo := cModuloBkp
+	
+	if lMsErroAuto
+		RollBackSX8()
+		
+		cErro := mostraErroRotAuto()
+		
+		oLogImp:start(cApplication,DHL_IMPORTACAO,cXmlArq)
+		oLogImp:fail(INTERFACE_NAME,"Erro de rotina automática"+CRLF+CRLF+cErro)
+	else
+		ConfirmSX8()
+
+		lOk := .T.
+	endif
+	
+return lOk
+
+
+/**
+ * Gera o pedido de venda
+ */
+static function geraPedidoVenda(cApp)
+	
+	local lOk    := .F.
+	local aCab   := {}
+	local aItens := {}
+	local cErro  := ""
+	
+	lOk := getDadosPedVenda(cApp,@aCab,@aItens)
+	
+	if lOk
+		if !(lTemPoder3)
+			oLogImp:start(cApplication,DHL_IMPORTACAO,cXmlArq)
+			oLogImp:fail(INTERFACE_NAME,"Não há saldo em poder de terceiros para os itens do pedido "+CRLF+CRLF+cErro)
+			return
+		endif
+	
+		lOk := .F.
+		lMsErroAuto := .F.
+		MSExecAuto({|x,y,z| MATA410(x,y,z)},aCab,aItens,OPC_INCLUSAO)
+		
+		if lMsErroAuto
+			cErro := mostraErroRotAuto()
+			
+			oLogImp:start(cApplication,DHL_IMPORTACAO,cXmlArq)
+			oLogImp:fail(INTERFACE_NAME,"Erro de rotina automática"+CRLF+CRLF+cErro)
+		else
+			lOk := .T.
+		endif
+	endif
+		
+return lOk
+
+ 
+/**
+ * Gera o movimento interno
+ */
+static function geraMovimentoInterno(cApp)
+	
+	local lOk    := .F.
+	local aDados := {}
+	local aItens := {}
+	local cErro  := ""
+
+	getDadosMovInterno(cApp,@aDados,@aItens)
+	
+	lMsErroAuto := .F.
+	//MSExecAuto({|x,y| MATA240(x,y)},aDados,OPC_INCLUSAO)
+	MSExecAuto({|x,y,z| MATA241(x,y,z)},aDados,aItens,OPC_INCLUSAO)
+	
+	if lMsErroAuto
+		cErro := mostraErroRotAuto()
+		
+		oLogImp:start(cApplication,DHL_IMPORTACAO,cXmlArq)
+		oLogImp:fail(INTERFACE_NAME,"Erro de rotina automática"+CRLF+CRLF+cErro)
+	else
+		lOk := .T.
+	endif
+	
+return lOk
+
+
+/**
+ * Obtem as arrays da rotina automática de mov. interno
+ */
+static function getDadosMovInterno(cApp,aDados,aItens)
+
+	local cControle  := ""
+	local cCodProd 	 := ""
+	local cCnpj 	 := ""
+	local cFilialNum := ""
+	local cTM		 := ""
+	local nQuant 	 := 0
+	local aItensXML  := {}
+	local aItemAux 	 := {}
+	
+	if (cApp == APP_DLX)
+	
+		if Upper(AllTrim(oXmlIp:getNodeValue("STK_ADJ:_BODY:_FILEHEADER:_TYPE:text"))) == "P"
+			cTM := GetMV("ZZ_TMDEV")
+		else
+			cTM := GetMV("ZZ_TMREQ")
+		endif
+		
+		aItensXML := oXmlIp:getNodeArray("STK_ADJ:_BODY:_FILEHEADER")
+		
+		for nI := 1 to Len(aItensXML)
+		
+			cCodProd  := AllTrim(aItensXML[nI]:_ITEM:text)
+			cCodProd  := getPrdDepara(cCodProd, nil, '1')	
+			cCnpj     := AllTrim(oXmlIp:getNodeValue("STK_ADJ:_BODY:_FILEHEADER:_SITE_CNPJ:text"))
+
+			nQuant    := Val(aItensXML[nI]:_QUANTITY:text)
+			cControle := oXmlIp:getNodeValue("STK_ADJ:_BODY:_FILEHEADER:_ADJUSTMENT_ID:text")
+
+			if nI == 1
+				aDados := {{"D3_FILIAL"  ,xFilial("SD3"),nil},;
+					{"D3_DOC"     ,"INVENT" 	 ,nil},;
+					{"D3_TM"      ,cTM 			 ,nil},;
+					{"D3_EMISSAO" ,dDataBase 	 ,nil}}
+			endif
+
+			aAdd(aItemAux,{"D3_COD"     ,cCodProd      ,nil})
+			aAdd(aItemAux,{"D3_QUANT"   ,nQuant 		 ,nil})
+			aAdd(aItemAux,{"D3_ZZADJID" ,cControle     ,nil})
+
+			aadd(aItens, aItemAux)
+		next		
+			
+	endif
+	
+return
+
+
+/**
+ * Obtem as arrays da rotina automática de pré nota
+ */
+static function getDadosPreNota(cApp,aCab,aItens)
+
+	local cControle  := ""
+	local cCodProd 	 := ""
+	local cCnpj 	 := ""
+	local cFilialNum := ""
+	local cSerie 	 := DHL_SERIE_INVENTARIO
+	local cTipoNf  	 := SuperGetMv("MV_TPNRNFS")
+	local cFornece	 := ""
+	local cLoja		 := ""
+	local cNumero	 := ""
+	local cLote		 := ""
+	local cExpDate	 := ""
+	local cManufDt	 := ""
+	local cItem 	 := StrZero(0,TamSx3("D1_ITEM")[1])
+	local cTes		 := GetMv("ZZ_TESENT")
+	local aAux 		 := {}
+	local aItensXML  := {}
+	local nQuant 	 := 0	
+	local nVUnit 	 := 0
+	local nTotPrice	 := 0
+	
+	if (cApp == APP_DLX)
+	
+		cCodProd  := AllTrim(oXmlIp:getNodeValue("STK_ADJ:_BODY:_FILEHEADER:_ITEM:text"))
+		cLote	  := AllTrim(oXmlIp:getNodeValue("STK_ADJ:_BODY:_FILEHEADER:_LOT:text"))
+		cCodProd  := getPrdDepara(cCodProd, nil, '1')	
+		
+		if(isProdutLote(cCodProd) .And. Empty(cLote))
+			oLogImp:start(cApplication,DHL_IMPORTACAO,cXmlArq)
+			oLogImp:fail(INTERFACE_NAME,"Produto controla lote e a tag na interface está vazia.")
+			return .f.
+		endif
+		
+		cControle := oXmlIp:getNodeValue("STK_ADJ:_BODY:_FILEHEADER:_ADJUSTMENT_ID:text")		
+		cCnpj     := AllTrim(oXmlIp:getNodeValue("STK_ADJ:_BODY:_FILEHEADER:_SITE_CNPJ:text"))				
+		cExpDate  := StrTran(AllTrim(oXmlIp:getNodeValue("STK_ADJ:_BODY:_FILEHEADER:_EXPIRATION_DATE:text")),"-","")
+		cManufDt  := StrTran(AllTrim(oXmlIp:getNodeValue("STK_ADJ:_BODY:_FILEHEADER:_MANUFACTURE_DATE:text")),"-","")
+		retFornece(@cFornece, @cLoja, cCodProd, cLote, cExpDate)	
+		
+		SX3->(DbSetOrder(1))
+		If (SX3->(dbSeek("SD9"))) .And. cTipoNf == "3"
+			cNumero := MA461NumNf(.T., cSerie)	
+		elseIf cTipoNf == "1"
+			cNumero := NxtSX5Nota(cSerie, NIL, cTipoNf)	
+		Else
+			Alert("Não foi possível atribuir número de NF! Verifique o conteúdo do parâmetro MV_TPNRNFS.")
+			Return .f.
+		EndIf
+		
+		aAdd(aCab,{"F1_FILIAL"  ,xFilial("SF1")  			  ,nil})
+		aAdd(aCab,{"F1_DOC"     ,cNumero				 	  ,nil})
+		aAdd(aCab,{"F1_SERIE"   ,cSerie       				  ,nil})
+		aAdd(aCab,{"F1_FORNECE" ,cFornece  					  ,nil})
+		aAdd(aCab,{"F1_LOJA"    ,cLoja 						  ,nil})
+		aAdd(aCab,{"F1_EMISSAO" ,dDataBase 		              ,nil})
+		aAdd(aCab,{"F1_TIPO"    ,"B"       		              ,nil})
+		aAdd(aCab,{"F1_FORMUL"  ,"S"       		              ,nil})
+		aAdd(aCab,{"F1_ESPECIE" ,"INV"      		          ,nil})			
+		aAdd(aCab,{"F1_ZZADJID"	,cControle 		              ,nil})
+		
+		aItensXML := oXmlIp:getNodeArray("STK_ADJ:_BODY:_FILEHEADER")
+		
+		for nI := 1 to Len(aItensXML)
+			
+			nQuant   := Val(aItensXML[nI]:_QUANTITY:text)
+			
+			nVUnit := retVUnit(cCodProd, cLote)
+			
+			aAux  := {}			
+			cItem := Soma1(cItem)
+			
+			nTotPrice := A410Arred(nQuant * nVUnit ,"D1_TOTAL")
+			if nTotPrice < 0.01
+				nTotPrice   := 0.01
+				nVUnit 		:= A410Arred(nTotPrice / nQuant ,"D1_VUNIT")
+			endif
+			
+			aAdd(aAux,{"D1_ITEM"  	,cItem		 	 ,nil})
+			aAdd(aAux,{"D1_COD"   	,cCodProd	  	 ,nil})
+			aAdd(aAux,{"D1_QUANT" 	,nQuant		 	 ,nil})
+			aAdd(aAux,{"D1_VUNIT" 	,nVUnit		 	 ,nil})
+			aAdd(aAux,{"D1_TOTAL" 	,nTotPrice	 	 ,nil})
+			aAdd(aAux,{"D1_ZZTES" 	,cTes			 ,nil})
+			if !empty(cLote)
+				aAdd(aAux,{"D1_LOTECTL"	,cLote			 ,nil})
+				aAdd(aAux,{"D1_DTVALID"	,sTod(cExpDate)	 ,nil})
+				aAdd(aAux,{"D1_ZZDFABR"	,sTod(cManufDt)	 ,nil})
+			endif 
+		
+			aAdd(aItens,aAux)
+			
+		next
+	
+	endif
+	
+return
+
+
+/**
+ * Obtem as arrays da rotina automática de pedido de venda
+ */
+static function getDadosPedVenda(cApp,aCab,aItens)
+
+	local cControle  := ""
+	local cCodProd 	 := ""
+	local cLote		 := ""
+	local cSubLote	 := ""
+	local cCliFor	 := ""
+	local cLoja		 := ""
+	local cEspecNf	 := ""
+	local nQuant 	 := 0
+	local cItem 	 := StrZero(0,TamSx3("C6_ITEM")[1])
+	local aAux 		 := {}
+	local aItensXML  := {}
+	local cCnpj 	 := ""
+	local cFilialNum := ""
+	local nVUnit 	 := 0
+	local nTotPrice	 := 0
+	local nSld   	:= 0
+	local nSaldo 	:= 0
+	local nVlrParcial, nVlrUnit, nSldTotal := 0
+	local oSql		:= IpSqlObject():newIpSqlObject()
+	local oSqlCli	:= IpSqlObject():newIpSqlObject()
+	
+	if (cApp == APP_DLX)
+	
+		cCodProd	:= oXmlIp:getNodeValue("STK_ADJ:_BODY:_FILEHEADER:_ITEM:text")
+		cLote		:= oXmlIp:getNodeValue("STK_ADJ:_BODY:_FILEHEADER:_LOT:text")
+		cCodProd    := getPrdDepara(cCodProd, nil, '1')	
+		
+		if(isProdutLote(cCodProd) .And. Empty(cLote))
+			oLogImp:start(cApplication,DHL_IMPORTACAO,cXmlArq)
+			oLogImp:fail(INTERFACE_NAME,"Produto controla lote e a tag na interface está vazia.")
+			return .f.
+		endif
+		
+		cControle	:= oXmlIp:getNodeValue("STK_ADJ:_BODY:_FILEHEADER:_ADJUSTMENT_ID:text")
+		cCnpj     	:= AllTrim(oXmlIp:getNodeValue("STK_ADJ:_BODY:_FILEHEADER:_SITE_CNPJ:text"))		
+		cSubLote	:= oXmlIp:getNodeValue("STK_ADJ:_BODY:_FILEHEADER:_SUBLOT:text")		
+		nQuant 		:= val(oXmlIp:getNodeValue("STK_ADJ:_BODY:_FILEHEADER:_QUANTITY:text"))
+		cExpDate  	:= StrTran(AllTrim(oXmlIp:getNodeValue("STK_ADJ:_BODY:_FILEHEADER:_EXPIRATION_DATE:text")),"-","")
+		cManufDt  	:= StrTran(AllTrim(oXmlIp:getNodeValue("STK_ADJ:_BODY:_FILEHEADER:_MANUFACTURE_DATE:text")),"-","")
+		
+		nSld := nQuant
+		
+		if empty(cLote)
+			cQryCli	:= getCliSld(nQuant, cCodProd, cLote, cExpDate)
+			oSqlCli:newAlias(cQryCli)
+			cCliFor	:= oSqlCli:getValue("B6_CLIFOR")
+			cLoja	:= oSqlCli:getValue("B6_LOJA")
+			oSqlCli:close()
+			if empty(cCliFor)
+				oLogImp:start(cApplication,DHL_IMPORTACAO,cXmlArq)
+				oLogImp:fail(INTERFACE_NAME,"Não possuem movimentações com saldo para realizar o ajuste.")
+				return .f.
+			endif
+		endif
+		
+		cQuery	:= getQueryItens(cCliFor, cLoja, cCodProd, cLote, cExpDate)
+		oSql:newAlias(cQuery)
+		
+		cEspecNf := "INV"
+		
+		aAdd(aCab,{"C5_FILIAL"  ,xFilial("SC5") 			  ,nil})
+		aAdd(aCab,{"C5_TIPO" 	,"N"       					  ,nil})
+		aAdd(aCab,{"C5_CLIENTE" ,oSql:getValue("B6_CLIFOR")   ,nil})
+		aAdd(aCab,{"C5_LOJACLI" ,oSql:getValue("B6_LOJA") 	  ,nil})
+		aAdd(aCab,{"C5_CONDPAG"	,AllTrim(getMv("ZZ_CONDINT")) ,nil})
+		aAdd(aCab,{"C5_ZZADJID"	,cControle 		              ,nil})
+		aAdd(aCab,{"C5_ZZESPEC" ,cEspecNf     		          ,nil})
+		
+		if oSql:hasRecords()
+			while oSql:notIsEof()
+		
+				lTemPoder3 := .T.
+				aAux := {}
+				
+				nVlrParcial:= 0
+				nVlrUnit := 0
+				nSldTotal := 0
+				
+				if nSld <= oSql:getValue("B6_SALDO")
+					nSaldo 		:= nSld
+				else
+					nSaldo 		:= oSql:getValue("B6_SALDO")
+				endif
+				
+				if nSaldo < oSql:getValue("B6_QUANT")
+					nSldTotal 	:= oSql:getValue("B6_QUANT")
+					
+					nVlrUnit    := oSql:getValue("D1_VUNIT")
+					nVlrParcial := nVlrUnit * nSaldo
+				else
+					nVlrParcial	:= oSql:getValue("D1_TOTAL")
+					nVlrUnit 	:= oSql:getValue("D1_VUNIT") //roni silva teste nVlrParcial / nSaldo
+				endif
+				
+				if nSaldo * A410Arred(nVlrUnit ,"C6_PRCVEN") < 0.01
+					oLogImp:start("PV","PV","")
+					oLogImp:warn("REGISTRO IGNORADO PEDIDO "+SC5->C5_NUM, "Valor total item "+oSql:getValue("B6_PRODUTO")+" para NF "+oSql:getValue("D1_DOC")+;
+						"/"+oSql:getValue("D1_SERIE")+" não atingiu valor minimo 0,01.")
+					oSql:skip()
+					loop
+				endif
+				
+				cItem := Soma1(cItem)
+									
+				aAdd(aAux,{"C6_ITEM"   ,cItem                      ,nil})
+				aAdd(aAux,{"C6_PRODUTO",oSql:getValue("B6_PRODUTO"),nil})
+				aAdd(aAux,{"C6_QTDVEN" ,nSaldo                     ,nil})
+				aAdd(aAux,{"C6_PRCVEN" ,nVlrUnit /*A410Arred(nVlrUnit ,"C6_PRCVEN") */ ,nil})
+				aAdd(aAux,{"C6_VALOR"  ,A410Arred(nVlrParcial,"C6_VALOR"),nil})
+				aAdd(aAux,{"C6_QTDLIB" ,nSaldo                     ,nil})
+				aAdd(aAux,{"C6_TES"    ,getTes(@oSql, cEspecNf)    ,nil})
+				aAdd(aAux,{"C6_LOCAL"  ,oSql:getValue("D1_LOCAL")  ,nil})
+				aAdd(aAux,{"C6_NFORI"  ,oSql:getValue("D1_DOC")    ,nil})
+				aAdd(aAux,{"C6_SERIORI",oSql:getValue("D1_SERIE")  ,nil})
+				aAdd(aAux,{"C6_ITEMORI",oSql:getValue("D1_ITEM")   ,nil})
+				aAdd(aAux,{"C6_IDENTB6",oSql:getValue("B6_IDENT")  ,nil})
+				if !empty(oSql:getValue("D1_LOTECTL"))
+					aAdd(aAux,{"C6_LOTECTL",oSql:getValue("D1_LOTECTL")  ,nil})
+					aAdd(aAux,{"C6_DTVALID",oSql:getValue("D1_DTVALID")  ,nil})
+				endif
+				
+				montaItens(@aAux)
+				
+				aAdd(aItens,aAux)
+				
+				nSld -= iif(nSld <= oSql:getValue("B6_SALDO"),nSld,oSql:getValue("B6_SALDO"))
+					
+				if nSld == 0
+					exit
+				endif
+			
+				oSql:skip()
+			
+			enddo
+			if nSld > 0
+				lTemPoder3 := .F.
+			endif
+		endif
+		
+	endif
+	
+return .t.
+
+
+/**
+ *	Função responsável pelo retorno da filial de acordo com o CNPJ.
+ */
+/*static function retFilial(cCNPJ)
+	local cFilialNum:= ""
+	local aArea		:= GetArea()
+	local aAreaSM0	:= SM0->(GetArea())
+	 
+	DbSelectArea("SM0")
+	SM0->(DBGoTop())
+	
+	while SM0->(!eof())
+		if alltrim(SM0->M0_CGC) == alltrim(cCNPJ)
+			cFilialNum	:= alltrim(SM0->M0_CODFIL)
+			exit
+		endif
+		SM0->(dbSkip())
+	endDo
+	
+	restArea(aAreaSM0)
+	restArea(aArea)
+	
+return	cFilialNum*/
+
+
+/**
+ *	Retorna o erro da rotina automática
+ */
+static function mostraErroRotAuto()
+
+	local aErro  := {}
+	local nI 	 := 0
+	local cError := ""
+	
+	aErro := GetAutoGRLog()
+	
+    for nI := 1 to Len(aErro)
+    	cError += aErro[nI] +CRLF
+    next nI
+
+return cError
+
+
+/* 
+** Retorna valor unitário através de LIFO
+*/
+static function retVUnit(cCodProd, cLote)
+	local oSqlUtil	:= IpSqlObject():newIpSqlObject()
+	local cQuery 	:= ""	
+	local nRet		:= 0
+	
+	cQuery += " Select * from (SELECT MAX(SD1.R_E_C_N_O_) RECNO, D1_VUNIT FROM %SD1.SQLNAME%       "+CRLF
+	cQuery += " WHERE                                                                            "+CRLF
+	cQuery += " 	%SD1.NOTDEL%                                                                 "+CRLF
+	cQuery += " 	AND %SD1.XFILIAL%                                                            "+CRLF
+	cQuery += " 	AND D1_COD 			= '"+cCodProd+"'                                         "+CRLF
+	if !empty(cLote)
+		cQuery += " 	AND D1_LOTECTL 			= '"+cLote+"'                                    "+CRLF
+	endif
+	cQuery += " GROUP BY D1_VUNIT Order by RECNO DESC) Where rownum = 1   "+CRLF
+	
+	oSqlUtil:newAlias(cQuery)
+	
+	nRet := oSqlUtil:getValue("D1_VUNIT")
+	
+	oSqlUtil:close() 
+return(nRet)
+
+
+/**
+ * Obtem a query dos itens do pedido de venda
+ */
+static function getQueryItens(cCliFor, cLoja, cCodProd, cLote, cExpDate)
+
+	local cQuery := ""
+	
+	cQuery := "SELECT D1_FORNECE,D1_LOJA,D1_DOC,D1_SERIE,D1_ITEM,D1_VUNIT,D1_LOCAL,D1_TOTAL,D1_EMISSAO,B6_FILIAL,B6_PRODUTO,B6_QUANT,"
+	cQuery += "       B6_CLIFOR,B6_LOJA,B6_PODER3,B6_TPCF,B6_TIPO,B6_IDENT,B6_PRUNIT,B6_SALDO,F4_TESDV, D1_LOTECTL, D1_DTVALID "
+	cQuery += "FROM " + RetSqlName("SB6") + " SB6,"
+	cQuery +=           RetSqlName("SD1") + " SD1,"
+	cQuery +=           RetSqlName("SF4") + " SF4 "
+	cQuery += "WHERE B6_FILIAL = '" + xFilial("SB6") + "' AND "
+	if empty(cLote)
+		cQuery += "      B6_CLIFOR = '" + cCliFor + "' AND "
+		cQuery += "      B6_LOJA   = '" + cLoja + "' AND "
+	endif
+	cQuery += "      B6_PODER3 = 'R' AND "
+	cQuery += "      B6_TPCF   = 'C' AND "
+	cQuery += "      B6_TIPO   = 'D' AND "
+	cQuery += "      B6_SALDO  > 0 AND "
+	cQuery += " 	 SB6.D_E_L_E_T_ = ' ' AND "
+	cQuery += "      D1_NUMSEQ = B6_IDENT AND "
+	cQuery += "      D1_FILIAL = '" + xFilial("SD1") + "' AND "
+	cQuery += "      D1_COD    = '" + cCodProd + "'  "
+	if empty(cLote)
+		cQuery += "      AND D1_LOTECTL    = '" + CriaVar("D1_LOTECTL", .f.) + "'  "
+	else
+		cQuery += "      AND D1_LOTECTL    = '" + cLote + "'  "
+		cQuery += "      AND D1_DTVALID    = '" + cExpDate + "' "
+	endif
+	cQuery += " 	AND SD1.D_E_L_E_T_ = ' ' AND "
+	cQuery += "     F4_FILIAL = '" + xFilial("SF4") + "' AND "
+	cQuery += "     F4_CODIGO = B6_TES AND "
+	cQuery += " SF4.D_E_L_E_T_ = ' ' "
+	if empty(cLote)
+		cQuery += " ORDER BY D1_EMISSAO "
+	else
+		cQuery += " ORDER BY D1_DTVALID "
+	endif
+	//FIFO
+	// COM LOTE: PROD + LOTE + DATA DE VALID.
+	// SEM LOTE: PROD + DATA DO DOCUMENTO
+
+return cQuery
+
+
+/**
+ * 
+ */
+static function getCliSld(nQuant, cCodProd, cLote, cExpDate)
+
+	local cQuery := ""
+	
+	cQuery := "SELECT B6_CLIFOR,B6_LOJA,B6_EMISSAO "
+	cQuery += "       "
+	cQuery += "FROM " + RetSqlName("SB6") + " SB6 "
+	cQuery += "INNER JOIN %SD1.SQLNAME% ON "
+	cQuery += "		D1_FILIAL 	= B6_FILIAL "
+	cQuery += "		AND D1_COD 		= B6_PRODUTO "
+	if empty(cLote)
+		cQuery += "       AND D1_LOTECTL    = '" + CriaVar("D1_LOTECTL", .f.) + "'  "
+	else
+		cQuery += "      D1_LOTECTL    = '" + cLote + "' "
+		cQuery += "      AND D1_DTVALID    = '" + cExpDate + "' "
+	endif
+	cQuery += "WHERE B6_FILIAL = '" + xFilial("SB6") + "' AND "
+	cQuery += "      B6_PODER3 = 'R' AND "
+	cQuery += "      B6_TIPO   = 'D' AND "
+	cQuery += "      B6_TPCF   = 'C' AND "
+	cQuery += "      B6_PRODUTO   = '" + cCodProd + "' AND "
+	cQuery += "      B6_SALDO  >= " + str(nQuant)+  " AND "
+	cQuery += " 	 SB6.D_E_L_E_T_ = ' '  "
+	cQuery += "GROUP BY "
+	cQuery += " 	B6_PRODUTO, B6_CLIFOR, B6_LOJA, B6_EMISSAO "
+//	cQuery += "ORDER BY B6_EMISSAO "
+	if empty(cLote)
+		cQuery += " ORDER BY B6_EMISSAO "
+	else
+		cQuery += " ORDER BY D1_DTVALID "
+	endif
+
+return (cQuery)
+
+
+/**
+* Inclui conteúdo no array de alteração da rotina automática. Para contemplar todos os campos.
+**/
+static function montaItens(aAux)
+
+	local nCount	:= 0
+	local aCposSX3	:= FWSX3Util():GetAllFields("SC6", .f.)
+
+	
+	for nCount := 1 to len(aCposSX3)
+	
+		if AllTrim(getSX3Cache(aCposSX3[nCount],"X3_PROPRI")) == "U"
+			aAdd(aAux,{AllTrim(aCposSX3[nCount]),&("SC6->" + AllTrim(aCposSX3[nCount])),nil})
+		endIf
+	
+	next nCount
+					
+return
+
+
+/**
+* Coleta a Tes a ser utilizada
+**/
+static function getTes(oSql, cEspecNf)
+
+	local cTes := ""
+	
+	default cEspecNf := ""
+	
+	if (upper(alltrim(SC5->C5_ZZESPEC)) ==  DHL_ESPECIE_INVENTARIO) .or. (upper(alltrim(cEspecNf)) ==  DHL_ESPECIE_INVENTARIO)
+		cTes := AllTrim(GetMv("ZZ_TESINV"))
+	else
+		cTes := oSql:getValue("F4_TESDV")
+	endif
+	
+return cTes
+
+
+static function retFornece(cFornece, cLoja, cCodProd, cLote, cExpDate)
+
+	local cQuery	:= ""
+	local oSql		:= IpSqlObject():newIpSqlObject()
+	
+	cQuery := "SELECT B6_CLIFOR,B6_LOJA "
+	cQuery += "FROM %SB6.SQLNAME% "
+	cQuery += "INNER JOIN %SD1.SQLNAME% ON "
+	cQuery += "		D1_FILIAL 	= B6_FILIAL "
+	cQuery += "		AND 	D1_COD 		= B6_PRODUTO "
+	if empty(cLote)
+		cQuery += "      AND D1_LOTECTL    = '" + CriaVar("D1_LOTECTL", .f.) + "'  "
+	else
+		cQuery += "      AND D1_LOTECTL    = '" + cLote + "' "
+		cQuery += "      AND D1_DTVALID    = '" + cExpDate + "' "
+	endif
+	cQuery += "		AND %SD1.NOTDEL% "
+	cQuery += "WHERE B6_FILIAL = '" + xFilial("SB6") + "' AND "
+	cQuery += "      B6_PODER3 = 'R' AND "
+	cQuery += "      B6_TPCF   = 'C' AND "
+	cQuery += "      B6_PRODUTO   = '" + cCodProd + "' AND "
+	cQuery += " 	 SB6.D_E_L_E_T_ = ' '  "
+//	cQuery += "ORDER BY "
+	if empty(cLote)
+		cQuery += " ORDER BY D1_EMISSAO "
+	else
+		cQuery += " ORDER BY D1_DTVALID "
+	endif
+	
+	oSql:newAlias(cQuery)
+	if oSql:hasRecords()•
+		cFornece := oSql:getValue("B6_CLIFOR")
+		cLoja	 := oSql:getValue("B6_LOJA")
+	endif
+	oSql:close()
+
+return
+
+static function isProdutLote(cCodProd)
+	
+	local lIsProdlote	:= .F.
+	local aArea 		:= getArea()
+	local aAreaSB1 		:= SB1->(getArea())
+	local cChaveSB1		:= ""
+	
+	cCodProd := padr(cCodProd, tamSx3("B1_COD")[1], "")
+	cChaveSB1:= fwxFilial("SB1") + cCodProd
+	
+	SB1->(dbSetOrder(1))
+	
+	if SB1->(dbSeek(cChaveSB1))
+		if SB1->B1_RASTRO = "L"
+			lIsProdlote := .T.
+		endif
+	endIf
+	
+	restArea(aAreaSB1)
+	restArea(aArea)
+	
+return lIsProdlote
+
+/**
+* Verifica se o depositante é do tipo Reparador
+**/
+static function isRepair(cApp)
+	local oSqlUtil		:= IpSqlObject():newIpSqlObject()
+	local lRet 			:= .f.
+	local cCodProd		:= ""
+	local cLote			:= ""
+	local cExpDate		:= ""
+	local cClieFor		:= ""
+	local cLoja			:= ""
+	local nQuant		:= 0
+	local cQuery		:= ""
+	
+	If isPreNota(cApp)		
+		cCodProd  := AllTrim(oXmlIp:getNodeValue("STK_ADJ:_BODY:_FILEHEADER:_ITEM:text"))
+		cLote	  := AllTrim(oXmlIp:getNodeValue("STK_ADJ:_BODY:_FILEHEADER:_LOT:text"))
+		cCodProd  := getPrdDepara(cCodProd, nil, '1')	
+
+		if(isProdutLote(cCodProd) .And. Empty(cLote))
+			oLogImp:start(cApplication,DHL_IMPORTACAO,cXmlArq)
+			oLogImp:fail(INTERFACE_NAME,"Produto controla lote e a tag na interface está vazia.")
+			return {.f.,lRet}
+		endif
+
+		cExpDate  := StrTran(AllTrim(oXmlIp:getNodeValue("STK_ADJ:_BODY:_FILEHEADER:_EXPIRATION_DATE:text")),"-","")
+		retFornece(@cClieFor, @cLoja, cCodProd, cLote, cExpDate)		
+	elseIf isPedidoVenda(cApp)
+		
+		cCodProd	:= oXmlIp:getNodeValue("STK_ADJ:_BODY:_FILEHEADER:_ITEM:text")
+		cLote		:= oXmlIp:getNodeValue("STK_ADJ:_BODY:_FILEHEADER:_LOT:text")
+		cCodProd    := getPrdDepara(cCodProd, nil, '1')
+		
+		if(isProdutLote(cCodProd) .And. Empty(cLote))
+			oLogImp:start(cApplication,DHL_IMPORTACAO,cXmlArq)
+			oLogImp:fail(INTERFACE_NAME,"Produto controla lote e a tag na interface está vazia.")
+			return {.f.,lRet}
+		endif
+
+		nQuant 		:= val(oXmlIp:getNodeValue("STK_ADJ:_BODY:_FILEHEADER:_QUANTITY:text"))
+		cExpDate  	:= StrTran(AllTrim(oXmlIp:getNodeValue("STK_ADJ:_BODY:_FILEHEADER:_EXPIRATION_DATE:text")),"-","")
+		if empty(cLote)
+			cQuery	:= getCliSld(nQuant, cCodProd, cLote, cExpDate)
+			oSqlUtil:newAlias(cQuery)
+			cClieFor:= oSqlUtil:getValue("B6_CLIFOR")
+			cLoja	:= oSqlUtil:getValue("B6_LOJA")
+			oSqlUtil:close()
+			if empty(cClieFor)
+				oLogImp:start(cApplication,DHL_IMPORTACAO,cXmlArq)
+				oLogImp:fail(INTERFACE_NAME,"Não possuem movimentações com saldo para realizar o ajuste.")
+				return {.f.,lRet}
+			endif
+		endif
+		
+		cQuery	:= getQueryItens(cClieFor, cLoja, cCodProd, cLote, cExpDate)
+		oSql:newAlias(cQuery)
+
+		cClieFor := oSql:getValue("B6_CLIFOR")
+		cLoja := oSql:getValue("B6_LOJA") 
+	endIf
+
+	oSqlUtil:newTable("SA1", "A1_COD, A1_LOJA, A1_ZZREPAR", "A1_FILIAL = '%SA1.FILIAL%' AND A1_COD = '" + cClieFor + "' AND A1_LOJA = '" + cLoja + "' ")
+	if oSqlUtil:hasRecords()
+		if oSqlUtil:getValue("A1_ZZREPAR") == "S"
+			lRet := .t.
+		endIf
+	endIf
+	oSqlUtil:close()
+	
+return {.t.,lRet}
+
+
+
+/**
+* Obtém o código do produto do depara (SA7)
+**/
+static function getPrdDepara(cProduto, cCnpjCli)
+	
+	local oDhlPrdDepara := DhlPrdDepara():newDhlPrdDepara()
+	default cCnpjCli	:= ""
+	
+	cProduto := oDhlPrdDepara:getPrdProtheus(cProduto, cCnpjCli)
+	
+return allTrim(cProduto)
+
+

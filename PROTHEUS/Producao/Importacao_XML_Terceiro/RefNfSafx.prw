@@ -1,0 +1,188 @@
+#include 'protheus.ch'
+#include 'dhl.ch'
+
+/*/{Protheus.doc} RefNfSafx
+Gravação de referência das Notas de Locação e Comodato para utilizar nas interfaces SAFX112 e SAFX116
+
+@author Thiago Meschiatti
+@since 02/09/2016
+@version undefined
+
+@type function
+/*/
+user function RefNfSafx() 
+	local nI			:= 0
+	local cMsg			:= ""
+	local dDtMov
+	local cNota			:= ""
+	local cSerie		:= ""
+	private lNewAge	:= SuperGetMV("ZZ_NEWAGE",,.F.)
+	
+	if cFilAnt == AGE_MONDELEZ
+		
+		cNota := StrZero(Val(alltrim(left(SC5->C5_ZZORDEX, at("-", SC5->C5_ZZORDEX) - 1))),TamSx3("F2_DOC")[1])
+		cSerie := Padr(alltrim(right(SC5->C5_ZZORDEX, len(SC5->C5_ZZORDEX) - rat("-", SC5->C5_ZZORDEX))),TamSx3("F2_SERIE")[1])
+			
+		if !empty(cNota) .and. !empty(cSerie)
+			procMsg(cNota, cSerie, SF2->F2_CLIENTE, SF2->F2_LOJA)
+		endif
+	
+	elseIf !(SF2->F2_TIPO $ 'B|D|')
+		if !lNewAge .And. FWUnitBusiness() == DHL_BUSINESSUNIT_AGE //AGE antigo
+			if !empty(SF2->F2_ZZNFTER)
+				procMsg(SF2->F2_ZZNFTER, SF2->F2_ZZSETER, SF2->F2_ZZCLTER, SF2->F2_ZZLJTER)
+			endif
+		elseif !lNewAge .And. FWUnitBusiness() == DHL_BUSINESSUNIT_AGL .and. !isRepair(SF2->F2_CLIENTE,SF2->F2_LOJA)// Somente filial AGL para depositantes não reparadores
+			procMsg(SF2->F2_ZZNFTER, SF2->F2_ZZSETER, SF2->F2_ZZCLTER, SF2->F2_ZZLJTER)
+		else
+			cNota := StrZero(Val(alltrim(left(SC5->C5_ZZORDEX, at("-", SC5->C5_ZZORDEX) - 1))),TamSx3("F2_DOC")[1])
+			cSerie := Padr(alltrim(right(SC5->C5_ZZORDEX, len(SC5->C5_ZZORDEX) - rat("-", SC5->C5_ZZORDEX))),TamSx3("F2_SERIE")[1])
+			
+			if !empty(cNota) .and. !empty(cSerie)
+				procMsg(cNota, cSerie, SF2->F2_CLIENTE, SF2->F2_LOJA)
+			endif
+		endif
+	endif
+
+Return()
+
+
+/*
+** Processamento Gravação
+*/
+static function procMsg(cNota, cSerie, cClieFor, cLoja)
+	local oSqlEmit	:= IpSqlObject():newIpSqlObject()
+	local oSqlCli	:= IpSqlObject():newIpSqlObject()
+	local oSqlSZ8	:= IpSqlObject():newIpSqlObject()
+	local cWhereCli	:= retQrySA1(cClieFor, cLoja)
+	local cWhereSZ8	:= retQrySZ8(cNota, cSerie, cClieFor, cLoja)
+	local cMsg 		:= ""
+
+	if FwIsInCallStack("u_AglFatTringular")
+		oSqlSZ8:newTable("SZ8", "Z8_CLIENTE, Z8_LOJA, Z8_CLIEMIT, Z8_LOJEMIT, Z8_EMISSAO", cWhereSZ8)
+		cWhereCli := retQrySA1(oSqlSZ8:getValue("Z8_CLIEMIT"), oSqlSZ8:getValue("Z8_LOJEMIT"))
+		oSqlEmit:newTable("SA1", "A1_NOME", cWhereCli)
+		oSqlCli:newTable("SA1", "A1_NOME, A1_END, A1_MUN, A1_EST, A1_CGC, A1_INSCR", retQrySA1(oSqlSZ8:getValue("Z8_CLIENTE"), oSqlSZ8:getValue("Z8_LOJA")))
+	else
+		oSqlEmit:newTable("SA1", "A1_NOME", cWhereCli)
+		oSqlSZ8:newTable("SZ8", "Z8_CLIENTE, Z8_LOJA, Z8_EMISSAO", cWhereSZ8)
+		oSqlCli:newTable("SA1", "A1_NOME, A1_END, A1_MUN, A1_EST, A1_CGC, A1_INSCR", retQrySA1(oSqlSZ8:getValue("Z8_CLIENTE"), oSqlSZ8:getValue("Z8_LOJA")))
+	endif
+
+	if oSqlSZ8:hasRecords() //tratamento para cenarios onde não existe NF de Venda do cliente
+		cMsg += "NF do Depositante " + alltrim(oSqlEmit:getValue("A1_NOME")) + " "
+		cMsg += "N. " + alltrim(cNota) + ", Serie " + alltrim(cSerie) + " de " + dtoc(stod(oSqlSZ8:getValue("Z8_EMISSAO"))) + " "
+		cMsg += "Emitida para " + alltrim(oSqlCli:getValue("A1_NOME")) + ", situada a "
+		cMsg += alltrim(oSqlCli:getValue("A1_END")) + ", "
+		cMsg += alltrim(oSqlCli:getValue("A1_MUN")) + "/" + alltrim(oSqlCli:getValue("A1_EST")) + ", "
+		cMsg += "CNPJ " + alltrim(transform(oSqlCli:getValue("A1_CGC"), "@R 99.999.999/9999-99")) + ", "
+		cMsg += "I.E. " + alltrim(oSqlCli:getValue("A1_INSCR")) + "."
+	end if
+	
+	oSqlCli:close()
+	oSqlSZ8:close()
+	oSqlEmit:close()
+	
+	fGravaMsg(SF2->F2_DOC, SF2->F2_SERIE, SF2->F2_CLIENTE, SF2->F2_LOJA, cMsg)
+return
+
+
+/*
+** Grava informação na tabela de template Mensagens NF (SZZ)
+*/
+static function fGravaMsg(cNota, cSerie, cClieFor, cLoja, cMsg)
+	Local oTMsg  := FswTemplMsg():newTemplMsg("S", cNota, cSerie, cClieFor, cLoja,"SZZ")
+	
+	if cFilAnt == AGE_MONDELEZ
+		
+		oTMsg:carMsg(.F.)
+		
+		if !empty(cMsg)
+			
+			aadd(oTMsg:aMsg, {"",cMsg})
+			
+		endIf
+		
+		oTMsg:grvMsg()
+		
+	elseif cFilAnt == AGE_BRASKEM  
+		oTMsg:carMsg(.F.)
+		
+		if !empty(cMsg)
+			
+			aadd(oTMsg:aMsg, {"",cMsg})
+			
+		endIf		
+		
+		oTMsg:grvMsg()	
+
+	elseif cFilAnt == AGE_BRASKEM_MOV  
+		oTMsg:carMsg(.F.)
+		
+		if !empty(cMsg)
+			
+			aadd(oTMsg:aMsg, {"",cMsg})
+			
+		endIf		
+		
+		oTMsg:grvMsg()	
+	elseif cFilAnt == AGL_LOTE  
+		oTMsg:carMsg(.F.)
+		
+		if !empty(cMsg)
+			
+			aadd(oTMsg:aMsg, {"",cMsg})
+			
+		endIf		
+		
+		oTMsg:grvMsg()
+	else
+	
+		aadd(oTMsg:aMsg, {"",cMsg})
+	
+		oTMsg:grvMsg()
+	
+	endIf
+	
+return
+
+
+/*
+** Retorna expressão where para consulta sql
+*/
+static function retQrySA1(cClieFor, cLoja)
+	local cWhere := ""
+	
+	cWhere := "%SA1.XFILIAL% AND A1_COD = '"+cClieFor+"' AND A1_LOJA = '"+cLoja+"'"
+return (cWhere)
+
+
+/*
+** Retorna expressão where para consulta sql
+*/
+static function retQrySZ8(cNota, cSerie, cClieFor, cLoja)
+	local cWhere := ""
+	
+	if FwIsInCallStack("u_AglFatTringular")
+		cWhere := "%SZ8.XFILIAL% AND Z8_DOC = '"+cNota+"' AND Z8_SERIE = '"+cSerie+"' AND Z8_CLIENTE = '"+cClieFor+"' AND Z8_LOJA = '"+cLoja+"'"
+	else
+		cWhere := "%SZ8.XFILIAL% AND Z8_DOC = '"+cNota+"' AND Z8_SERIE = '"+cSerie+"' AND Z8_CLIEMIT = '"+cClieFor+"' AND Z8_LOJEMIT = '"+cLoja+"'"
+	endif
+return (cWhere)
+
+/**
+* Verifica se o depositante é do tipo Reparador
+**/
+static function isRepair(cCliente,cLoja)
+	local oSqlUtil		:= IpSqlObject():newIpSqlObject()
+	local lRet	 		:= .f.
+	
+	oSqlUtil:newTable("SA1", "A1_COD, A1_LOJA, A1_ZZREPAR", "A1_FILIAL = '%SA1.FILIAL%' AND A1_COD = '" + cCliente + "' AND A1_LOJA = '" + cLoja + "' ")
+	if oSqlUtil:hasRecords()
+		if oSqlUtil:getValue("A1_ZZREPAR") == "S"
+			lRet := .t.
+		endIf
+	endIf
+	oSqlUtil:close()
+	
+return lRet

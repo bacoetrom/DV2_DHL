@@ -1,0 +1,233 @@
+SELECT 'SD1' ARQ, 
+		SB1.B1_COD PRODUTO, 
+		SB1.B1_TIPO TIPO, 
+		SB1.B1_UM, 
+		SB1.B1_GRUPO, 
+		SB1.B1_DESC, 
+		SB1.B1_POSIPI, 
+		D1_SEQCALC SEQCALC, 
+		D1_DTDIGIT DATA, 
+		D1_TES TES, 
+		D1_CF CF, 
+		D1_NUMSEQ SEQUENCIA, 
+		D1_DOC DOCUMENTO, 
+		D1_SERIE SERIE, 
+		D1_QUANT QUANTIDADE, 
+		D1_QTSEGUM QUANT2UM, 
+		D1_LOCAL ARMAZEM, 
+		' ' PROJETO, 
+		' ' OP, 
+		' ' CC, 
+		D1_FORNECE FORNECEDOR, 
+		D1_LOJA LOJA, 
+		' ' PEDIDO, 
+		D1_TIPO TIPONF,    
+		D1_CUSTO CUSTO,  
+		' ' TRT   ,  
+		D1_LOTECTL LOTE, 
+		SD1.R_E_C_N_O_ NRECNO 
+FROM  SB1990 SB1, SD1990 SD1, SF4990 SF4 
+WHERE 	SB1.B1_COD = SD1.D1_COD AND 
+		SD1.D1_FILIAL =  '01'  AND 
+		SF4.F4_FILIAL =  '01'  AND 
+		SD1.D1_TES = SF4.F4_CODIGO AND 
+		SF4.F4_ESTOQUE = 'S' AND 
+		SD1.D1_DTDIGIT >=  '20110101' AND SD1.D1_DTDIGIT <=  '20111231' AND 
+		SD1.D1_ORIGLAN <> 'LF'   AND 
+		D1_LOCAL = '01' AND  
+		SD1.D_E_L_E_T_= ' ' AND 
+		SF4.D_E_L_E_T_= ' ' AND 
+		SB1.B1_COD >= '               ' AND 
+		SB1.B1_COD <= 'ZZZZZZZZZZZZZZZ'  AND    
+		SB1.B1_FILIAL = '01' AND 
+		SB1.B1_TIPO >= '  ' AND S
+		B1.B1_TIPO <= 'ZZ' AND 
+		SB1.B1_GRUPO >= '    ' AND 
+		SB1.B1_GRUPO <= 'ZZZZ' AND 
+		SB1.B1_COD <> 'PROD. IMPORTADO' AND  
+		SB1.D_E_L_E_T_=' '  
+UNION   
+		SELECT 'SD2', 
+		SB1.B1_COD, 
+		SB1.B1_TIPO, 
+		SB1.B1_UM, 
+		SB1.B1_GRUPO, 
+		SB1.B1_DESC, S
+		B1.B1_POSIPI, 
+		D2_SEQCALC, 
+		D2_EMISSAO, 
+		D2_TES, 
+		D2_CF, 
+		D2_NUMSEQ, 
+		D2_DOC, 
+		D2_SERIE, 
+		D2_QUANT, 
+		D2_QTSEGUM, 
+		D2_LOCAL, 
+		' ',
+		' ',
+		' ', 
+		D2_CLIENTE, 
+		D2_LOJA, 
+		D2_PEDIDO, 
+		D2_TIPO,    
+		D2_CUSTO1 CUSTO,
+		' ' ,  
+		D2_LOTECTL, 
+		SD2.R_E_C_N_O_ SD2RECNO 
+FROM  SB1990 SB1, SD2990 SD2, SF4990 SF4 
+WHERE SB1.B1_COD = SD2.D2_COD AND 
+	  SD2.D2_FILIAL =  '01'  AND 
+	  SF4.F4_FILIAL =  '01'  AND 
+	  SD2.D2_TES = SF4.F4_CODIGO AND 
+	  SF4.F4_ESTOQUE = 'S' AND 
+	  SD2.D2_EMISSAO >=  '20110101' AND 
+	  SD2.D2_EMISSAO <=  '20111231' AND 
+	  SD2.D2_ORIGLAN <> 'LF'   AND 
+	  D2_LOCAL = '01' AND  
+	  SD2.D_E_L_E_T_= ' ' AND 
+	  SF4.D_E_L_E_T_= ' ' AND 
+	  SB1.B1_COD >= '               ' AND 
+	  SB1.B1_COD <= 'ZZZZZZZZZZZZZZZ'  AND    
+	  SB1.B1_FILIAL = '01' AND 
+	  SB1.B1_TIPO >= '  ' AND 
+	  SB1.B1_TIPO <= 'ZZ' AND 
+	  SB1.B1_GRUPO >= '    ' AND 
+	  SB1.B1_GRUPO <= 'ZZZZ' AND 
+	  SB1.B1_COD <> 'PROD. IMPORTADO' AND  
+	  SB1.D_E_L_E_T_=' '  
+UNION 
+	SELECT 'SD3', 
+	  SB1.B1_COD, 
+	  SB1.B1_TIPO, 
+	  SB1.B1_UM, 
+	  SB1.B1_GRUPO, 
+	  SB1.B1_DESC, 
+	  SB1.B1_POSIPI, 
+	  D3_SEQCALC, 
+	  D3_EMISSAO, 
+	  D3_TM, 
+	  D3_CF, 
+	  D3_NUMSEQ, 
+	  D3_DOC, ' ', 
+	  D3_QUANT, 
+	  D3_QTSEGUM, 
+	  D3_LOCAL, 
+	  D3_PROJPMS, 
+	  D3_OP, 
+	  D3_CC, 
+	  ' ', 
+	  ' ', 
+	  ' ', 
+	  ' ', 
+	  D3_CUSTO1 CUSTO,
+	  D3_TRT,  
+	  D3_LOTECTL, 
+	  SD3.R_E_C_N_O_ SD3RECNO 
+FROM  SB1990 SB1, SD3990 SD3 
+WHERE SB1.B1_COD = SD3.D3_COD AND 
+	  SD3.D3_FILIAL =  '01'  AND 
+	  SD3.D3_EMISSAO >=  '20110101' AND SD3.D3_EMISSAO <=  '20111231' AND    
+	  D3_ESTORNO <> 'S' AND 
+	  D3_LOCAL = '01' AND 
+	  SB1.B1_COD >= '               ' AND SB1.B1_COD <= 'ZZZZZZZZZZZZZZZ' AND 
+	  SB1.B1_FILIAL = '01' AND 
+	  SB1.B1_TIPO >= '  ' AND 
+	  SB1.B1_TIPO <= 'ZZ' AND 
+	  SB1.B1_GRUPO >= '    ' AND 
+	  SB1.B1_GRUPO <= 'ZZZZ' AND 
+	  SB1.B1_COD <> 'PROD. IMPORTADO' AND  
+	  SB1.D_E_L_E_T_=' ' AND  
+	  SD3.D_E_L_E_T_= ' '    
+UNION 
+	  SELECT 'SB1', 
+	  SB1EXS.B1_COD, 
+	  SB1EXS.B1_TIPO, 
+	  SB1EXS.B1_UM, 
+	  SB1EXS.B1_GRUPO, 
+	  SB1EXS.B1_DESC, 
+	  SB1EXS.B1_POSIPI, 
+	  '', 
+	  '', 
+	  '', 
+	  '', 
+	  '', 
+	  '', 
+	  '',
+	   0, 
+	   0,
+	  '',
+	  '', 
+	  '', 
+	  '', 
+	  '', 
+	  '', 
+	  '', 
+	  '', 
+	  0, 
+	  '', 
+	  '', 
+	  0 
+FROM SB1990 SB1EXS 
+WHERE SB1EXS.B1_FILIAL = '01' AND 
+SB1EXS.B1_COD >= '               ' AND SB1EXS.B1_COD <= 'ZZZZZZZZZZZZZZZ' AND 
+SB1EXS.B1_TIPO >= '  ' AND 
+SB1EXS.B1_TIPO <= 'ZZ' AND 
+SB1EXS.B1_GRUPO >= '    ' AND 
+SB1EXS.B1_GRUPO <= 'ZZZZ' AND 
+SB1EXS.B1_COD <> 'PROD. IMPORTADO' AND  
+SB1EXS.D_E_L_E_T_=' ' AND 
+NOT EXISTS (SELECT 1  FROM SB1990 SB1, SD1990 SD1 , SF4990 SF4  
+					  WHERE SB1.B1_COD = D1_COD AND 
+					  D1_FILIAL = '01' AND 
+					  F4_FILIAL = '01' AND 
+					  SD1.D1_TES = F4_CODIGO AND 
+					  F4_ESTOQUE = 'S' AND 
+					  D1_DTDIGIT >= '20110101' AND D1_DTDIGIT <= '20111231' AND 
+					  D1_ORIGLAN <> 'LF' AND 
+					  D1_LOCAL = '01' AND 
+					  SD1.D_E_L_E_T_=' ' AND 
+					  SF4.D_E_L_E_T_=' ' AND 
+					  SB1.B1_COD = SB1EXS.B1_COD AND  
+					  SB1.B1_FILIAL = '01' AND 
+					  SB1.B1_TIPO >= '  ' AND 
+					  SB1.B1_TIPO <= 'ZZ' AND 
+					  SB1.B1_GRUPO >= '    ' AND SB1.B1_GRUPO <= 'ZZZZ' AND 
+					  SB1.B1_COD <> 'PROD. IMPORTADO' AND  
+					  SB1.D_E_L_E_T_=' ') AND 
+NOT EXISTS (SELECT 1  FROM SB1990 SB1 , SD2990 SD2 , SF4990 SF4  
+					  WHERE SB1.B1_COD = D2_COD AND 
+					  D2_FILIAL = '01' AND 
+					  F4_FILIAL = '01' AND 
+					  SD2.D2_TES = F4_CODIGO AND 
+					  F4_ESTOQUE = 'S' AND 
+					  D2_EMISSAO >= '20110101' AND 
+					  D2_EMISSAO <= '20111231' AND 
+					  D2_ORIGLAN <> 'LF' AND 
+					  D2_LOCAL = '01' AND 
+					  SD2.D_E_L_E_T_=' ' AND 
+					  SF4.D_E_L_E_T_=' ' AND 
+					  SB1.B1_COD = SB1EXS.B1_COD AND  
+					  SB1.B1_FILIAL = '01' AND 
+					  SB1.B1_TIPO >= '  ' AND 
+					  SB1.B1_TIPO <= 'ZZ' AND 
+					  SB1.B1_GRUPO >= '    ' AND 
+					  SB1.B1_GRUPO <= 'ZZZZ' AND 
+					  SB1.B1_COD <> 'PROD. IMPORTADO' AND  
+					  SB1.D_E_L_E_T_=' ') AND 
+NOT EXISTS (SELECT 1  FROM SB1990 SB1 , SD3990 SD3  
+			WHERE SB1.B1_COD = D3_COD AND 
+			D3_FILIAL = '01'  AND 
+			D3_EMISSAO >= '20110101' AND D3_EMISSAO <= '20111231' AND 
+			D3_ESTORNO <> 'S' AND 
+			D3_LOCAL = '01' AND 
+			SD3.D_E_L_E_T_=' ' AND 
+			SB1.B1_COD = SB1EXS.B1_COD AND  
+			SB1.B1_FILIAL = '01' AND 
+			SB1.B1_TIPO >= '  ' AND 
+			SB1.B1_TIPO <= 'ZZ' AND 
+			SB1.B1_GRUPO >= '    ' AND 
+			SB1.B1_GRUPO <= 'ZZZZ' AND 
+			SB1.B1_COD <> 'PROD. IMPORTADO' AND  
+			SB1.D_E_L_E_T_=' ')  
+ORDER BY    2,9,12,28 

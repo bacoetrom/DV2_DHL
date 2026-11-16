@@ -1,0 +1,960 @@
+#include 'totvs.ch'
+#include 'dhl.ch'
+
+#define NF_TABELA 					"01"
+
+/*/{Protheus.doc} DhlDisControl
+Classe para controle de Geração de Notas Automaticas de impostos
+@author Thiago Meschiatti
+@since 24/05/2016
+@version 1.0
+/*/
+class DhlDisControl
+
+	data oUtils
+	data cTypeDoc
+	data cMsgError
+	data cNumDoc
+	data cMsgAuto
+	data cError
+	data cEntityAuto
+	data cUnitAuto
+	data cState
+	data aHeader
+	data aAuxItems
+	data aItems
+	data aItSalesOrder
+	data aBlock
+	data lError
+
+	method newDhlDisControl() constructor
+	
+	method hasGeneration()
+	method execAuto()
+	method incSalesOrder()
+	method libSalesOrder()
+	method incOutFlowInv()
+	method incInDoc()
+	method preInfInvoice()
+	method classInfInvoice()
+	method showError()
+	method updAuto()
+	method recordMsgAuto()
+	method validExclusion()
+	method validAutorization()
+	method delInDoc()
+	
+	method getTes()
+	method getObjItems()
+	method getSeries()
+	
+	method addHeader()
+	method getHeader() 
+	method addItems()
+	method getItems() 
+	method addEndItems()
+	method addItSalesOrder()
+	method getItSalesOrder()
+	method setTypeDoc()
+	method getTypeDoc()
+	method setError()
+	method hasError()
+	method setMsgError()
+	method getMsgError()
+	method setNumDoc()
+	method getNumDoc()
+	method setMsgAuto()
+	method getMsgAuto()
+	method getIssueDate()
+	method setEntityAuto()
+	method getEntityAuto()
+	method setUnitAuto()
+	method getUnitAuto()
+	method setState()
+	method getState()
+endclass
+
+
+/*/{Protheus.doc} newDhlDisControl
+Método construtor
+@author Thiago Meschiatti
+@since 09/06/2016
+@version undefined
+@param cTypeDoc, characters, Tipo do documento
+/*/
+method newDhlDisControl(cTypeDoc) class DhlDisControl
+	default cTypeDoc:= ""
+	
+	::oUtils  		:= IpUtilsObject():newIpUtilsObject()
+	::aHeader 		:= {}
+	::aAuxItems		:= {}
+	::aItems  		:= {}
+	::aItSalesOrder := {}
+	::aBlock		:= {}
+	::setMsgAuto()
+	::setError()
+	::setMsgError()
+	::setEntityAuto()
+	::setUnitAuto()
+	::setTypeDoc(cTypeDoc)
+return
+
+
+/*/{Protheus.doc} setTypeDoc
+Seta tipo do documento
+@author Thiago Meschiatti
+@since 09/06/2016
+@version undefined
+@param cTypeDoc, characters, Tipo do documento
+/*/
+method setTypeDoc(cTypeDoc) class DhlDisControl
+	default cTypeDoc := ""
+	
+	::cTypeDoc := cTypeDoc
+return
+
+
+/*/{Protheus.doc} getTypeDoc
+Coleta tipo do documento
+@author Thiago Meschiatti
+@since 09/06/2016
+@version undefined
+/*/
+method getTypeDoc() class DhlDisControl
+return (::cTypeDoc)
+
+
+/*/{Protheus.doc} setError
+Seta se execução possuí erro
+@author Thiago Meschiatti
+@since 09/06/2016
+@version undefined
+@param lError, logical, se tem erro .t., senão .f.(default)
+/*/
+method setError(lError) class DhlDisControl
+	default lError := .f.
+	
+	::lError := lError
+return
+
+
+/*/{Protheus.doc} hasError
+Verifica se execução possuí erro 
+@author Thiago Meschiatti
+@since 09/06/2016
+@version undefined
+/*/
+method hasError() class DhlDisControl
+return (::lError)
+
+
+/*/{Protheus.doc} setMsgError
+Seta mensagem de erro
+@author Thiago Meschiatti
+@since 09/06/2016
+@version undefined
+@param cError, characters, Mensagem do erro
+/*/
+method setMsgError(cError) class DhlDisControl
+	default cError := ""
+	
+	::cError := cError
+return
+
+
+/*/{Protheus.doc} getMsgError
+Coleta a mensagem de erro
+@author Thiago Meschiatti
+@since 09/06/2016
+@version undefined
+/*/
+method getMsgError() class DhlDisControl
+return (::cError)
+
+
+/*/{Protheus.doc} getHeader
+Coleta o array de cabeçalho da rotina automática
+@author Thiago Meschiatti
+@since 09/06/2016
+@version undefined
+/*/
+method getHeader() class DhlDisControl
+return aClone(::aHeader)
+
+
+/*/{Protheus.doc} getItems
+Coleta array de itens da rotina automática
+@author Thiago Meschiatti
+@since 09/06/2016
+@version undefined
+/*/
+method getItems() class DhlDisControl
+return aClone(::aItems)
+
+
+/*/{Protheus.doc} getSeries
+COleta série para uso nos documentos automáticos
+@author Thiago Meschiatti
+@since 09/06/2016
+@version undefined
+/*/
+method getSeries() class DhlDisControl
+return alltrim((GetNewPar("ZZ_SERIAUT", "")))
+
+
+/*/{Protheus.doc} getItSalesOrder
+Coelta itens utilizados no Pedido de Venda
+@author Thiago Meschiatti
+@since 09/06/2016
+@version undefined
+/*/
+method getItSalesOrder() class DhlDisControl
+return aClone(::aItSalesOrder)
+
+
+/*/{Protheus.doc} setNumDoc
+Seta o número do documento
+@author Thiago Meschiatti
+@since 09/06/2016
+@version undefined
+@param cNumDoc, characters, Numero do documento
+/*/
+method setNumDoc(cNumDoc) class DhlDisControl
+	default cNumDoc := ""
+	
+	::cNumDoc := cNumDoc
+return
+
+
+/*/{Protheus.doc} getNumDoc
+Coleta o numero do documento
+@author Thiago Meschiatti
+@since 09/06/2016
+@version undefined
+/*/
+method getNumDoc() class DhlDisControl
+return (::cNumDoc)
+
+
+/*/{Protheus.doc} getMsgAuto
+Coleta mensagem das Nfs automáticas
+@author Thiago Meschiatti
+@since 09/06/2016
+@version undefined
+/*/
+method getMsgAuto() class DhlDisControl
+return (::cMsgAuto)
+
+
+/*/{Protheus.doc} setEntityAuto
+Seta a entidade fornecedor/cliente 
+@author Thiago Meschiatti
+@since 09/06/2016
+@version undefined
+@param cEntityAuto, characters, Código do fornecedor ou cliente
+/*/
+method setEntityAuto(cEntityAuto) class DhlDisControl
+	default cEntityAuto := ""
+	
+	::cEntityAuto := cEntityAuto
+return
+
+
+/*/{Protheus.doc} getEntityAuto
+Coleta a entidade fornecedor ou cliente
+@author Thiago Meschiatti
+@since 09/06/2016
+@version undefined
+/*/
+method getEntityAuto() class DhlDisControl
+return (::cEntityAuto)
+
+
+/*/{Protheus.doc} setUnitAuto
+Seta a loja da entidade fornecedor ou cliente
+@author Thiago Meschiatti
+@since 09/06/2016
+@version undefined
+@param cUnitAuto, characters, Loja da entidade fornecedor ou cliente
+/*/
+method setUnitAuto(cUnitAuto) class DhlDisControl
+	default cUnitAuto := ""
+	
+	::cUnitAuto := cUnitAuto
+return
+
+
+/*/{Protheus.doc} getUnitAuto
+Coleta a loja da entidade fornecedor ou cliente
+@author Thiago Meschiatti
+@since 09/06/2016
+@version undefined
+/*/
+method getUnitAuto() class DhlDisControl
+return (::cUnitAuto)
+
+
+/*/{Protheus.doc} setState
+Seta estado da entidade fornecedor ou cliente
+@author Thiago Meschiatti
+@since 09/06/2016
+@version undefined
+@param cState, characters, Estado estado da entidade fornecedor ou cliente
+/*/
+method setState(cState) class DhlDisControl
+	default cState := ""
+	
+	::cState := cState
+return
+
+
+/*/{Protheus.doc} getState
+Coleta estado da entidade fornecedor ou cliente
+@author Thiago Meschiatti
+@since 09/06/2016
+@version undefined
+/*/
+method getState() class DhlDisControl
+return (::cState)
+
+
+/*/{Protheus.doc} showError
+Mostra erro
+@author Thiago Meschiatti
+@since 09/06/2016
+@version 1.0
+/*/
+method showError() class DhlDisControl
+	Aviso("Atenção",::getMsgError(),{"OK"},3)
+return
+
+
+/*/{Protheus.doc} hasGeneration
+Método para verificação se TES possuí Geração de NF Automática
+@author Thiago Meschiatti
+@since 24/05/2016
+@version 1.0
+@param cTes, character, Tes do item
+/*/
+method hasGeneration(cTes) class DhlDisControl
+	local oSql 	:= IpSqlObject():newIpSqlObject()
+	local lRet	:= .f.
+	
+	if oSql:getFieldValue("SF4", "F4_ZZNFAUT", "%SF4.XFILIAL% AND F4_CODIGO = '" + cTes + "' ") == "S"
+		lRet := .t.
+	endif
+	
+	oSql:close()
+return (lRet)
+
+
+/*/{Protheus.doc} addHeader
+Adiciona ao cabecalho de acordo com o tipo do processamento. 
+@author Thiago Meschiatti
+@since 24/05/2016
+@version 1.0
+/*/
+method addHeader(cField, xValue, lPreNF) class DhlDisControl
+	default lPreNF := .f.
+	
+	if lPreNF
+		::aHeader := aClone(xValue)
+	else
+		aadd(::aHeader, {cField, xValue, nil})
+	endif
+return 
+
+
+/*/{Protheus.doc} addItems
+Adiciona aos itensde acordo com o tipo do processamento
+@author Thiago Meschiatti
+@since 24/05/2016
+@version 1.0
+/*/
+method addItems(cField, xValue) class DhlDisControl
+	aadd(::aAuxItems, {cField, xValue, nil})
+return 
+
+
+/*/{Protheus.doc} addEndItems
+Adiciona aos itensde acordo com o tipo do processamento
+@author Thiago Meschiatti
+@since 24/05/2016
+@version 1.0
+/*/
+method addEndItems() class DhlDisControl
+	aadd(::aItems, aClone(::aAuxItems))
+return
+
+
+/*/{Protheus.doc} addtSalesOrder
+Adiciona aos itensde acordo com o tipo do processamento
+@author Thiago Meschiatti
+@since 24/05/2016
+@version 1.0
+/*/
+method addItSalesOrder() class DhlDisControl
+	aADD(::aItSalesOrder, {	SC9->C9_PEDIDO,;	// 01- No. Pedido
+	 						SC9->C9_ITEM  ,;	// 02- Item Pedido
+							SC9->C9_SEQUEN,;	// 03- Sequencia Liberação
+							SC9->C9_QTDLIB,;	// 04- Qtde. Liberada
+							SC6->C6_PRCVEN,;	// 05- Preço de Venda
+							SC9->C9_PRODUTO,;	// 06- Cód. do Produto
+							.F.,;				// 07- Valor Lógico
+							SC9->(RecNo()),;	// 08- Posição do Arquivo de Pedidos Liberados
+							SC5->(RecNo()),;	// 09- Posição do Arquivo de Pedidos de Venda
+							SC6->(RecNo()),;	// 10- Posição do Arquivo de Itens dos Pedidos de Venda
+							SE4->(RecNo()),;	// 11- Posição do Arquivo de Condição de Pagamento
+							SB1->(RecNo()),;	// 12- Posição do Arquivo de Produtos
+							SB2->(RecNo()),;	// 13- Posição do Arquivo de Saldo em Estoque
+							SF4->(RecNo())})	// 14- Posição do Arquivo de TES
+return 
+
+
+/*/{Protheus.doc} getTes
+Método para verificação se TES possuí Geração de NF Automática
+@author Thiago Meschiatti
+@since 24/05/2016
+@version 1.0
+@param cRet, character, Tes Automática
+/*/
+method getTes(cTes) class DhlDisControl
+	local oSql 	:= IpSqlObject():newIpSqlObject()
+	local lRet	:= .f.
+	
+	cRet := oSql:getFieldValue("SF4", "F4_ZZTESAU", "%SF4.XFILIAL% AND F4_CODIGO = '" + cTes + "' ") 
+	
+	oSql:close()
+return (cRet)
+
+
+/*/{Protheus.doc} getObjItems
+Retorna objeto com query para itens do documento(SD1 ou SD2)
+@author Thiago Meschiatti
+@since 24/05/2016
+@version 1.0
+@param oSql, objeto, Itens do documento(SD1 ou SD2)
+/*/
+method getObjItems(cDocument, cSeries, cSupplier, cUnit) class DhlDisControl
+	local oSql := IpSqlObject():newIpSqlObject()
+	
+	default cDocument := ""
+	default cSeries   := ""
+	default cSupplier := ""
+	default cUnit     := ""
+	
+	if ::getTypeDoc() == DHL_NFE_INVOICE_OUTFLOW
+		oSql:NewTable("SD1", "D1_TES TES, SD1.*", 	"%SD1.XFILIAL% AND D1_DOC = '"+cDocument+"' AND D1_SERIE = '"+cSeries+"' AND "+;
+									" D1_FORNECE = '"+cSupplier+"' AND D1_LOJA = '"+cUnit+"' ")
+	else
+		oSql:NewTable("SD2", "D2_TES TES, SD2.*", 	"%SD2.XFILIAL% AND D2_DOC = '"+cDocument+"' AND D2_SERIE = '"+cSeries+"' AND "+;
+									" D2_CLIENTE = '"+cSupplier+"' AND D2_LOJA = '"+cUnit+"' ")
+	endif
+return (oSql)
+
+
+/*/{Protheus.doc} execAuto
+Execução de rotina automática de acordo com o tipo do documento.
+@author Thiago Meschiatti
+@since 24/05/2016
+@version 1.0
+@param lRet, logico, Informa se rotina automática foi executada com sucesso.
+/*/'
+method execAuto(nOperation, lDocDev, lAtuNumber) class DhlDisControl
+
+	default lDocDev 	:= .f.
+	default nOperation	:= DHL_OPC_INCLUSAO
+	default lAtuNumber	:= .t.
+	
+	if nOperation == DHL_OPC_EXCLUSAO
+		::delInDoc()
+	else
+		if ::getTypeDoc() == DHL_NFE_INVOICE_OUTFLOW
+			::incSalesOrder()
+			if !(::hasError())
+				::libSalesOrder()
+				if !(::hasError())
+					::incOutFlowInv(SC5->C5_NUM)
+				endif
+			endif
+		else
+			::incInDoc(lDocDev, lAtuNumber)
+		endif
+	endif
+return
+
+
+/*/{Protheus.doc} incInDoc
+Execução separada de rotina automática de documento de entrada
+@author Thiago Meschiatti
+@since 09/06/2016
+@version undefined
+/*/
+method incInDoc(lDocDev, lAtuNumber) class DhlDisControl
+	private lMsErroAuto := .F.
+	
+	abreTabelas()
+	
+	MSExecAuto({|x, y, z| Mata103(x, y, z)}, ::getHeader(), ::getItems(), 3)
+	
+	if lMsErroAuto
+		::setError(lMsErroAuto)
+		DisarmTransaction()
+		if lDocDev
+			::setMsgErro(::oUtils:getErroAuto())
+		else
+			::setMsgErro("Falha ao incluir NF de Entrada Automática(Crédito ICMS). A NF de Entrada deverá ser gerada manualmente."+CRLF+CRLF+::oUtils:getErroAuto())
+		endif
+	else
+		if lAtuNumber
+			contrSx5(SF1->F1_DOC, SF1->F1_SERIE)
+		endif
+	endif
+return
+
+
+/*/{Protheus.doc} delInDoc
+Execução separada de rotina automática de documento de entrada(Exclusão)
+@author Thiago Meschiatti
+@since 09/06/2016
+@version undefined
+/*/
+method delInDoc() class DhlDisControl
+	private lMsErroAuto := .F.
+	
+	abreTabelas()
+	
+	MSExecAuto({|x, y, z| Mata103(x, y, z)}, ::getHeader(), ::getItems(), 5)
+	
+	if lMsErroAuto
+		::setError(lMsErroAuto)
+		::setMsgErro("Falha ao excluir NF de Entrada."+CRLF+CRLF+::oUtils:getErroAuto())
+		DisarmTransaction()
+	endif
+return
+
+
+/*/{Protheus.doc} incPreInDoc
+Execução separada de rotina automática de pré-documento de entrada(Exclusão)
+@author Thiago Meschiatti
+@since 20/06/2016
+@version undefined
+
+@type function
+/*/
+method preInfInvoice(nOperation, lAtuNumber) class DhlDisControl
+	private lMsErroAuto := .F.
+	
+	default nOperation := DHL_OPC_INCLUSAO 
+	default lAtuNumber := .t.
+	
+	abreTabelas()
+	
+	MSExecAuto({|x, y, z| Mata140(x, y, z)}, ::getHeader(), ::getItems(), nOperation)
+	
+	if lMsErroAuto
+		::setError(lMsErroAuto)
+		::setMsgErro(::oUtils:getErroAuto())
+//		DisarmTransaction()
+	else
+		if lAtuNumber
+			contrSx5(SF1->F1_DOC, SF1->F1_SERIE)
+		endif
+	endif
+return
+
+
+/*/{Protheus.doc} classInfInvoice
+Execução separada de rotina automática de documento de entrada
+@author Thiago Meschiatti
+@since 09/06/2016
+@version undefined
+/*/
+method classInfInvoice() class DhlDisControl
+	private lMsErroAuto := .F.
+	
+	abreTabelas()
+	
+	MSExecAuto({|x, y, z| Mata103(x, y, z)}, ::getHeader(), ::getItems(), 4)
+	
+	if lMsErroAuto
+		::setError(lMsErroAuto)
+//		DisarmTransaction()
+		::setMsgErro(::oUtils:getErroAuto())
+	endif
+return
+
+/*/{Protheus.doc} incSalesOrder
+Inclusão de Pedido de Venda
+@author Thiago Meschiatti
+@since 09/06/2016
+@version undefined
+/*/
+method incSalesOrder() class DhlDisControl
+	private lMsErroAuto := .F.
+	
+	abreTabelas()
+	
+	MSExecAuto({|x, y, z| Mata410(x, y, z)}, ::getHeader(), ::getItems(), 3)
+	
+	if lMsErroAuto
+		::setError(lMsErroAuto)
+		DisarmTransaction()
+		::setMsgErro("Falha ao incluir o pedido de vendas"+CRLF+CRLF+::oUtils:getErroAuto())
+	endif
+return
+
+
+/*/{Protheus.doc} libSalesOrder
+Liberação do Pedido de Venda
+@author Thiago Meschiatti
+@since 09/06/2016
+@version undefined
+/*/
+method libSalesOrder() class DhlDisControl
+
+	::aItSalesOrder := {}
+	::aBlock 		:= {}
+
+	// Liberacao de pedido
+	Ma410LbNfs(2,@::aItSalesOrder,@::aBlock)
+
+	// Checa itens liberados
+	Ma410LbNfs(1,@::aItSalesOrder,@::aBlock)
+
+	If Empty(::aBlock) .And. !Empty(::aItSalesOrder)
+		::setError(.f.)
+	Else
+		::setError(.t.)
+		if InTransaction()
+			DisarmTransaction()
+		endif
+		::setMsgErro("Falha ao liberar o pedido de vendas"+CRLF+CRLF+SC7->C7_NUM)
+	Endif
+
+return
+
+
+/*/{Protheus.doc} incOutFlowInv
+Geração do documento de saída
+@author Thiago Meschiatti
+@since 09/06/2016
+@version undefined
+@param cSalesOrder, characters, Numero do pedido de venda
+@type function
+/*/
+method incOutFlowInv(cSalesOrder) class DhlDisControl
+	local oSql		:= IpSqlObject():newIpSqlObject()
+	local aArea		:= GetArea()
+	local aAreaSA1	:= SA1->(GetArea())
+	local aAreaSB1	:= SB1->(GetArea())
+	local aAreaSB2	:= SB2->(GetArea())
+	local aAreaSC6	:= SC6->(GetArea())
+	local aAreaSC9	:= SC9->(GetArea())
+	
+	::aItSalesOrder := {}
+	
+	oSql:NewTable("SC6", "R_E_C_N_O_ RECNO, C6_PRODUTO", 	"%SC6.XFILIAL% AND C6_NUM = '"+cSalesOrder+"' ")
+	while oSql:notIsEof()
+		
+		SC6->(DbGoTo(oSql:getValue("RECNO")))
+		Posicione("SB1",1,xFilial("SB1") + oSql:getValue("C6_PRODUTO"),"B1_DESC")
+		SC9->(dbSetOrder(2)) 
+		SC9->(dbSeek( SC6->C6_FILIAL + SC6->C6_CLI + SC6->C6_LOJA + SC6->C6_NUM + SC6->C6_ITEM ))
+	
+		::addItSalesOrder()
+		
+		oSql:skip()
+	endDo
+	
+	::setNumDoc(MaPvlNfs(::getItSalesOrder(), ::getSeries(), .F., .F., .F., .T., .F., 0, 0, .T., .F.))
+	
+	if Empty(::getNumDoc()) 
+		::setError(.t.)
+		if InTransaction()
+			DisarmTransaction()
+		endif
+		::setMsgErro("Erro ao gerar nota fiscal de Saída Automática!")
+	endif
+return
+
+
+/*/{Protheus.doc} updAuto
+Atualiza campo que determina se documento e automático
+@author Thiago Meschiatti
+@since 09/06/2016
+@version undefined
+/*/
+method updAuto() class DhlDisControl
+	if ::getTypeDoc() == DHL_NFE_INVOICE_OUTFLOW
+	 	SF2->(RecLock("SF2", .F.))
+	 		SF2->F2_ZZAUTO := 'S'
+	 	SF2->(MsUnlock())
+	 else
+	 	SF1->(RecLock("SF1", .F.))
+	 		SF1->F1_ZZAUTO := 'S'
+	 	SF1->(MsUnlock())
+	 endif
+return
+
+
+/*/{Protheus.doc} recordMsgAuto
+Realiza a gravação da mensagem das Nfs automáticas
+@author Thiago Meschiatti
+@since 09/06/2016
+@version undefined
+@param cDocument, characters, Numero do documento
+@param cSeries, characters, serie do documento
+@param cSupplier, characters, codigo da entidade fornecedor/cliente
+@param cUnit, characters, loja da entidade fornecedor/cliente
+@type function
+/*/
+method recordMsgAuto(cDocument, cSeries, cSupplier, cUnit) class DhlDisControl
+	Local oTMsg  := FswTemplMsg():newTemplMsg("S", cDocument, cSeries, cSupplier, cUnit,"SZZ")
+	
+	aadd(oTMsg:aMsg, {"",::getMsgAuto()})
+	
+	oTMsg:grvMsg()
+return
+
+
+/*/{Protheus.doc} setMsgAuto
+Seta mensagens das Nfs automáticas
+@author Thiago Meschiatti
+@since 09/06/2016
+@version undefined
+@param cDocument, characters, Numero do documento
+@param cSeries, characters, Serie do documento
+@param cSupplier, characters, Codigo do fornecedor
+@param cUnit, characters, Loja do fornecedor
+@type function
+/*/
+method setMsgAuto(cDocument, cSeries, cSupplier, cUnit) class DhlDisControl
+	local cMsg	:= ""
+	local cDate	:= ""
+	default cDocument:= ""
+	default cSeries	 := ""
+	default cSupplier:= ""
+	default cUnit	 := ""
+	
+	cDate := ::getIssueDate(cDocument, cSeries, cSupplier, cUnit)
+	
+	if !empty(cDocument)
+		if !(upper(alltrim(cDocument)) $ ::getMsgAuto()) .and. empty(::getMsgAuto())
+			cMsg += "Nota Fiscal emitida nos termos do inciso II do art. 456 do RICMS-SP - Nota Fiscal de " + iif(::getTypeDoc() == DHL_NFE_INVOICE_OUTFLOW, "aquisição", "saída" )
+			cMsg += " número " + alltrim(cDocument) + ", série " + alltrim(cSeries) + ", de " + dtoc(stod(cDate)) + ". "
+		elseif !(upper(alltrim(cDocument)) $ ::getMsgAuto()) .and. !(empty(::getMsgAuto()))
+			cMsg += substr(::getMsgAuto(), 1, len(::getMsgAuto())-2)
+			cMsg += ", número " + alltrim(cDocument) + ", série " + alltrim(cSeries) + ", de " + dtoc(stod(cDate)) + ". "
+		endif
+		::cMsgAuto := cMsg
+	else
+		if (empty(::getMsgAuto()))
+			::cMsgAuto := ""
+		endif
+	endif
+	
+return
+
+
+/*/{Protheus.doc} getIssueDate
+//TODO Descrição auto-gerada.
+@author Thiago Meschiatti
+@since 09/06/2016
+@version undefined
+@param cDoc, characters, numero do documento
+@param cSeries, characters, serie do documento
+@param cSupplier, characters, codigo do fornecedor/cliente
+@param cUnit, characters, loja do fornecedor/cliente
+@type function
+/*/
+method getIssueDate(cDoc, cSeries, cSupplier, cUnit) class DhlDisControl
+	local oSql := IpSqlObject():newIpSqlObject()
+	local cDate:= ""
+
+	if ::getTypeDoc() == DHL_NFE_INVOICE_OUTFLOW
+		cDate := oSql:getFieldValue("SF1", "F1_EMISSAO", " %SF1.XFILIAL% AND F1_DOC = '"+cDoc+"' AND F1_SERIE = '"+cSeries+"' AND "+;
+						" F1_FORNECE = '"+cSupplier+"' AND F1_LOJA = '"+cUnit+"' ")
+	else
+		cDate := oSql:getFieldValue("SF2", "F2_EMISSAO", " %SF2.XFILIAL% AND F2_DOC = '"+cDoc+"' AND F2_SERIE = '"+cSeries+"' AND "+;
+						" F2_CLIENTE = '"+cSupplier+"' AND F2_LOJA = '"+cUnit+"' ")
+	endif
+	oSql:close()
+return (cDate)
+
+
+/*/{Protheus.doc} validExclusion
+Valida exclusao das NFs que fazer parte do processo de NFs automáticas
+@author Thiago Meschiatti
+@since 09/06/2016
+@version undefined
+@param cDoc, characters, numero do documento
+@param cSeries, characters, serie do documento
+@param cItem, characters, item do documento
+@param cEntity, characters, codigo da entidade do documento fornecedor/cliente
+@param cUnit, characters, loja da entidade do documento fornecedor/cliente
+@type function
+/*/
+method validExclusion(cDoc, cSeries, cItem, cEntity, cUnit) class DhlDisControl
+	local oSql := IpSqlObject():newIpSqlObject()
+
+	if ::getTypeDoc() == DHL_NFE_INVOICE_OUTFLOW
+		oSql:newTable("SD1", "D1_DOC, D1_SERIE, D1_EMISSAO", retQrysd1(cDoc, cSeries, cItem, cEntity, cUnit))
+		if oSql:hasRecords()
+			::setError(.t.)
+			::setMsgError("Nota Fiscal não pode ser excluída/estornada. " + CRLF +;
+						"Para realizar a exclusão/estorno, necessário excluir a NF de Entrada Automática previamente!" + CRLF +;
+						" Doc.: " + alltrim(oSql:getValue("D1_DOC"))+; 
+						" Série:" + alltrim(oSql:getValue("D1_SERIE")) +; 
+						" Data:"  + dtoc(stod(oSql:getValue("D1_EMISSAO"))) + ". ")
+		endif
+		oSql:close()
+	else
+		oSql:newTable("SD2", "D2_DOC, D2_SERIE, D2_EMISSAO", retQrySD2(cDoc, cSeries, cItem, cEntity, cUnit))
+		if oSql:hasRecords()
+			::setError(.t.)
+			::setMsgError("Nota Fiscal não pode ser excluída/estornada. " + CRLF +;
+						"Para realizar a exclusão/estorno, necessário excluir a NF de Saída Automática previamente!" + CRLF +;
+						" Doc.: " + alltrim(oSql:getValue("D2_DOC"))+; 
+						" Série:" + alltrim(oSql:getValue("D2_SERIE")) +; 
+						" Data:"  + dtoc(stod(oSql:getValue("D2_EMISSAO"))) + ". ")
+		endif
+		oSql:close()
+	endif
+	
+return
+
+
+/*/{Protheus.doc} validAutorization
+Valida se Nf esta autorizada
+@author Thiago Meschiatti
+@since 09/06/2016
+@version undefined
+@param cDoc, characters, numero do documento 
+@param cSeries, characters, serie do documento
+@param cItem, characters, item do documento
+@param cIdentB6, characters, identificacao da tabela de poder der terceiros
+@type function
+/*/
+method validAutorization(cDoc, cSeries, cItem, cIdentB6) class DhlDisControl
+	local oSql := IpSqlObject():newIpSqlObject()
+	
+	oSql:newAlias(retQrySF2(cDoc, cSeries, cItem, cIdentB6))
+	
+	if oSql:hasRecords()
+		if oSql:getValue("FIMP") <> 'S'
+			::setError(.t.)
+			::setMsgError("Nota Fiscal não pode ser gerada. " + CRLF +;
+					"Nota Fiscal abaixo de Débito ICMS não foi autorizada pela Sefaz!" + CRLF +;
+					" Doc.: " + alltrim(oSql:getValue("DOC"))+; 
+					" Série:" + alltrim(oSql:getValue("SERIE")) +; 
+					" Data:"  + dtoc(stod(oSql:getValue("EMISSAO"))) + ". " + CRLF +;
+					"Processo de faturamento será abortado. Emissão será possível apenas quando a NF mencionada for regularizada!")
+		endif
+	endif
+	
+	oSql:close()
+	
+return
+
+
+/*
+** Where para tabela SD2
+*/
+static function retQrySD2(cDoc, cSeries, cItem, cEntity, cUnit)
+	local cQuery := ""
+	
+	cQuery += "%SD2.XFILIAL% AND D2_ZZNFAUT = '" + cDoc + "' AND D2_ZZSEAUT = '" + cSeries + "' AND D2_ZZITAUT = '" + cItem + "'"
+	cQuery += "AND D2_CLIENTE = '" + cEntity + "' AND D2_LOJA = '" + cUnit + "' "
+	
+return (cQuery)
+
+
+/*
+** Where para tabela SD2
+*/
+static function retQrySD1(cDoc, cSeries, cItem, cEntity, cUnit)
+	local cQuery := ""
+	
+//	cQuery += "%SD1.XFILIAL% AND D1_NFORI = '" + cDoc + "' AND D1_SERIORI = '" + cSeries + "' AND D1_ITEMORI = '" + cItem + "'"
+//	cQuery += "AND D1_FORNECE = '" + cEntity + "' AND D1_LOJA = '" + cUnit + "' "
+
+	cQuery += "%SD1.XFILIAL% AND D1_ZZNFAUT = '" + cDoc + "' AND D1_ZZSEAUT = '" + cSeries + "' AND D1_ZZITAUT = '" + cItem + "'"
+	cQuery += "AND D1_ZZCLAUT = '" + cEntity + "' AND D1_ZZLJAUT = '" + cUnit + "' "
+	
+return (cQuery)
+
+
+/*
+** Where para tabela SD2
+*/
+static function retQrySF2(cDoc, cSeries, cItem, cIdentB6)
+	local cQuery := ""
+	
+	cQuery += " SELECT F2_DOC DOC, F2_SERIE SERIE, 				" + CRLF
+	cQuery += " F2_EMISSAO EMISSAO ,F2_FIMP FIMP           		" + CRLF
+	cQuery += " FROM %SD2.SQLNAME%                              " + CRLF
+	cQuery += " INNER JOIN %SF2.SQLNAME% ON                     " + CRLF
+	cQuery += " 	 			F2_FILIAL 	= D2_FILIAL         " + CRLF
+	cQuery += " 	AND		F2_DOC		= D2_DOC            	" + CRLF
+	cQuery += " 	AND		F2_SERIE	= D2_SERIE            	" + CRLF
+	cQuery += " 	AND		F2_CLIENTE	= D2_CLIENTE            " + CRLF
+	cQuery += " 	AND		F2_LOJA		= D2_LOJA            	" + CRLF
+	cQuery += " 	AND		%SF2.NOTDEL%                        " + CRLF
+	cQuery += " INNER JOIN %SB6.SQLNAME% ON                     " + CRLF
+    cQuery += "		B6_FILIAL       	= D2_FILIAL             " + CRLF
+    cQuery += "		AND B6_DOC      	= D2_ZZNFAUT            " + CRLF
+    cQuery += "		AND B6_SERIE    	= D2_ZZSEAUT            " + CRLF
+    cQuery += "		AND B6_PRODUTO  	= D2_COD                " + CRLF
+    cQuery += "		AND B6_IDENT  		= '"+cIdentB6+"'        " + CRLF
+    cQuery += "		AND B6_TPCF 		= 'C'                   " + CRLF
+    cQuery += "		AND B6_PODER3 		= 'R'                   " + CRLF
+    cQuery += "		AND SB6.D_E_L_E_T_ 	= ' '                   " + CRLF
+	cQuery += "  WHERE                                          " + CRLF
+	cQuery += "  			D2_ZZNFAUT 	= '" + cDoc 	+ "'    " + CRLF
+	cQuery += "  	AND 	D2_ZZSEAUT 	= '" + cSeries 	+ "'    " + CRLF
+	cQuery += "  	AND 	D2_ZZITAUT 	= '" + cItem 	+ "'    " + CRLF
+	cQuery += "  	AND 	%SD2.XFILIAL%                       " + CRLF
+	cQuery += "  	AND		%SD2.NOTDEL%                        " + CRLF
+                                                                
+	
+return (cQuery)
+
+
+/*
+** Controla numeração do SX5
+*/
+static function contrSx5(cNumDoc, cSerie)
+	local oSql		:= IpSqlObject():newIpSqlObject()
+	local cNumSx5	:= Soma1(cNumDoc)
+	local cTipoNf  	:= SuperGetMv("MV_TPNRNFS")
+	local cUpd		:= "X5_DESCRI = '"+cNumSx5+"', X5_DESCSPA = '"+cNumSx5+"', X5_DESCENG = '"+cNumSx5+"'"
+	local nDif 		:= 0
+	
+	oSql:update("SX5",cUpd,"%SX5.XFILIAL% AND X5_TABELA = '"+NF_TABELA+"' AND X5_CHAVE = '"+cSerie+"'")
+	
+	//TODO Momento de execução de NF de entrada, função esta pulando duas numerações
+//	NxtSX5Nota(cSerie, NIL, cTipoNf)
+return()
+
+/**
+* Abre as tabelas. Necessário, pois na segunda iteração da nota estava dando ajustar DOC_SEQ.
+* É necessário abrir as 3 tabelas
+**/
+static function abreTabelas()
+	
+	local lStatus := .F.
+	
+	If Select('SD1') <= 0
+		dbSelectArea('SD1')
+	EndIf
+	If Select('SD2') <= 0
+		dbSelectArea('SD2')
+	EndIf
+	If Select('SD3') <= 0
+		dbSelectArea('SD3')
+	EndIf
+	
+	lStatus := (Select('SD1')>0) .And. (Select('SD2')>0) .And. (Select('SD3')>0)
+	
+return

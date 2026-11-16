@@ -1,0 +1,293 @@
+#include "totvs.ch"
+#include "dhl.ch"
+
+#define LOG_MSG_FALHA "Falha ao gerar interface ASN DLX"
+#define ERRO_QUERY    1
+#define ERRO_UPDATE   2
+
+/*/{Protheus.doc} User Function Di2InvConf
+	Rotina Responsável por gerar a interface Invoice Confirmation.
+	Processamento para a Unidade de Negócio DI2 - Hasbro.
+	@type  Function
+	@author Diogo Mesquita Gamba
+	@since 19/02/2025
+	@version version
+	@param cNota, String, Número da Nota Fiscal de Saída
+	@param cSerie, String, Série da Nota Fiscal de Saída 
+	@param cClieFor, String, Cliente da Nota Fiscal de Saída
+	@param cLoja, String, Loja do Cliente
+	@param cTipo, String, Tipo da Nota Fiscal de Saída
+	@return return_var, return_type, return_description
+	@example
+	(examples)
+	@see (links_or_references)
+	/*/
+user function Di2InvConf(cNota,cSerie,cClieFor,cLoja,cTipo)
+
+	local lWhite        := nil
+	local aAreaSF2		:= SF2->(getArea())
+
+	private oSql        := ipSqlObject():newIpSqlObject()
+	private oFile       := IpFileObject():newIpFileObject()
+	private oUtils      := IpUtilsObject():newIpUtilsObject()
+	private oLog		:= DHLLogManager():newDHLLogManager()
+	private cXmlFile    := ""
+	private cQueryAlias := ""
+	private cReference  := ""
+	private cFileName   := ""
+		
+	runQueryData(cNota,cSerie,cClieFor,cLoja,cTipo)
+	
+	if oSql:notIsEof()
+		cQueryAlias := oSql:getAlias()
+		cReference  := AllTrim((cQueryAlias)->REFERENCE)
+		cFileName   := getFileName(cReference)
+		
+		oFile:setFile(cFileName)
+		
+		if oFile:exists()
+			oFile:delete()
+		endif
+		
+		Processa({|| MountTags()})
+		
+		lWhite := oFile:writeLine(cXmlFile)
+		
+		if lWhite
+			Aviso(FunDesc(),"Arquivo "+oFile:getFileName(.T.)+" gravado com sucesso!",{"OK"},3)
+		endif
+		
+		oFile:close()
+	else
+		dbSelectArea("SF2")
+		SF2->(dbSetOrder(1))
+		if SF2->(dbSeek(xFilial("SF2") + cNota + cSerie + cClieFor + cLoja)) .and. SF2->F2_ZZAUTO <> "S"
+			ViewError(ERRO_QUERY,cNota,cSerie,cClieFor,cLoja)
+		endIf
+	endif
+	
+	oSql:close()
+
+	restArea(aAreaSF2)
+	
+return
+
+
+/**
+* Mostra o erro
+**/
+static function ViewError(nError,cNota,cSerie,cClieFor,cLoja)
+
+	local aMsgError := {}
+		
+	aAdd(aMsgError,{"Nota fiscal " + AllTrim(cNota) + " série " + AllTrim(cSerie) + " não encontrada."               ,ERRO_QUERY })
+	aAdd(aMsgError,{"Erro ao atualizar o status da Nota fiscal " + AllTrim(cNota) + " série " + AllTrim(cSerie) + ".",ERRO_UPDATE})
+	
+	msgAlert(aMsgError[nError][1])
+	
+	oLog:start(APP_DLX,DHL_EXPORTACAO,cFileName)
+	oLog:fail(LOG_MSG_FALHA,aMsgError[nError][1])
+	
+return
+
+
+/**
+* Retorna o nome do arquivo xml da interface Invoice Confirmation 
+**/
+static function getFileName(cReference)
+
+	local cFolder   := getFolder()
+	local cFileName := oUtils:concatDirectory(cFolder,"INV_CONF_"+cReference+".XML")
+	
+return cFileName
+
+
+/**
+* Retorna o diretório de arquivos do WMS DLX
+**/
+static function getFolder()	
+return AllTrim(oSql:getFieldValue("SZ1","Z1_DIREXP","Z1_FILIAL = '%SZ1.FILIAL%' AND Z1_CODIGO = '" + APP_DLX + "'"))
+
+
+/**
+* Executa query e cria alias com os dados da Nota Fiscal de Saída 
+**/
+static function runQueryData(cNota,cSerie,cClieFor,cLoja,cTipo)
+
+	local cQuery := ""
+	
+	cQuery := getQueryDI2(cNota,cSerie,cClieFor,cLoja,cTipo)
+
+	oSql:newAlias(cQuery)
+	
+return
+
+/**
+ * Monta a Query que retornar os dados para a criação do arquivo DIS
+ **/
+static function getQueryDI2(cNota,cSerie,cClieFor,cLoja,cTipo)
+
+	local cQuery := ""
+	local cCnpj  := SM0->M0_CGC
+		
+	cQuery := "SELECT"                                                    + CRLF
+	if AllTrim(cTipo) $ "D/B"
+		cQuery += "      A2_CGC          CUSTOMER_CNPJ,"                  + CRLF
+		cQuery += "      A2_ZZCLCGC		 CLIENT_CNPJ,"          		  + CRLF
+	else
+		cQuery += "      A1_CGC          CUSTOMER_CNPJ,"                  + CRLF
+		cQuery += "      A1_ZZCLCGC		 CLIENT_CNPJ,"                    + CRLF
+	endif
+	cQuery += "      '"+cCnpj+"'      PURCHASER,"                         + CRLF
+	cQuery += "      RTRIM(F2_DOC)   ||'_'||"                             + CRLF
+	cQuery += "      RTRIM(F2_SERIE) ||'_'||"                             + CRLF
+	if AllTrim(cTipo) $ "D/B"
+		cQuery += "      A2_CGC           REFERENCE,"                     + CRLF
+	else
+		cQuery += "      A1_CGC           REFERENCE,"                     + CRLF
+	endif
+	cQuery += "      F2_TIPO          DOC_TYPE,"                          + CRLF
+	cQuery += "      F2_VALBRUT       TOT_NF,"	                          + CRLF
+	cQuery += "		 F2_CHVNFE		  CHAVENFE,"						  + CRLF
+	cQuery += "      B1_COD           ITEM,"                              + CRLF
+	cQuery += "      D2_UM         UOM,"                                  + CRLF
+	cQuery += "      SUM(D2_QUANT)    QUANTITY,"                          + CRLF
+	cQuery += "      C5_ZZSHIP    	  SHIPPING,"                          + CRLF
+	cQuery += "      C5_ZZORDEX    	  SALES_ORDER, "                      + CRLF
+	cQuery += "      D2_LOTECTL    	  LOT, "                      		  + CRLF
+	cQuery += "      D2_NUMLOTE    	  SUBLOT, "                           + CRLF
+	cQuery += "      D2_DTVALID    	  DATAVALID, "                        + CRLF
+	cQuery += "      D2_DFABRIC    	  DATAFABRI  "                        + CRLF
+	cQuery += "FROM %SF2.SQLNAME%"                                        + CRLF
+	cQuery += "INNER JOIN %SD2.SQLNAME%"                                  + CRLF
+	cQuery += "ON D2_FILIAL = F2_FILIAL AND D2_DOC = F2_DOC AND"          + CRLF
+	cQuery += "   D2_SERIE = F2_SERIE AND F2_CLIENTE = D2_CLIENTE AND"    + CRLF
+	cQuery += "   %SD2.NOTDEL%"                                           + CRLF
+	cQuery += "INNER JOIN %SC5.SQLNAME% ON " 							  + CRLF
+	cQuery += "		C5_FILIAL = D2_FILIAL AND "							  + CRLF
+	cQuery += "		C5_NUM = D2_PEDIDO AND "							  + CRLF
+	cQuery += "		%SC5.NOTDEL%"  										  + CRLF
+	if AllTrim(cTipo) $ "D/B"
+	cQuery += "INNER JOIN %SA2.SQLNAME%"                                  + CRLF
+	cQuery += "ON A2_FILIAL = '%SA2.FILIAL%' AND A2_COD = F2_CLIENTE AND" + CRLF
+	cQuery += "   A2_LOJA = F2_LOJA AND %SA2.NOTDEL%"                     + CRLF
+	else
+	cQuery += "INNER JOIN %SA1.SQLNAME%"                                  + CRLF
+	cQuery += "ON A1_FILIAL = '%SA1.FILIAL%' AND A1_COD = F2_CLIENTE AND" + CRLF
+	cQuery += "   A1_LOJA = F2_LOJA AND %SA1.NOTDEL%"                     + CRLF
+	endif
+	cQuery += "INNER JOIN %SB1.SQLNAME%"                                  + CRLF
+	cQuery += "ON B1_FILIAL = '%SB1.FILIAL%' AND"                         + CRLF
+	cQuery += "   B1_COD = D2_COD AND %SB1.NOTDEL%"                       + CRLF
+	cQuery += "WHERE F2_FILIAL  = '%SF2.FILIAL%' AND"                     + CRLF
+	cQuery += "      F2_DOC     = '"+cNota+"'    AND"                     + CRLF
+	cQuery += "      F2_SERIE   = '"+cSerie+"'   AND"                     + CRLF
+	cQuery += "      F2_CLIENTE = '"+cClieFor+"' AND"                     + CRLF
+	cQuery += "      F2_LOJA    = '"+cLoja+"'    AND"                     + CRLF
+	cQuery += "     (C5_ZZSHIP != ' '  OR C5_ZZORDEX != ' ') AND"         + CRLF
+	cQuery += "      F2_ZZAUTO  != 'S'    AND"                     		  + CRLF //Não enviar NFs automáticas
+	cQuery += "      %SF2.NOTDEL%"                                        + CRLF
+	if AllTrim(cTipo) $ "D/B"
+		cQuery += "GROUP BY A2_CGC,A2_ZZCLCGC,F2_DOC,F2_TIPO,F2_VALBRUT,F2_CHVNFE,F2_SERIE,B1_COD,D2_UM,C5_ZZSHIP,C5_ZZORDEX,D2_LOTECTL,D2_DTVALID,D2_NUMLOTE,D2_DFABRIC" + CRLF
+	else
+		cQuery += "GROUP BY A1_CGC,A1_ZZCLCGC,F2_DOC,F2_TIPO,F2_VALBRUT,F2_CHVNFE,F2_SERIE,B1_COD,D2_UM,C5_ZZSHIP,C5_ZZORDEX,D2_LOTECTL,D2_DTVALID,D2_NUMLOTE,D2_DFABRIC" + CRLF
+	endif
+
+return cQuery
+
+
+/**
+* Monta o arquivo xml da interface Invoice Confirmation
+**/
+static function MountTags()
+
+	local cFromPartner := alltrim(GetNewPar("ZZ_CODINVF", "PROTHEUS_P"))//OUT_FROMPARTNER
+	local cToPartner   := alltrim(GetNewPar("ZZ_ASNPART", "PACKING_P"))//OUT_TOPARTNER
+	local cQuantity    := ""
+	local cTotal	   := ""
+	local cProgram     := "DI2"
+	
+	ProcRegua(oSql:count())
+	
+	cTotal := Alltrim(oUtils:strAnyType((cQueryAlias)->TOT_NF))
+
+	cXmlFile := '<?xml version="1.0" encoding="UTF-8"?>'                                                + CRLF
+	cXmlFile += '<INV_CONF>'                                                                            + CRLF
+	cXmlFile += '	<HEADER> '                                                                          + CRLF
+	cXmlFile += '		<DATETIME DATETIMEQUALIFIER="on">' + Alltrim(getDateTime()) + '</DATETIME> '    + CRLF
+	cXmlFile += '		<FROM> '                                                                        + CRLF
+	cXmlFile += '			<PARTNERNAME>' + Alltrim(cFromPartner) + '</PARTNERNAME> '                  + CRLF
+	cXmlFile += '		</FROM> '                                                                       + CRLF
+	cXmlFile += '		<TO> '                                                                          + CRLF
+	cXmlFile += '			<PARTNERNAME>' + Alltrim(cToPartner) + '</PARTNERNAME> '                    + CRLF
+	cXmlFile += '		</TO>'                                                                          + CRLF
+	cXmlFile += '	</HEADER> '                                                                         + CRLF
+	cXmlFile += '	<BODY>  '                                                                           + CRLF
+	cXmlFile += '		<FILEHEADER> '                                                                  + CRLF
+	cXmlFile += '		 	<CHAVENFE>' + Alltrim((cQueryAlias)->CHAVENFE) + '</CHAVENFE>' 				+ CRLF					
+	cXmlFile += '			<SHIPPING_NUMBER>' + Alltrim((cQueryAlias)->SHIPPING) + '</SHIPPING_NUMBER>'+ CRLF
+	cXmlFile += '			<REFERENCE>' + Alltrim(cReference) + '</REFERENCE>'                         + CRLF
+	cXmlFile += '			<CUSTOMER>' + Alltrim((cQueryAlias)->CUSTOMER_CNPJ) + '</CUSTOMER>'		    + CRLF
+	cXmlFile += '			<PURCHASER>' + Alltrim((cQueryAlias)->PURCHASER) + '</PURCHASER>'           + CRLF
+	cXmlFile += '			<PROGRAM>' + cProgram + '</PROGRAM>'   										+ CRLF
+	cXmlFile += '			<CLIENT_CNPJ>' + Alltrim((cQueryAlias)->CLIENT_CNPJ) + '</CLIENT_CNPJ>'     + CRLF
+ 	cXmlFile += '			<SALES_ORDER>' + Alltrim((cQueryAlias)->SALES_ORDER) + '</SALES_ORDER>'     + CRLF
+	cXmlFile += '			<TOTAL_INVOICE>' + cTotal + '</TOTAL_INVOICE>'  							+ CRLF
+	cXmlFile += '		</FILEHEADER> '                                                                 + CRLF
+	
+	while oSql:notIsEof()
+	
+		IncProc()
+	
+		cQuantity := Alltrim(oUtils:strAnyType((cQueryAlias)->QUANTITY))
+		
+		cXmlFile += '		<FILEITEM>'                                                    + CRLF
+		cXmlFile += '			<ITEM>'     + Alltrim((cQueryAlias)->ITEM) 	+ '</ITEM>'     + CRLF
+		cXmlFile += '			<QUANTITY>' + Alltrim(cQuantity)           	+ '</QUANTITY>' + CRLF
+		cXmlFile += '			<UOM>'      + Alltrim((cQueryAlias)->UOM)  	+ '</UOM>'      + CRLF
+		cXmlFile += '			<LOT>'      + Alltrim((cQueryAlias)->LOT)  	+ '</LOT>'      + CRLF
+		cXmlFile += '			<SUBLOT>'   + Alltrim((cQueryAlias)->SUBLOT)+ '</SUBLOT>'   + CRLF
+		cXmlFile += '			<EXPIRATION_DATE>'   + getDateHDL(Alltrim((cQueryAlias)->DATAVALID))+ '</EXPIRATION_DATE>'     + CRLF
+		cXmlFile += '			<MANUFACTURE_DATE>'  + getDateHDL(Alltrim((cQueryAlias)->DATAFABRI))+ '</MANUFACTURE_DATE>'   + CRLF
+		cXmlFile += '		</FILEITEM>'                                                    + CRLF
+			
+		oSql:skip()
+				
+	enddo
+	
+	cXmlFile += '	</BODY> '+ CRLF
+	cXmlFile += '</INV_CONF>'+ CRLF
+
+return
+
+
+/**
+* Retorna a string com o Datetime 
+**/
+static function getDateTime()
+
+	local cDateTime := Dtos(Date())
+	local cYear     := Substr(cDateTime,1,4)
+	local cMonth    := Substr(cDateTime,5,2)
+	local cDay      := Substr(cDateTime,7,2)
+	local cHour     := "T00:00:00"
+	
+	cDateTime := cYear + "-" + cMonth + "-" + cDay + cHour
+	
+return cDateTime
+
+/**
+* Retorna a string com a data formatada AAAA-MM-DD
+**/
+static function getDateHDL(cData)
+	
+	local aPartes	:= {}
+	local cNewDate  := ""
+	
+	If !Empty(cData)
+		cNewDate	:= dToc(sTod(cData))
+		aPartes	:= StrToKarr(cNewDate,"/")
+		cNewDate:= aPartes[1]+"-"+aPartes[2]+"-"+aPartes[3]
+	EndIf
+	
+return cNewDate

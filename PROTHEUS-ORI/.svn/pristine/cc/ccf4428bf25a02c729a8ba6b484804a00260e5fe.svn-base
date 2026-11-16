@@ -1,0 +1,195 @@
+#Include 'Protheus.ch'
+#include "dhl.ch"
+
+#define AUTORIZADA					"S"
+#define CANCELADA					"C"
+
+
+/*/{Protheus.doc} MS520VLD
+
+Esse ponto de entrada é chamado para validar ou não a exclusão da nota na rotina MATA521
+
+@author Diego de Angelo
+@since 10/11/2014
+
+@return lRet Indica se será realizada ou não a exclusão.
+/*/
+user function MS520VLD()
+	
+	local oIdManager    := DHLIdManager():newDHLIdManager()
+	local cNota         := SF2->F2_DOC
+	local cSerie        := SF2->F2_SERIE
+	local cCliente      := SF2->F2_CLIENTE
+	local cLoja         := SF2->F2_LOJA
+	local cChvNfe       := SF2->F2_CHVNFE
+	local cTipoNf       := DHL_NFE_INVOICE_OUTFLOW
+	local oDHLProcValid := DHLProcessValidator():newDHLProcessValidator()
+	local lImpRet       := IsInCallStack("u_ImpMsaNfe")
+	local lRet          := .T.
+	local lCancel       := SuperGetMV("ZZ_CANCNFE",,.T.)
+	local lSerCont		:= aScan(separa(GetNewPar("ZZ_SERCONT", ""), ";"), {|x| x == upper(alltrim(cSerie))}) > 0
+	local lModelo3	 	:= alltrim(GetNewPar("ZZ_MODEFAT", "1")) $ "3"
+	local oModelo3	 	:= DHLModelo3():NewDHLModelo3()
+	local cChave		:= ""
+	local oDHLIp150		:= nil
+	local oDHLIp210		:= nil
+	local nRecnoSF1		:= 0
+	local nRecnoSC5		:= 0
+	local cTipo			:= SF2->F2_TIPO
+
+	//INICIO PERSONALIZAÇÃO MODELO 3 GUSTAVO LUIZ (11/05/2017)
+	if FWUnitBusiness() == DHL_BUSINESSUNIT_PKG .AND. lModelo3
+		
+		if SF2->F2_ZZTPNF == RETORNO_INDUSTRIALIZACAO
+			
+			cChave := SF2->(F2_FILIAL+F2_DOC+F2_SERIE+F2_CLIENTE+F2_LOJA)
+			oModelo3:PosicNotaAtual(SF2->(Recno()))
+			oModelo3:GetDadoNFReferenc()
+			if oModelo3:ExistNFRef()
+				if oModelo3:IsNf1Ativo()
+					return .F.
+				endIf
+			endIf
+		elseIf SF2->F2_ZZTPNF == COBRANCA_KIT .AND. funname() != "RPC" .AND. SF2->F2_FIMP != AUTORIZADA .AND. SF2->F2_FIMP != CANCELADA
+			
+			Begin Transaction
+				
+				if SF2->F2_FIMP != "S"
+					oModelo3:VerifItNF1(SF2->(Recno()))
+					
+					//SE EXISTIR ALGUM ITEM QUE UTILIZA A TES DO PARÂMETRO ZZ_TESREDE NÃO GERA O CANCELAMENTO DA NF2 ITEM D UC 1.6
+					if !oModelo3:IsTesRede()
+						
+						oModelo3:GetDadoNFReferenc()
+						
+						if oModelo3:ExistNFRef()
+							nSavNF := MaFisSave()
+							MaFisEnd()
+							if !oModelo3:ExcluirNF2(oModelo3:GetRefNf(), oModelo3:GetRefSerie(), oModelo3:GetRefData())
+								msgAlert(Alltrim(oModelo3:GetMsgErro()))
+								DisarmTransaction()
+								lCancel := .F.
+								lRet    := .F.
+							endIf
+							MaFisRestore(nSavNF)
+						endIf
+					endIf
+				endIf
+			end Transaction
+			return lRet
+		endIf
+	endIf
+	//FIM PERSONALIZAÇÃO MODELO 3 GUSTAVO LUIZ (11/05/2017)
+	
+	//INICIO PERSONALIZAÇÃO SCJ - IP150 - GUSTAVO LUIZ	
+	if FWUnitBusiness() == DHL_BUSINESSUNIT_AG2
+		oDHLIp150 := DHLIp150():NewDHLIp150()
+		lRet := oDHLIp150:ValidExclusao("MS520VLD")
+		
+		if SF2->F2_ZZTPNF == AJUSTE_FISCAL .AND. SF2->F2_FIMP == DHL_NFE_MONITOR_AUTORIZADA
+			
+			lRet := u_ag2CanDlNf()
+			
+		endIf
+		
+	endIf
+	//FIM PERSONALIZAÇÃO SCJ - IP150 - GUSTAVO LUIZ
+	
+	if FWUnitBusiness() == DHL_BUSINESSUNIT_SPL
+		lRet := oIdManager:validExclusion(DHL_NF_SAIDA)
+		if !lRet
+			msgAlert(Alltrim(oIdManager:getMsg()))
+		endif
+	endif
+	
+	if lCancel
+		if lRet
+			lRet := oDHLProcValid:outFlowInvoiceCancelValidate()
+			if FWUnitBusiness() == DHL_BUSINESSUNIT_DIS
+				if lRet
+					lRet := u_ValidExFat()
+					
+				endif
+			endif
+		endIf
+		
+		if !(lImpRet)
+			if lRet
+				if ExistBlock("PrcCancMsa")
+					if oDHLProcValid:validDocumentType(cTipoNf,nil,cSerie)
+						if oDHLProcValid:validSendInterface(cTipoNf)
+							U_PrcCancMsa(cTipoNf, cChvNfe, cNota, cSerie, cCliente, cLoja)
+							if lSerCont
+								lRet := .t.
+								u_PrcConti(DHL_NF_SAIDA, DHL_OPC_EXCLUSAO,  SF2->(Recno()))
+							else
+								lRet := .F.
+							endif
+						endif
+					endIf
+				endIf
+			endif
+		endIf
+	endif
+	
+	if FWUnitBusiness() == DHL_BUSINESSUNIT_AG2 .and. SF2->F2_ZZTPNF == AJUSTE_FISCAL
+		
+		if SF2->F2_FIMP == DHL_NFE_MONITOR_NAO_AUTORIZADA .or. SF2->F2_FIMP == DHL_NFE_MONITOR_USO_DENEGADO
+			
+			begin transaction
+				oDHLIp210 := DHLIp210():newDHLIp210()
+				oDHLIp210:getSF1_SC5_recnos(SF2->(recno()), @nRecnoSF1, @nRecnoSC5)
+				oDHLIp210:EraseFields(nRecnoSF1)
+				oDHLIp210:ExcluiNf("SF2", SF2->(recno()))
+				if !oDHLIp210:HasError()
+					oDHLIp210:ExcluiPedido(nRecnoSC5)
+					if oDHLIp210:HasError()
+						lRet := .F.
+						disarmTransaction()
+					endIf
+				endIf
+			end transaction
+			
+		endIf
+		
+	endIf
+	
+	if lRet
+		if cFilAnt == AGE_MONDELEZ  
+			U_DesvinTer(1)
+		endIf
+		
+		if FWUnitBusiness() == DHL_BUSINESSUNIT_AGL .and. !isRepair(cCliente,cLoja,cTipo)
+			U_DesvinTer(1)
+		endIf
+	endif
+	
+	
+return lRet
+
+/**
+* Verifica se o depositante é do tipo Reparador
+**/
+static function isRepair(cClieFor,cLoja,cTipo)
+	
+	local oSqlUtil	:= IpSqlObject():newIpSqlObject()
+	local lRet	 	:= .f.
+	
+	if !(AllTrim(cTipo) $ "D/B")
+		oSqlUtil:newTable("SA1", "A1_COD, A1_LOJA, A1_ZZREPAR", "A1_FILIAL = '%SA1.FILIAL%' AND A1_COD = '" + cClieFor + "' AND A1_LOJA = '" + cLoja + "' ")
+		if oSqlUtil:hasRecords()
+			if oSqlUtil:getValue("A1_ZZREPAR") == "S"
+				lRet := .t.
+			endIf
+		endIf
+	else
+		oSqlUtil:newTable("SA2", "A2_COD, A2_LOJA, A2_ZZREPAR", "A2_FILIAL = '%SA2.FILIAL%' AND A2_COD = '" + cClieFor + "' AND A2_LOJA = '" + cLoja + "' ")
+		if oSqlUtil:hasRecords()
+			if oSqlUtil:getValue("A2_ZZREPAR") == "S"
+				lRet := .t.
+			endIf
+		endIf
+	endIf
+	oSqlUtil:close()
+	
+return lRet

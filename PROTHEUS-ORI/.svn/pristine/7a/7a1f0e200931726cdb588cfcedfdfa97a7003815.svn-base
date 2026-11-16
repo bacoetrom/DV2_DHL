@@ -1,0 +1,261 @@
+#INCLUDE "PROTHEUS.CH"
+#Include "dhl.ch" 
+
+/*/{Protheus.doc} IPNFEFIM
+
+Ponto de Entrada, localizado na classe [TImpNfe] de Importacao da NFe via XML gerando um pre-nota de entrada. 
+Executado depois da gravacao da pre nota de entrada.
+	
+@author Thiago Meschiatti
+@since 27/10/2014
+
+/*/
+User Function IPNFEFIM()
+
+	local 	oInfAd			:= PARAMIXB[1]
+	Local 	aArea	   		:= GetArea()
+	Local 	aAreaSA5 		:= SA5->(GetArea())
+	Local 	aAreaSA7 		:= SA7->(GetArea())
+    Local 	aDados			:= {}
+    Local 	aDetail			:= aInfNFe[2]
+    Local 	cTpCliFor		:= Upper(AllTrim(aInfNFe[1,1,2]))		&& F-Fornecedor, C-Cliente
+    Local 	nI				:= 0
+    Local 	cRotErro		:= ""
+    Local	cFileLog		:= "" 
+    Local 	cFolderLog		:= GetNewPar("ZZ_INFLDIR","\logxmlnfe\")
+    Local   cProd			:= ""    
+    Local   oModel          := nil
+    Local 	cCodPrf			:= ""
+    Local 	cUniMed			:= ""
+    Local   nOpc			:= 3
+
+	Private lMsErroAuto 	:= .F.                                      
+	Private lMsHelpAuto		:= .T.
+    private lNewAge         := SuperGetMV("ZZ_NEWAGE",,.F.)
+    private lAutomatic      := SuperGetMV("ZZ_AUTOMAT",,.F.)
+    
+    conout("** TIMPNFE : DENTRO PE IPNFEFIM")
+    
+  	For nI:=1 To Len(aDetail) && Variavel aDet definida na classe TImpNfe
+  		
+  		conout("** TIMPNFE : DENTRO DO LACO ADETAIL")
+  		
+		If cTpCliFor == "F" && NF Fornecedor
+		
+			SA5->(dbSetOrder(1)) && A5_FILIAL+A5_FORNECE+A5_LOJA+A5_PRODUTO
+			If !SA5->(dbSeek(xFilial("SA5")+Padr(cFornece,TamSx3("A5_FORNECE")[1])+Padr(cLoja,TamSx3("A5_LOJA")[1])+Padr(aDetail[nI,3],TamSx3("A5_PRODUTO")[1])))      
+				
+				cProd 	:= aDetail[nI,3]
+				cCodPrf := aDetail[nI,2]
+				cUniMed	:= Upper(aDetail[nI,5])
+				
+				oModel := FWLoadModel('MATA061')
+				
+				oModel:SetOperation(nOpc)
+				oModel:Activate()
+				
+				//Cabeçalho
+				oModel:SetValue('MdFieldSA5','A5_PRODUTO',cProd)	
+				
+				//Grid
+				oModel:SetValue('MdGridSA5','A5_FORNECE'	,cFornece)
+				oModel:SetValue('MdGridSA5','A5_LOJA' 		,cLoja)
+				oModel:SetValue('MdGridSA5','A5_CODPRF' 	,cCodPrf)	
+				oModel:SetValue('MdGridSA5','A5_UNID' 		,cUniMed)					
+											
+				if oModel:VldData()
+					oModel:CommitData()
+				else
+					cRotErro := getLog(oModel:aErrorMessage)
+					FWLogMsg("ERROR", , "BusinessObject", funName(), "", "01", cRotErro, 0, 0, {})
+					aadd(aLogAuto, "E - " + cRotErro)
+					DisarmTransaction()
+				endIf
+															
+			EndIf
+		
+		ElseIf cTpCliFor == "C" && NF Cliente
+
+			SA7->(dbSetOrder(1)) && A7_FILIAL+A7_CLIENTE+A7_LOJA+A7_PRODUTO
+			If !SA7->(dbSeek(xFilial("SA7")+Padr(cFornece,TamSx3("A7_CLIENTE")[1])+Padr(cLoja,TamSx3("A7_LOJA")[1])+Padr(aDetail[nI,3],TamSx3("A7_PRODUTO")[1])))      		
+					    
+				RecLock("SA7",.T.)
+					SA7->A7_FILIAL 	:= xFilial("SA7")	
+					SA7->A7_CLIENTE	:= cFornece
+					SA7->A7_LOJA	:= cLoja
+					SA7->A7_PRODUTO	:= aDetail[nI,3]
+					SA7->A7_CODCLI	:= aDetail[nI,2] 
+				SA7->(MsUnlock())
+			
+			EndIf
+					
+		EndIf
+		
+	Next nI  
+	
+	conout("** TIMPNFE : FORA DO LACO ADETAIL")
+	
+	//Julio Lisboa - FSW TOTVS IP Campinas - 19/08/2016
+	if Type("PARAMIXB[1]:_INFCPL") == "O"
+		fGravaMsg(oInfAd:_INFCPL:text) 
+	endif
+
+	If (FWUnitBusiness() == DHL_BUSINESSUNIT_AGE) .or. (FWUnitBusiness() == DHL_BUSINESSUNIT_AG2 .or. (FWUnitBusiness() == DHL_BUSINESSUNIT_AGL .and. !isRepair(SF1->F1_FORNECE,SF1->F1_LOJA,SF1->F1_TIPO)))
+		fGravaSF1()
+	EndIf
+
+	SA7->(Restarea(aAreaSA7))
+	SA5->(Restarea(aAreaSA5))
+	Restarea(aArea)	
+	
+	conout("** TIMPNFE : SAINDO DO PE IPNFEFIM")
+
+Return
+
+/*
+** Grava informação na tabela de template Mensagens NF (SZZ)
+*/
+static function fGravaMsg(cMsg)
+	Local oTMsg  := FswTemplMsg():newTemplMsg("E",SF1->F1_DOC,SF1->F1_SERIE,SF1->F1_FORNECE,SF1->F1_LOJA,"SZZ")
+	
+	aadd(oTMsg:aMsg, {"",cMsg})
+	
+	oTMsg:grvMsg()
+return
+
+/*/{Protheus.doc} fGravaSF1
+Realiza a gravação do CNPJ do XML na NF de entrada
+
+@type		Function
+@author 	Julio Lisboa
+@since 		19/08/2016
+@return		nil, nulo
+/*/
+Static Function fGravaSF1()
+
+	Local lExistCPO		:= SF1->(FieldPos("F1_ZZCNPJ")) > 0
+	Local cCNPJ			:= ""
+	local lSelect_new	:= SuperGetMV("ZZ_SELECTN",,.F.,xFilial("SD1"))  //RONI SILVA
+	
+	If lExistCPO .AND. Type( "oNFe:_NFEPROC:_NFE:_INFNFE:_DEST:_CNPJ" ) == "O"
+		cCNPJ	:= oNFe:_NFEPROC:_NFE:_INFNFE:_DEST:_CNPJ:TEXT
+		If RecLock("SF1",.F.)
+			SF1->F1_ZZCNPJ	:= cCNPJ
+		EndIf
+	EndIf
+
+ //Acrescentado por Edson Deluca - FIT GEstao - Projeto Automação Braskem - 08/07/2018
+ 	If (FWUnitBusiness() == DHL_BUSINESSUNIT_AGE)
+ 	   If lNewAge .And. lAutomatic
+          fGrvNFTransf()
+          If Empty(SF1->F1_XNFTRF) .And. SF1->F1_ZZSTATU=="3"
+             U__AgeASNGen()                                 
+          EndIf
+       EndIf  
+    EndIf
+ 
+//Fim de acrescimo
+
+//Envia ASN Generate para Dlx após importar a pré-nota
+	If (FWUnitBusiness() == DHL_BUSINESSUNIT_AGL) .or. (cUnit == DHL_BUSINESSUNIT_SPL .AND. lSelect_new)
+		If SF1->F1_ZZSTATU = "3"
+			U_AglASNGen()
+		EndIf
+	EndIf	
+//Fim
+
+Return
+
+/*
+Função: Grava NF de TRansferencia no cabeçalho da NF
+Author: Edson Deluca - FIT Gestao - Projeto Automação Brasken - 08/07/2018
+*/
+Static Function fGrvNFTransf()
+
+Local _aArea      := GetArea()
+Local _cTexto     := ""
+Local _cNFTransf  := ""
+Local _cSerTransf := ""
+Local _nI         := 0
+
+dbSelectArea("SZZ")
+dbSetOrder(1)
+If dbSeek(xFilial("SZZ")+"E"+SF1->F1_DOC+SF1->F1_SERIE+SF1->F1_FORNECE+SF1->F1_LOJA,.F.)
+   While !Eof() .And. xFilial("SZZ")==SZZ->ZZ_FILIAL .And. SZZ->ZZ_DOC==SF1->F1_DOC .AND. SZZ->ZZ_SERIE==SF1->F1_SERIE .AND. SZZ->ZZ_CLIFOR==SF1->F1_FORNECE .AND. SZZ->ZZ_LOJA==SF1->F1_LOJA
+       
+       _cTexto += AllTrim(SZZ->ZZ_TXTMENS)+" "  
+ 
+       dbSkip()
+
+   End
+EndIf
+        
+FWLogMsg("INFO", , "BusinessObject", funName(), "", "01", _cTexto, 0, 0, {})
+                    
+For _nQ:=1 to Len(_cTexto)
+
+   If Substr(_cTexto,_nQ,09)=="NF Transf"
+      
+      _cNFTransf  := Substr(_cTexto,_nQ+18,09)  
+      _cSerTransf := Substr(_cTexto,_nQ+28,02)
+      
+      Exit
+      
+   EndIf
+
+Next _nQ     
+
+dbSelectArea("SF1")
+If RecLock("SF1",.F.)
+   SF1->F1_XNFTRF  := _cNFTransf
+   SF1->F1_XSERTRF := _cSerTransf
+   MsUnLock("SF1")
+EndIf
+
+RestArea(_aArea)
+Return
+
+/**
+* Obtém o log de erro da execAuto
+**/
+static function getLog(aLog)
+
+	local nI 	:= 1
+	local cLog	:= ""
+
+	for nI := 1 to len(aLog)
+
+		if aLog[nI] != nil
+			cLog += aLog[nI] + CRLF
+		endIf
+
+	next nI
+
+return cLog
+
+/**
+* Verifica se o depositante é do tipo Reparador
+**/
+static function isRepair(cClieFor,cLoja,cTipo)
+	
+	local oSqlUtil	:= IpSqlObject():newIpSqlObject()
+	local lRet	 	:= .f.
+	
+	if AllTrim(cTipo) $ "D/B"
+		oSqlUtil:newTable("SA1", "A1_COD, A1_LOJA, A1_ZZREPAR", "A1_FILIAL = '%SA1.FILIAL%' AND A1_COD = '" + cClieFor + "' AND A1_LOJA = '" + cLoja + "' ")
+		if oSqlUtil:hasRecords()
+			if oSqlUtil:getValue("A1_ZZREPAR") == "S"
+				lRet := .t.
+			endIf
+		endIf
+	else
+		oSqlUtil:newTable("SA2", "A2_COD, A2_LOJA, A2_ZZREPAR", "A2_FILIAL = '%SA2.FILIAL%' AND A2_COD = '" + cClieFor + "' AND A2_LOJA = '" + cLoja + "' ")
+		if oSqlUtil:hasRecords()
+			if oSqlUtil:getValue("A2_ZZREPAR") == "S"
+				lRet := .t.
+			endIf
+		endIf
+	endIf
+	oSqlUtil:close()
+	
+return lRet

@@ -1,0 +1,220 @@
+#Include 'Protheus.ch'
+#include "dhl.ch"
+
+#Define INCLUSAO 	3
+#Define QUANTIDADE 	4
+#Define PRODUTO		2
+#Define LOTE		3
+#Define POSITIVO    "P"
+#Define NEGATIVO	"N"
+#Define DELETADO	0
+
+/*/{Protheus.doc} ReadBkFlushXML
+
+Rotina responsável por ler e processar a interface BackFlush e atualizar os dados pertinentes as ordens de produção.
+	
+@author Gustavo Luiz
+@since 09/02/2017
+/*/
+User Function ReadBkFlushXML(cFilePath)
+	
+	Local oDHLBackFlush 	:= Nil
+	
+	Private lMsErroAuto := .F.
+	
+	oDHLBackFlush := LoadDadosXML(cFilePath)
+	
+	If !Empty(oDHLBackFlush:GetEndDate()) 
+		u_MulBkEncerOP(oDHLBackFlush)
+	else
+		If !Empty(oDHLBackFlush:GetBom()) .AND. oDHLBackFlush:HasErroOperacao() == .F.
+			If oDHLBackFlush:GetType() == POSITIVO .AND. oDHLBackFlush:GetQtyBom() != DELETADO .AND. Empty(oDHLBackFlush:GetEndDate())
+				u_MulBkPositivAdjust(oDHLBackFlush)
+			ElseIf oDHLBackFlush:GetType() == NEGATIVO .AND. oDHLBackFlush:GetQtyBom() != DELETADO .AND. Empty(oDHLBackFlush:GetEndDate())
+				u_MulBkNegativAdjust(oDHLBackFlush)
+			ElseIf oDHLBackFlush:GetQtyBom() == DELETADO .AND. Empty(oDHLBackFlush:GetEndDate())
+				u_MulBkDeletedAdjust(oDHLBackFlush)
+			EndIf
+		EndIf
+	endif
+Return oDHLBackFlush:HasErroOperacao()
+
+/**
+* Ajusta o empenho
+**/
+static function AjustEmpenho(oDHLBackFlush)
+
+	local aVetor := {}
+	local cLocal := "01"
+	Local nI	 := 1
+	Local aItens := oDHLBackFlush:GetItens()
+	
+	For nI := 1 To Len(aItens)
+		
+		aAdd(aVetor,{"D4_FILIAL" ,xFilial("SD4")										,nil})
+		aAdd(aVetor,{"D4_OP"     ,oDHLBackFlush:GetOrdemProducao()						,nil})
+		aAdd(aVetor,{"D4_COD"    ,Padr(aItens[nI][PRODUTO], TamSx3("D4_COD")[1], " ")	,nil})
+		aAdd(aVetor,{"D4_LOCAL"  ,cLocal           										,nil})
+		aAdd(aVetor,{"D4_DATA"   ,dDatabase        										,nil})
+		aAdd(aVetor,{"D4_QTDEORI",Val(aItens[nI][QUANTIDADE])       					,nil})
+		aAdd(aVetor,{"D4_QUANT"  ,Val(aItens[nI][QUANTIDADE])       					,nil})
+		
+		If ProdutControlLote(aItens[nI][PRODUTO])
+		
+			aAdd(aVetor,{"D4_LOTECTL",aItens[nI][LOTE]       								,nil})
+		
+		EndIf
+		
+		MSExecAuto({|x,y,z| Mata380(x,y,z)}, aVetor, INCLUSAO)
+	
+		if lMsErroAuto
+			setFileLog(oDHLBackFlush:GetFilePath(),"fail","Falha ao realizar o empenho"+CRLF+CRLF+oUtils:getErroAuto())
+			oDHLBackFlush:SetErroOperacao(.T.)
+			exit
+		endIf
+	
+	Next nI
+	
+return
+
+
+
+/**
+* Realiza o cadastro de uma Ordem de Produção
+**/
+Static Function CreateOP(oDHLBackFlush)
+	
+	If !Empty(oDHLBackFlush:GetBom())
+		
+		IncluiOP(oDHLBackFlush)
+		
+	EndIF
+
+Return
+
+/**
+* Carrega os dados do XML
+**/
+Static Function LoadDadosXML(cFilePath)
+	
+	Local oDHLBackFlush 	:= DHLBackFlush():NewDHLBackFlush()
+	Local nI			:= 0
+	Local aItens		:= {}
+
+	oDHLBackFlush:SetCNPJ(oXml:_BACKFLUSH:_BODY:_FILEHEADER:_SITE_CNPJ:TEXT)
+	oDHLBackFlush:SetProjectID(upper(oXml:_BACKFLUSH:_BODY:_FILEHEADER:_PROJECT_ID:TEXT))
+	oDHLBackFlush:SetQtyPlanned(oXml:_BACKFLUSH:_BODY:_FILEHEADER:_QTY_PLANNED:TEXT)
+	oDHLBackFlush:SetStartDate(FormatDate(oXml:_BACKFLUSH:_BODY:_FILEHEADER:_START_DATE:TEXT))
+	oDHLBackFlush:SetEndDate(FormatDate(oXml:_BACKFLUSH:_BODY:_FILEHEADER:_END_DATE:TEXT))
+	oDHLBackFlush:SetType(oXml:_BACKFLUSH:_BODY:_FILEHEADER:_TYPE:TEXT)
+	oDHLBackFlush:SetSubLote(oXml:_BACKFLUSH:_BODY:_FILEPALLET:_SUBLOT:TEXT)
+	oDHLBackFlush:SetWorkOrder(oXml:_BACKFLUSH:_BODY:_FILEPALLET:_WORK_ORDER:TEXT)
+	
+	oDHLBackFlush:SetBom(oXml:_BACKFLUSH:_BODY:_FILEPALLET:_FILEBOM:_BOM:TEXT)
+	oDHLBackFlush:SetExpDateBom(FormatDate(oXml:_BACKFLUSH:_BODY:_FILEPALLET:_FILEBOM:_EXPIRATION_DATE:TEXT))
+	oDHLBackFlush:SetLotBom(oXml:_BACKFLUSH:_BODY:_FILEPALLET:_FILEBOM:_LOT:TEXT)
+	oDHLBackFlush:SetQtyBom(oXml:_BACKFLUSH:_BODY:_FILEPALLET:_FILEBOM:_QUANTITY:TEXT)
+	oDHLBackFlush:SetUMBom(oXml:_BACKFLUSH:_BODY:_FILEPALLET:_FILEBOM:_UOM:TEXT)
+	oDHLBackFlush:SetFilePath(cFilePath)
+	
+	If type('oXml:_BACKFLUSH:_BODY:_FILEPALLET:_FILEBOM:_FILEITEM') != "U"
+		//PARA QUANDO TIVER SOMENTE 1 ITEM
+		If type('oXml:_BACKFLUSH:_BODY:_FILEPALLET:_FILEBOM:_FILEITEM') == "O"
+	
+			aAdd(aItens, {FormatDate(oXml:_BACKFLUSH:_BODY:_FILEPALLET:_FILEBOM:_FILEITEM:_EXPIRATION_DATE:TEXT), ;
+				oXml:_BACKFLUSH:_BODY:_FILEPALLET:_FILEBOM:_FILEITEM:_ITEM:TEXT, ;
+				oXml:_BACKFLUSH:_BODY:_FILEPALLET:_FILEBOM:_FILEITEM:_LOT:TEXT,;
+				oXml:_BACKFLUSH:_BODY:_FILEPALLET:_FILEBOM:_FILEITEM:_QUANTITY:TEXT,;
+				oXml:_BACKFLUSH:_BODY:_FILEPALLET:_FILEBOM:_FILEITEM:_UOM:TEXT})
+	
+		//PARA QUANDO TIVER SOMENTE 2 OU MAIS ITENS
+		Else
+	
+			For nI := 1 To Len(oXml:_BACKFLUSH:_BODY:_FILEPALLET:_FILEBOM:_FILEITEM)
+	
+				aAdd(aItens, {FormatDate(oXml:_BACKFLUSH:_BODY:_FILEPALLET:_FILEBOM:_FILEITEM[nI]:_EXPIRATION_DATE:TEXT), ;
+					oXml:_BACKFLUSH:_BODY:_FILEPALLET:_FILEBOM:_FILEITEM[nI]:_ITEM:TEXT, ;
+					oXml:_BACKFLUSH:_BODY:_FILEPALLET:_FILEBOM:_FILEITEM[nI]:_LOT:TEXT,;
+					oXml:_BACKFLUSH:_BODY:_FILEPALLET:_FILEBOM:_FILEITEM[nI]:_QUANTITY:TEXT,;
+					oXml:_BACKFLUSH:_BODY:_FILEPALLET:_FILEBOM:_FILEITEM[nI]:_UOM:TEXT})
+	
+			Next nI
+	
+		EndIf
+		
+		//VERIFICA SE TODOS OS FILEITEM POSSUI ITENS
+		If oDHLBackFlush:GetType() == "P"
+			If !ExistItens(aItens)
+				If oDHLBackFlush:GetType() == POSITIVO
+					aItens := {} 
+				else
+					oDHLBackFlush:SetErroOperacao(.T.)
+					oDHLBackFlush:setFileLog(oDHLBackFlush:GetFilePath(),"fail","Falha ao processar arquivo"+CRLF+CRLF+"interface sem FILEITEM")
+				endif
+			EndIf
+		else
+			if !empty(oDHLBackFlush:getEndDate())
+				oDHLBackFlush:SetErroOperacao(.F.)
+			endif
+		EndIf
+		
+		oDHLBackFlush:SetItens(aItens)
+		oDHLBackFlush:VerificaLot()		
+		
+	Else
+		If (oDHLBackFlush:GetType() != POSITIVO)
+			if empty(oDHLBackFlush:getEndDate())
+				oDHLBackFlush:SetErroOperacao(.T.)
+				oDHLBackFlush:setFileLog(oDHLBackFlush:GetFilePath(),"fail","Falha ao processar arquivo"+CRLF+CRLF+"interface sem FILEITEM")
+			else
+				oDHLBackFlush:SetErroOperacao(.F.)
+			endif
+		endif
+	EndIf
+	
+	
+Return oDHLBackFlush
+
+/**
+* Verifica se existe os itens preenchidos
+**/
+Static Function ExistItens(aItens)
+
+	Local nI 			:= 0
+	Local lExitItens	:= .T.
+	Local cItem			:= ""
+	
+	For nI := 1 To Len(aItens)
+		cItem := aItens[nI][2]
+		If Empty(cItem)
+			lExitItens := .F.
+			exit
+		EndIf
+	Next nI
+
+Return lExitItens
+
+/**
+* Formata a data de YYYY-MM-DD para DD/MM/YYYY
+**/
+Static Function FormatDate(cDate)
+	
+	Local aData := {}
+	Local cDia	:= ""
+	Local cMes	:= ""
+	Local cAno	:= ""
+	Local dDate	:= Nil
+	
+	If !Empty(cDate)
+		aData 	:= sTrToKarr(cDate, "-")
+		cAno	:=  aData[1]
+		cMes	:=  aData[2]
+		cDia	:=  aData[3]
+		
+		cDate := cAno + cMes + cDia
+	EndIf
+	
+	dDate := sTod(cDate)
+
+Return dDate
+

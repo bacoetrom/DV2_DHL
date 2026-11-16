@@ -1,0 +1,244 @@
+#include "Protheus.ch"
+#include "dhl.ch"
+
+#define OPC_ESTORNA_CLASSIFICACAO 7
+#define OPC_EXCLUI 5
+
+
+/*/{Protheus.doc} AgeEstorClass
+Estorna a classificação da NF de 1ª perna
+
+@author Thiago Meschiatti
+@since 18/08/2016
+@version undefined
+
+@type function
+/*/
+User Function AgeEstorClass()
+
+	local aArea		:= getArea()
+	local aEstornos := {}
+	local nPos		:= 0
+	local lOk		:= .T.
+	local lExclui	:= .F.
+	local lAuto140  := iif(Type("l140Auto")=='U',.T.,l140Auto)
+	local lAuto103  := iif(Type("l103Auto")=='U',.T.,l103Auto)
+	local cLog		:= ""
+
+	private aChaves := {}
+
+	If Type("__lOk")=="U"
+		If !u_validCob()
+			return
+		EndIf
+	Else
+		if !__lOk
+			return
+		endif
+	EndIf
+
+
+	If Type("__aEstornos")=="U"
+		u_ExcVinculo()
+	EndIf
+
+	aEstornos := __aEstornos
+
+	if funName() == 'MATA103'
+		lExclui := .T.
+	endif
+
+	if !lAuto140 .or. !lAuto103
+
+		for nI := 1 to len(aEstornos)
+			estornaSld(aEstornos[nI,1], aEstornos[nI,2], aEstornos[nI,3],lExclui)
+		next
+
+		for nI := 1 to len(aChaves)
+			if !(aChaves[nI,1]==SF1->F1_FILIAL .AND. aChaves[nI,2]==SF1->F1_DOC .AND. aChaves[nI,3]==SF1->F1_SERIE .AND. aChaves[nI,4]==SF1->F1_FORNECE .AND. aChaves[nI,5]==SF1->F1_LOJA)
+				if !execEstorno(aChaves[nI,1],aChaves[nI,2],aChaves[nI,3],aChaves[nI,4],aChaves[nI,5],lExclui,aChaves[nI,6])
+					lOk := .F.
+					exit
+				else
+					cLog += AllTrim(aChaves[nI,2]) +" / "+ AllTrim(aChaves[nI,3]) +CRLF
+				endif
+			endif
+		next
+
+		if lOk .and. !lExclui
+			RecLock("SF1",.F.)
+			SF1->F1_ZZSTATU := DHL_DOC_PENDENTE_ACAO
+			SF1->(MsUnLock())
+		endif
+
+		__aEstornos := {}
+
+	endif
+
+	restArea(aArea)
+
+	if !(empty(cLog))
+		cLog := "As seguintes notas também foram estornadas / excluídas:"+CRLF+CRLF+cLog	
+		Aviso("Atenção",cLog,{"OK"},3)
+	endif
+
+return
+
+
+/**
+* Executa a rotina automática de estorno da classificação
+*/
+static function execEstorno(cFilx,cDoc,cSerie,cFornece,cLoja,lExclui,cPerna)
+
+	local aItens 	:= {}
+	local aItem 	:= {}
+	local aCab 		:= {}
+	local aSF1 		:= SF1->(getArea())
+	local aSD1 		:= SD1->(getArea())
+	local aArea		:= getArea()
+	local lOk 		:= .T.
+
+	private lMSErroAuto := .F.
+
+	SF1->(dbSeek(cFilx+cDoc+cSerie+cFornece+cLoja))
+
+	mountHeader(aCab)
+
+	SD1->(dbSeek(SF1->F1_FILIAL+SF1->F1_DOC+SF1->F1_SERIE+SF1->F1_FORNECE+SF1->F1_LOJA))
+	while 	SD1->(!(Eof()))                  .AND.;
+	SD1->D1_FILIAL == xFilial("SD1") .AND.;
+	SD1->D1_DOC    == SF1->F1_DOC    .AND.;
+	SD1->D1_SERIE  == SF1->F1_SERIE  .AND.;
+	SD1->D1_FORNECE== SF1->F1_FORNECE.AND.;
+	SD1->D1_LOJA   == SF1->F1_LOJA
+
+		mountDetail(aItem)
+
+		aadd(aItens,aItem)
+
+		SD1->(dbSkip())
+
+	enddo
+
+	if lExclui
+		MSExecAuto({|x,y,z| MATA103(x,y,z)},aCab,aItens,OPC_EXCLUI)
+	else
+		MSExecAuto({|x,y,z| MATA140(x,y,z)},aCab,aItens,OPC_ESTORNA_CLASSIFICACAO)
+	endif
+
+	if lMSErroAuto
+		MostraErro()
+		DisarmTransaction()
+		lOk := .F.
+	else
+		if cPerna == "2"
+			RecLock("SF1",.F.)
+			SF1->F1_ZZSTATU := DHL_DOC_PENDENTE_ACAO
+			SF1->(MsUnLock())
+		endif
+	endif
+
+	restArea(aSF1)
+	restArea(aSD1)
+	restArea(aArea)
+
+return lOk
+
+
+/**
+* Monta o cabelhaço da Nota Fiscal
+**/
+static function mountHeader(aCab)
+
+	local nCount	:= 0
+	local aCposSX3	:= FWSX3Util():GetAllFields("SF1",.f.)
+
+	aCab := {}
+
+	aadd(aCab,{"F1_TIPO"    ,SF1->F1_TIPO   	})
+	aadd(aCab,{"F1_FORMUL"  ,SF1->F1_FORMUL		})
+	aadd(aCab,{"F1_DOC"    	,SF1->F1_DOC   		})
+	aadd(aCab,{"F1_SERIE"  	,SF1->F1_SERIE 		})
+	aadd(aCab,{"F1_EMISSAO" ,SF1->F1_EMISSAO 	})
+	aadd(aCab,{"F1_FORNECE"	,SF1->F1_FORNECE	})
+	aadd(aCab,{"F1_LOJA"   	,SF1->F1_LOJA   	})
+	aadd(aCab,{"F1_ESPECIE"	,SF1->F1_ESPECIE	})
+
+	for nCount := 1 to len(aCposSX3)
+
+		if AllTrim(getSX3Cache(aCposSX3[nCount],"X3_PROPRI")) == "U"
+			aAdd(aCab,{AllTrim(aCposSX3[nCount]),&("SF1->" + AllTrim(aCposSX3[nCount])),nil})
+		endIf
+
+	next nCount
+
+return
+
+
+/**
+* Monta os items da Nota Fiscal
+**/
+static function mountDetail(aItem)
+
+	local nCount	:= 0
+	local aCposSX3	:= FWSX3Util():GetAllFields("SD1",.f.)
+
+	aItem := {}
+
+	aadd(aItem,{"D1_ITEM"   ,SD1->D1_ITEM, 	nil   })
+	aadd(aItem,{"D1_COD"    ,SD1->D1_COD, 	nil   })
+	aadd(aItem,{"D1_QUANT"	,SD1->D1_QUANT, nil   })
+	aadd(aItem,{"D1_VUNIT"  ,SD1->D1_VUNIT, nil   })
+	aadd(aItem,{"D1_TOTAL"  ,SD1->D1_TOTAL, nil   })
+	aAdd(aItem,{"D1_PEDIDO" ,SD1->D1_PEDIDO,nil   })
+	aAdd(aItem,{"D1_ITEMPC" ,SD1->D1_ITEMPC,nil   })
+
+	for nCount := 1 to len(aCposSX3)
+
+		if AllTrim(getSX3Cache(aCposSX3[nCount],"X3_PROPRI")) == "U"
+			aAdd(aItem,{AllTrim(aCposSX3[nCount]),&("SD1->" + AllTrim(aCposSX3[nCount])),nil})
+		endIf
+
+	next nCount
+
+return
+
+
+/**
+* estorna saldo de 1.a perna, remove a segunda perna da tabela
+* de vínculos e armazena a chave das NFE´s para estornar a classificação
+*/
+static function estornaSld(cIdent, nSaldo, nRecnoSZ4,lExclui)
+
+	local oSql	:= IpSqlObject():newIpSqlObject()
+	local oSql3	:= IpSqlObject():newIpSqlObject()
+	local nPos	:= 0
+
+	If FWUnitBusiness() == DHL_BUSINESSUNIT_AG2 //Emerson Holanda 12/06/2020 - Caso seja a SCJ, sera adicionado o filtro de quantidade.
+		oSql3:newTable("SZ4", "Z4_FILIAL, Z4_DOC, Z4_SERIE, Z4_CLIFOR, Z4_LOJA, Z4_TIPMOV", "%SZ4.XFILIAL% AND Z4_IDCOB = '"+cIdent+"'AND Z4_QUANT = '"+cValToChar(nSaldo)+"' ")
+	Else
+		oSql3:newTable("SZ4", "Z4_FILIAL, Z4_DOC, Z4_SERIE, Z4_CLIFOR, Z4_LOJA, Z4_TIPMOV", "%SZ4.XFILIAL% AND Z4_IDCOB = '"+cIdent+"'")
+	EndIf
+
+	if lExclui
+		oSql:update("SZ4","D_E_L_E_T_ = '*'","%SZ4.XFILIAL% AND Z4_IDCOB = '"+cIdent+"'")
+	else
+		If FWUnitBusiness() == DHL_BUSINESSUNIT_AG2 //Emerson Holanda 12/06/2020 - Caso seja a SCJ, sera adicionado o filtro de quantidade.
+			oSql:update("SZ4","Z4_SALDO = Z4_SALDO + "+cValToChar(nSaldo),"%SZ4.XFILIAL% AND Z4_IDCOB = '"+cIdent+"' AND Z4_TIPMOV = '1' AND Z4_QUANT = '"+cValToChar(nSaldo)+"' ")
+		Else
+			oSql:update("SZ4","Z4_SALDO = Z4_SALDO + "+cValToChar(nSaldo),"%SZ4.XFILIAL% AND Z4_IDCOB = '"+cIdent+"' AND Z4_TIPMOV = '1' ")
+		EndIf
+		oSql:update("SZ4","D_E_L_E_T_ = '*'","R_E_C_N_O_ = "+cValToChar(nRecnoSZ4))
+	endif
+
+	while oSql3:notIsEof()
+		nPos := aScan(aChaves,{|x| x[1]+x[2]+x[3]+x[4]+x[5]==oSql3:getValue("Z4_FILIAL")+oSql3:getValue("Z4_DOC")+oSql3:getValue("Z4_SERIE")+oSql3:getValue("Z4_CLIFOR")+oSql3:getValue("Z4_LOJA")})
+		if nPos == 0
+			aadd(aChaves, {oSql3:getValue("Z4_FILIAL"),oSql3:getValue("Z4_DOC"),oSql3:getValue("Z4_SERIE"),oSql3:getValue("Z4_CLIFOR"),oSql3:getValue("Z4_LOJA"),oSql3:getValue("Z4_TIPMOV")})
+		endif
+		oSql3:skip()
+	enddo
+
+	oSql3:close()
+
+return

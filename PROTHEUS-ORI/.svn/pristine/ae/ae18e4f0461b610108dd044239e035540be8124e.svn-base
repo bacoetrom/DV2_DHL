@@ -1,0 +1,68 @@
+#include "totvs.ch"
+#include "dhl.ch"
+
+/*/{Protheus.doc} MT140ROT
+
+Ponto de entrada para adicionar botões na tela de pré-nota
+
+@author Renato Castro
+@since 22/10/2014
+
+
+@return Array Rotinas a serem adicionadas
+/*/
+User Function MT140ROT()
+
+local aBotao := {}
+
+if (FWUnitBusiness() == DHL_BUSINESSUNIT_AGE) .or. (FWUnitBusiness() == DHL_BUSINESSUNIT_AG2) 
+	aAdd(aBotao,{"Alt.Cli/For(Aj.Inv)","U_AgeAltNf()",0,4})
+else
+	if (FWUnitBusiness() <> DHL_BUSINESSUNIT_MUL)
+		aAdd(aBotao,{"Alt.Cli/For(Aj.Inv)","U_AltCliNFE()",0,4})
+	endif
+	
+	if (FWUnitBusiness() <> DHL_BUSINESSUNIT_AGL)
+		aAdd(aBotao,{"Alt.Cli/For(Aj.Inv)","U_AglAltNf()",0,4})
+	endif
+endif
+
+
+If FWUnitBusiness() == DHL_BUSINESSUNIT_DIS
+	aAdd(aBotao,{"Lib.Cobertura Fis." ,"U_DisNfSelScr()" ,0,4})
+ElseIf (FWUnitBusiness() == DHL_BUSINESSUNIT_AGE)
+	aAdd(aBotao,{"Lib.Cobertura Fis." ,"U_AgeNfSelScr()" ,0,4})
+ElseIf (FWUnitBusiness() == DHL_BUSINESSUNIT_AG2)
+	aAdd(aBotao,{"Lib.Cobertura Fis." ,"U_Ag2NfSelScr()" ,0,4})
+ElseIf (FWUnitBusiness() == DHL_BUSINESSUNIT_AGL)
+	aAdd(aBotao,{"Lib.Cobertura Fis." ,"U_AglNfSelScr()" ,0,4})
+Else
+	aAdd(aBotao,{"Lib.Cobertura Fis." ,"U_NfSelScr()" ,0,4})
+EndIf
+
+if FWUnitBusiness() == DHL_BUSINESSUNIT_PKG
+	aAdd(aBotao,{"Enviar ASN","U_ASNGenerate()",0,4})
+elseif FWUnitBusiness() == DHL_BUSINESSUNIT_REP
+	aAdd(aBotao,{"Enviar ASN","U_DlxASNGen()",0,4})
+elseif FWUnitBusiness() == DHL_BUSINESSUNIT_DIS
+	aAdd(aBotao,{"Enviar ASN","U_DisASNGen()",0,4})
+	aAdd(aBotao,{"Vincular PC","U_VincPedidoCompra()",0,4})
+elseif FWUnitBusiness() == DHL_BUSINESSUNIT_AGE
+	//Julio Lisboa - FSW TOTVS IP Campinas - 25/08/2016
+	aAdd(aBotao,{"Enviar ASN","U_AgeASNGen()",0,4})
+	aAdd(aBotao,{"Entrada Simbólica","U_EntrSimb()",0,4})
+elseif FWUnitBusiness() == DHL_BUSINESSUNIT_AG2
+	aAdd(aBotao,{"Enviar ASN","U_Ag2ASNGen()",0,4})
+elseif FWUnitBusiness() == DHL_BUSINESSUNIT_MUL
+	aAdd(aBotao,{"Enviar ASN","U_MulASNGen()",0,4})
+	aAdd(aBotao,{"Alt.Cli/For(Aj.Inv)","U_MulAltNf()",0,4})
+elseif FWUnitBusiness() == DHL_BUSINESSUNIT_AGL
+	aAdd(aBotao,{"Enviar ASN","U_AglASNGen()",0,4})
+endIf
+
+//Emerson Holanda 02/03/2018 - Botão para informar manualmente o documento de devolução SCJ
+If cFilAnt == '149AG2014901'//Filial SCJ
+	aAdd(aBotao,{"Nf. Devolucao SCJ","U_DESTA002()",0,4})
+EndIf
+
+return aBotao

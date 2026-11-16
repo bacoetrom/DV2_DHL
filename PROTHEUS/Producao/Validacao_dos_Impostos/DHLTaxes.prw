@@ -1,0 +1,495 @@
+#include 'totvs.ch'
+#include 'dhl.ch'
+
+
+/*/{Protheus.doc} DHLTaxes
+Classe para Validação de Impostos
+
+@type class
+@author Thiago Meschiatti
+@since 06/04/2016
+@version 1.0
+/*/
+class DHLTaxes
+	data oXml
+	data lError
+	data aMsgError
+	data cMsg
+	data nTolVlrIMp
+
+	method newDHLTaxes(oDetXml) CONSTRUCTOR
+	
+	method getXml()
+	method setXml()
+	
+	method getTax(cTax)
+	method getTotal()
+	method getIcms()
+	method getIPI()
+	method getQuant()
+	method getIbsUF()
+	method getIbsMUN()
+	method getCBS()
+	method getCBSIBSTOT()
+	
+	method getValorToler()
+	method setValorToler()
+	
+	method hasError()
+	method setError()
+	
+	method getMsgError()
+	method setMsgError()
+	
+	method getArrayError()
+	method addMsgError()
+	
+	method pathImcs00()
+	method pathImcs10()
+	method pathImcs20()
+	method pathImcs51()
+	method pathImcs70()
+	method pathImcs90()
+
+	method pathIBSUF() //Adicionado - Gustavo Ricci - 05/11/2025
+	method pathIBSMUN() //Adicionado - Gustavo Ricci - 05/11/2025
+	method pathCBS() //Adicionado - Gustavo Ricci - 05/11/2025
+	method pathCBSIBSTOT() //Adicionado - Gustavo Ricci - 05/11/2025
+	
+	method validTaxes()
+	method validTotal()
+	method validIcms()
+	method validIpi()
+	
+	method updStatus()
+
+endclass
+
+
+/*/{Protheus.doc} newDHLTaxes
+Método Construtor
+
+@type class
+@author Thiago Meschiatti
+@since 06/04/2016
+@version 1.0
+/*/
+method newDHLTaxes(oDetXml) class DHLTaxes
+	default oDetXml := nil
+	
+	::oXml 		:= oDetXml
+	::cMsg		:= ""
+	::lError	:= .f.
+	::aMsgError := {}
+	::nTolVlrIMp:= GetNewPar("ZZ_TOLVIMP", 0)
+	
+return
+
+
+method getXml() class DHLTaxes
+return (::oXml)
+
+
+method setXml(oXml) class DHLTaxes
+	::oXml := oXml
+return
+
+
+method getValorToler() class DHLTaxes	
+return ::nTolVlrIMp
+
+
+method setValorToler(nTolVlrIMp) class DHLTaxes	
+	::nTolVlrIMp := nTolVlrIMp
+return
+
+
+method hasError() class DHLTaxes	
+return ::lError
+
+
+method setError(lError) class DHLTaxes
+	::lError := lError
+return	
+
+
+method getArrayError() class DHLTaxes	
+return aClone(::aMsgError)
+
+
+method addMsgError(cItem, cTax, cMsgError) class DHLTaxes
+	aadd(::aMsgError, {cItem, cTax, cMsgError})
+return	
+
+
+/*/{Protheus.doc} getTax
+Coleta o imposto XML
+
+@author Thiago Meschiatti
+@since 06/04/2016
+@version 1.0
+@return Caracter Valor do Imposto XML
+/*/
+method getTax(cTax) class DHLTaxes
+	local cRet := ""
+	
+	if upper(alltrim(cTax)) == "ICMS"
+		cRet :=  ::getIcms()
+	elseif upper(alltrim(cTax)) == "IPI"
+		cRet := ::getIPI()
+	endif   
+
+return (cRet)
+
+
+/*/{Protheus.doc} getTotal
+Coleta o total do produto XML
+
+@author Thiago Meschiatti
+@since 06/04/2016
+@version 1.0
+@return Caracter Valor do Produto XML
+/*/
+method getTotal() class DHLTaxes
+	local cPath := "_PROD:_VPROD:TEXT"
+	local cRet	:= ""
+	private oXml := ::getXml()
+	
+	if type("oXml:" + cPath) == "U"
+		cRet := '0'
+	else
+		cRet := &("oXml:" + cPath)
+	endif
+
+return (cRet)
+
+
+/*/{Protheus.doc} getIcms
+Coleta o total do ICMS para item do XML
+
+@author Thiago Meschiatti
+@since 06/04/2016
+@version 1.0
+@return Caracter Valor do ICMS para item do XML
+/*/
+method getIcms() class DHLTaxes
+	local cRet := ""
+	private oXml := ::getXml()
+	
+	if type("oXml:" + ::pathImcs00()) == "C"
+		cRet := &("oXml:" + ::pathImcs00())
+	elseif type("oXml:" + ::pathImcs10()) == "C"
+		cRet := &("oXml:" + ::pathImcs10())
+	elseif type("oXml:" + ::pathImcs20()) == "C"
+		cRet := &("oXml:" + ::pathImcs20())
+	elseif type("oXml:" + ::pathImcs51()) == "C"
+		cRet := &("oXml:" + ::pathImcs51())
+	elseif type("oXml:" + ::pathImcs70()) == "C"
+		cRet := &("oXml:" + ::pathImcs70())
+	elseif type("oXml:" + ::pathImcs90()) == "C"
+		cRet := &("oXml:" + ::pathImcs90())
+	else
+		cRet := '0'
+	endif
+
+return (cRet)
+
+
+/*/{Protheus.doc} getIPI
+Coleta o total do IPI para item do XML
+
+@author Thiago Meschiatti
+@since 06/04/2016
+@version 1.0
+@return Caracter Valor do IPI para item do XML
+/*/
+method getIPI() class DHLTaxes
+	local cPath := "_IMPOSTO:_IPI:_IPITRIB:_VIPI:TEXT"
+	local cRet	:= ""
+	private oXml := ::getXml()
+	
+	if type("oXml:" + cPath) == "U"
+		cRet := '0'
+	else
+		cRet := &("oXml:" + cPath)
+	endif
+
+return (cRet)
+
+/*/{Protheus.doc} getIBSUF
+Coleta o total do IBSUF para item do XML
+/*/
+method getIBSUF() class DHLTaxes
+	local cRet := ""
+	private oXml := ::getXml()
+	
+	if type("oXml:" + ::pathIBSUF()) == "C"
+		cRet := &("oXml:" + ::pathIBSUF())
+	else
+		cRet := '0'
+	endif
+
+return (cRet)
+
+/*/{Protheus.doc} getIBSMUN
+Coleta o total do IBSUF para item do XML
+/*/
+method getIBSMUN() class DHLTaxes
+	local cRet := ""
+	private oXml := ::getXml()
+	
+	if type("oXml:" + ::pathIBSMUN()) == "C"
+		cRet := &("oXml:" + ::pathIBSMUN())
+	else
+		cRet := '0'
+	endif
+
+return (cRet)
+
+/*/{Protheus.doc} getCBS
+Coleta o total do CBS para item do XML
+/*/
+method getCBS() class DHLTaxes
+	local cRet := ""
+	private oXml := ::getXml()
+	
+	if type("oXml:" + ::pathCBS()) == "C"
+		cRet := &("oXml:" + ::pathCBS())
+	else
+		cRet := '0'
+	endif
+
+return (cRet)
+
+/*/{Protheus.doc} getCBSIBSTOT
+Coleta o total do IBS CBS para item do XML
+/*/
+method getCBSIBSTOT() class DHLTaxes
+	local cRet := ""
+	private oXml := ::getXml()
+	
+	if type("oXml:" + ::pathCBSIBSTOT()) == "C"
+		cRet := &("oXml:" + ::pathCBSIBSTOT())
+	else
+		cRet := '0'
+	endif
+
+return (cRet)
+
+/*/{Protheus.doc} getQuant
+Coleta a quantidade do item do XML
+
+@author Thiago Meschiatti
+@since 06/04/2016
+@version 1.0
+@return Caracter Quantidade do item do XML
+/*/
+method getQuant() class DHLTaxes
+	local cPath := "_PROD:_QCOM:TEXT"
+	local cRet	:= ""
+	private oXml := ::getXml()
+	
+	if type("oXml:" + cPath) == "U"
+		cRet := '0'
+	else
+		cRet := &("oXml:" + cPath)
+	endif
+
+return (cRet)
+
+
+method pathImcs00() class DHLTaxes
+return "_IMPOSTO:_ICMS:_ICMS00:_VICMS:TEXT"
+
+
+method pathImcs10() class DHLTaxes
+return "_IMPOSTO:_ICMS:_ICMS10:_VICMS:TEXT"
+
+
+method pathImcs20() class DHLTaxes
+return "_IMPOSTO:_ICMS:_ICMS20:_VICMS:TEXT"
+
+
+method pathImcs51() class DHLTaxes
+return "_IMPOSTO:_ICMS:_ICMS51:_VICMS:TEXT"
+
+
+method pathImcs70() class DHLTaxes
+return "_IMPOSTO:_ICMS:_ICMS70:_VICMS:TEXT"
+
+
+method pathImcs90() class DHLTaxes
+return "_IMPOSTO:_ICMS:_ICMS90:_VICMS:TEXT"
+
+method pathIBSUF() class DHLTaxes
+return "_IMPOSTO:_gIBS:_gIBSUF:_VIBSUF:TEXT"
+
+method pathIBSMUN() class DHLTaxes
+return "_IMPOSTO:_gIBS:_gIBSMUN:_VIBSMUN:TEXT"
+
+method pathCBS() class DHLTaxes
+return "_IMPOSTO:_gCBS:_VCBS:TEXT"
+
+method pathCBSIBSTOT() class DHLTaxes
+return "_IMPOSTO:_IBSCBSTot:_vBCIBSCBS:TEXT"
+/*/{Protheus.doc} validTaxes
+Valida Total e Impostos 
+
+@author Thiago Meschiatti
+@since 06/04/2016
+@version 1.0
+/*/
+method validTaxes(nLinha) class DHLTaxes
+	default nLinha := 0
+
+	::validTotal(nLinha)
+	::validIcms(nLinha)
+	::validIpi(nLinha)	
+return
+
+
+/*/{Protheus.doc} validTotal
+Validação de Total do Produto
+
+@author Thiago Meschiatti
+@since 06/04/2016
+@version 1.0
+/*/
+method validTotal(nLinha) class DHLTaxes
+	local nDif 		:= 0  
+	local nValTot	:= 0
+	
+	if nLinha > 0
+		nValTot := gdFieldGet("D1_TOTAL", nLinha)
+		nDif := abs(nValTot - SD1->D1_ZZTOTAL)
+	else
+		nDif := abs(SD1->D1_TOTAL - SD1->D1_ZZTOTAL)
+	endif
+	if nDif > ::getValorToler()
+		::setError(.T.)
+		::addMsgError(SD1->D1_ITEM, "TOT", "Item "+SD1->D1_ITEM+" (C): Valor XML " + alltrim(Transform( SD1->D1_ZZTOTAL, "@E 9,999,999,999,999.99")) + ;
+			" Valor Sistema " + alltrim(Transform(nValTot,"@E 9,999,999,999,999.99")))
+	endif
+return
+
+
+/*/{Protheus.doc} validIcms
+Validação de ICMS
+
+@author Thiago Meschiatti
+@since 06/04/2016
+@version 1.0
+/*/
+method validIcms(nLinha) class DHLTaxes
+	local nDif 		:= 0  
+	local nValIcms	:= 0
+	
+	if nLinha > 0
+		nValIcms := gdFieldGet("D1_VALICM", nLinha)
+		nDif := abs(nValIcms - SD1->D1_ZZVLICM)
+	else
+		nDif := abs(SD1->D1_VALICM - SD1->D1_ZZVLICM)
+	endif
+	
+	if nDif > ::getValorToler()
+		::setError(.T.)
+		::addMsgError(SD1->D1_ITEM, "ICM", "Item "+SD1->D1_ITEM+" (B): Valor XML " + alltrim(Transform( SD1->D1_ZZVLICM, "@E 9,999,999,999,999.99")) + ;
+			" Valor Sistema " + alltrim(Transform(nValIcms, "@E 9,999,999,999,999.99")))
+	endif
+return
+
+
+/*/{Protheus.doc} validIpi
+Validação de IPI
+
+@author Thiago Meschiatti
+@since 06/04/2016
+@version 1.0
+/*/
+method validIpi(nLinha) class DHLTaxes
+	local nDif 		:= 0  
+	local nValIpi	:= 0
+	
+	if nLinha > 0
+		nValIpi	:= gdFieldGet("D1_VALIPI", nLinha)
+		nDif := abs(nValIpi - SD1->D1_ZZVLIPI)
+	else
+		nDif := abs(SD1->D1_VALIPI - SD1->D1_ZZVLIPI)
+	endif
+	
+	if nDif > ::getValorToler()
+		::setError(.T.)
+		::addMsgError(SD1->D1_ITEM, "IPI", "Item "+SD1->D1_ITEM+" (A): Valor XML " + alltrim(Transform( SD1->D1_ZZVLIPI, "@E 9,999,999,999,999.99")) + ;
+			" Valor Sistema " + alltrim(Transform(nValIpi, "@E 9,999,999,999,999.99")))
+	endif
+return
+
+
+/*/{Protheus.doc} setMsgError
+Estrutura mensagem de erro para mostrar ao usuário
+
+@author Thiago Meschiatti
+@since 06/04/2016
+@version 1.0
+/*/
+method setMsgError() class DHLTaxes
+	local cMsg		:= ""
+	local cMsgAux	:= ""
+	local nI		:= 0 
+	local aMsgs 	:= ::getArrayError()
+	local lIpi		:= ascan(aMsgs, { |x| alltrim(x[2]) == "IPI"}) > 0
+	local lIcm  	:= ascan(aMsgs, { |x| alltrim(x[2]) == "ICM"}) > 0
+	local lTot		:= ascan(aMsgs, { |x| alltrim(x[2]) == "TOT"}) > 0
+	
+	if ::hasError()
+		if lIpi 
+			cMsg := "VALOR IPI(A)"
+		endif
+		if lIcm
+			if empty(cMsg)
+				cMsg := "VALOR ICMS(B)"
+			else
+				cMsg += " e/ou VALOR ICMS(B)"
+			endif
+		endif
+		if lTot
+			if empty(cMsg)
+				cMsg := "VALOR TOTAL(C)"
+			else
+				cMsg += " e/ou VALOR TOTAL(C)"
+			endif
+		endif
+		
+		cMsg += " do(s) item(ns)"
+		
+		for nI:=1 to len(aMsgs)
+			if !(alltrim(aMsgs[nI,1]) $ cMsg)
+				cMsg 	+= alltrim(aMsgs[nI,1]) + ", "
+			endif
+			cMsgAux	+= alltrim(aMsgs[nI,3]) + CRLF
+		next nI
+		
+		cMsg += "estão com diferenças. " + CRLF + CRLF + cMsgAux
+		
+		::cMsg := cMsg
+	endif
+return  
+
+
+method getMsgError() class DHLTaxes
+return (::cMsg)
+
+
+/*/{Protheus.doc} updStatus
+Atualiza status do documento.
+
+@author Thiago Meschiatti
+@since 06/04/2016
+@version 1.0
+/*/
+method updStatus() class DHLTaxes
+	local oSql	:= IpSqlObject():newIpSqlObject()
+	
+	oSql:update("SF1", "F1_ZZSTATU = '"+ DHL_DOC_CONFIRMACAO_NEGADA+"' ", "%SF1.XFILIAL% AND F1_DOC = '"+SF1->F1_DOC+"' "+;
+								   " AND F1_SERIE = '"+SF1->F1_SERIE+"' AND F1_FORNECE = '"+SF1->F1_FORNECE+"' AND F1_LOJA = '"+SF1->F1_LOJA+"'")
+return

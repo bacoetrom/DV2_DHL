@@ -1,0 +1,43 @@
+#Include "Protheus.ch"
+#Include "dhl.ch"
+
+
+/*/{Protheus.doc} SF2520E
+
+Ponto de Entrada executado na exclusão da Nota Fiscal.
+
+@author Thiago Meschiatti
+@since 30/10/2014
+
+@param xParam, TipoParam, DescricaoDoParam
+
+@return lógico Determina se exclui ou não a NF
+/*/
+***************************************************************************************************************************************************
+User Function SF2520E()
+	***************************************************************************************************************************************************
+	Local oTMsg  	 := FswTemplMsg():newTemplMsg("S",SF2->F2_DOC,SF2->F2_SERIE,SF2->F2_CLIENTE,SF2->F2_LOJA,"SZZ")
+	local oIdManager := DHLIdManager():newDHLIdManager()
+
+	//exclui mensagens da NF
+	oTMsg:excMsg()
+
+	//TODO THIAGO VALIDAR SPL
+	if FWUnitBusiness() == DHL_BUSINESSUNIT_SPL
+		oIdManager:outflowInvoice(DHL_EXCLUSAO)
+		/*
+	elseif FWUnitBusiness() == DHL_BUSINESSUNIT_DIS // Adequação DIFAl - Thiago Meschiatti - 17/08/16
+		u_RollBackDifal()
+		*/
+	endif
+
+	//--- Por Cassandra em 08/09/2016: Desvinculo NF Terceiro (SZ8)
+	If !Empty(SF2->F2_ZZNFTER)
+		U_DesvinTer(1)
+	Endif
+
+	if FWUnitBusiness() == DHL_BUSINESSUNIT_AGL
+		u_AglDesVTer()
+	endif
+
+return

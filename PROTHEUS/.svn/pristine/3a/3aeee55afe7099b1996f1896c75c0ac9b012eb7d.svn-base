@@ -1,0 +1,324 @@
+#INCLUDE "PROTHEUS.CH"
+#INCLUDE "dhl.ch"
+
+/*/{Protheus.doc} IPNFEITEM
+ 
+PE para adicionar itens no array aCab para execução da rotina automática MATA140.
+
+@author Thiago Meschiatti
+@since 27/10/2014
+
+@param PARAMIXB[1], array, Informações do item da NF.(No Item,Cód Prod.XML,Cód.Prod. SB1,Desc. Prod., UM, Qtd.,Vlr Unit.,Vlr Ttl,CFOP,No Ped. Compra,It. Ped.Compra, NCM,Lote CTL,Desc,Frete)
+@param PARAMIXB[2], objeto, Informações completa do item da NF.
+
+@return array Array com campos de itens para execução da rotina automática MATA140.
+/*/
+User Function IPNFEITEM()
+
+	local oDetItem 	:= PARAMIXB[2]
+	local aItem	   	:= {}
+	local oSql 		:= IpSqlObject():newIpSqlObject()
+	local cWhere	:= ""
+	local cProduto	:= ""
+	local cTes		:= ""
+	local nPosPc	:= 0
+	local cPoExt	:= ""
+	local cItPoExt	:= ""
+	local cLote	:= ""
+	local nZZQTrib	:= 0	
+	local cBenef	:= ""
+	private lNewAge		:= SuperGetMV("ZZ_NEWAGE",,.F.)
+	private lAutomatic  := SuperGetMv("ZZ_AUTOMAT",,.F.)
+
+	private aInfProd 	:= PARAMIXB[1]
+
+	if type("PARAMIXB[1][9]") != "U"
+		aadd(aItem,{"D1_ZZCFOP" , aInfProd[9],Nil})
+	endif
+	if type("PARAMIXB[2]:_INFADPROD") != "U"
+		aadd(aItem,{"D1_ZZINFAP" , oDetItem:_INFADPROD:text,Nil})
+	endif
+	if type("PARAMIXB[2]:_PROD:_NFCI") != "U"
+		aadd(aItem,{"D1_ZZFCI" , oDetItem:_PROD:_NFCI:text,Nil})
+	endif
+
+	if type("PARAMIXB[2]:_PROD:_UTRIB") != "U"
+		aadd(aItem,{"D1_ZZUTRIB" , oDetItem:_PROD:_UTRIB:text,Nil})
+	endif
+
+	//Inicio Gustavo Luiz - FSW Totvs IP 13/02/2019
+	cProduto := aInfProd[3]
+	if isProdutLote(cProduto)
+		If lNewAge .And. lAutomatic                                                                     
+			nZZQTrib := iif(SB1->B1_TIPCONV == "M", aInfProd[6] * SB1->B1_CONV,aInfProd[6] / SB1->B1_CONV)	
+			aadd(aItem,{"D1_ZZQTRIB" , nZZQTrib ,Nil})		
+		Else                                                                                           
+			nZZQTrib := val(oDetItem:_PROD:_QTRIB:text)
+			aadd(aItem,{"D1_ZZQTRIB" , nZZQTrib ,Nil})
+		EndIf  	
+		//Fim Gustavo Luiz - FSW Totvs IP 13/02/2019
+	else		
+		if type("PARAMIXB[2]:_PROD:_QTRIB") != "U"
+			nZZQTrib := val(oDetItem:_PROD:_QTRIB:text)
+			aadd(aItem,{"D1_ZZQTRIB" , nZZQTrib ,Nil})
+		endif
+	endIf
+
+	//Alterado Thiago Meschiatti - 21/01/2019 - REP com AGE
+	if (FWUnitBusiness() == DHL_BUSINESSUNIT_DIS) .or. (FWUnitBusiness() == DHL_BUSINESSUNIT_MUL) .or. (FWUnitBusiness() == DHL_BUSINESSUNIT_AG2) .or. (FWUnitBusiness() == DHL_BUSINESSUNIT_AGE) .or. (FWUnitBusiness() == DHL_BUSINESSUNIT_REP) .or. (FWUnitBusiness() == DHL_BUSINESSUNIT_AGL)
+
+		If (FWUnitBusiness() # DHL_BUSINESSUNIT_AG2)
+			if type("PARAMIXB[2]:_PROD:_MED:_DFAB") != "U" 
+				aadd(aItem,{"D1_ZZDFABR" , trataData(oDetItem:_PROD:_MED:_DFAB:text),nil})
+			elseif type("PARAMIXB[2]:_PROD:_RASTRO:_DFAB") != "U" 
+				if (FWUnitBusiness() == DHL_BUSINESSUNIT_DIS) 
+					//Emerson Holanda 11/02/21 - Tratamento para pegar a informacao da data de fabricacao conforme informacao da tela
+					aadd(aItem,{"D1_ZZDFABR" , aInfProd[15],nil}) 
+				else
+					aadd(aItem,{"D1_ZZDFABR" , trataData(oDetItem:_PROD:_RASTRO:_DFAB:text),nil})
+				endIf
+			else
+				aadd(aItem,{"D1_ZZDFABR" , ctod(""), nil})
+			endif
+
+			if type("PARAMIXB[2]:_PROD:_MED:_DVAL") != "U" 
+				aadd(aItem,{"D1_DTVALID" , trataData(oDetItem:_PROD:_MED:_DVAL:text),nil})
+			elseif type("PARAMIXB[2]:_PROD:_RASTRO:_DVAL") != "U"				
+				if isProdutLote(aInfProd[3]) //Gustavo Luiz FSW 16/05/2019 (Ajuste Mondelez)
+					if (FWUnitBusiness() == DHL_BUSINESSUNIT_DIS)
+						//Emerson Holanda 11/02/21 - Tratamento para pegar a informacao da data de fabricacao conforme informacao da tela
+						aadd(aItem,{"D1_DTVALID" , aInfProd[14],nil})
+					else
+						aadd(aItem,{"D1_DTVALID" , trataData(oDetItem:_PROD:_RASTRO:_DVAL:text),nil})
+					endif
+				endIf
+			else
+				aadd(aItem,{"D1_DTVALID" , ctod(""), nil})
+			endif
+
+			if type("PARAMIXB[2]:_PROD:_MED:_CPRODANVISA") != "U" 
+				aadd(aItem,{"D1_ZZPRANV" , AllTrim(oDetItem:_PROD:_MED:_CPRODANVISA:text),nil})
+			endif
+			
+			if type("PARAMIXB[2]:_PROD:_MED:_XMOTIVOISENCAO") != "U" 
+				aadd(aItem,{"D1_ZZMOTME" , AllTrim(oDetItem:_PROD:_MED:_XMOTIVOISENCAO:text),nil})
+			endif
+		EndIf
+
+		if type("PARAMIXB[2]:_PROD:_XPED") != "U"
+			cPoExt	:= oDetItem:_PROD:_XPED:text
+
+			//Thiago Meschiatti - FSW TOTVS IP Campinas - data
+			If FWUnitBusiness() == DHL_BUSINESSUNIT_AG2
+				if type("PARAMIXB[2]:_PROD:_NITEMPED") != "U"
+					cItPoExt := oDetItem:_PROD:_NITEMPED:text 
+				endif
+			EndIf
+
+		elseIf type("oNFE:_NFEPROC:_NFE:_INFNFE:_COMPRA:_XPED") != "U"
+			cPoExt	:= alltrim(oNFE:_NFEPROC:_NFE:_INFNFE:_COMPRA:_XPED:text)
+		endIf
+
+		if !empty(cPoExt)
+			nPosPc	:= At("-", cPoExt) - 1
+			if nPosPc	> 0 
+				cPoExt	:= SUBSTR(cPoExt,1,nPosPc)
+			endIf
+		endIf
+
+		//Thiago Meschiatti - FSW TOTVS IP Campinas - data
+		If FWUnitBusiness() == DHL_BUSINESSUNIT_AG2
+			If !Empty(cPoExt)
+				aadd(aItem,{"D1_ZZPOEXT " ,alltrim(cPoExt) + "-" + alltrim(cItPoExt),nil})
+			EndIf
+		else
+			aadd(aItem,{"D1_ZZPOEXT " ,cPoExt,nil})
+		EndIf
+
+		//Diogo Mesquita - FSW TOTVS IP Campinas
+		If FWUnitBusiness() == DHL_BUSINESSUNIT_AG2
+			If SD1->(FieldPos("D1_ZZLOTE")) > 0
+				If type("PARAMIXB[2]:_INFADPROD") != "U"
+					cLote := AllTrim(getLote(AllTrim(oDetItem:_INFADPROD:text)))
+					If !Empty(cLote)
+						aadd(aItem,{"D1_ZZLOTE " ,Substr(cLote,1,TamSX3("D1_ZZLOTE")[1]),nil})
+					EndIf
+				EndIf		 	
+			EndIf
+		EndIf
+
+		//iVan Oliveira - FSW TOTVS IP Campinas 04/07/2021 - Lote Leroy
+		If FWUnitBusiness() == DHL_BUSINESSUNIT_AGL
+
+			// Somente Leroy 
+			if type("ONFE:_NFEPROC:_NFE:_INFNFE:_EMIT:_XNOME") != "U"
+
+				_cForn := Upper(alltrim(ONFE:_NFEPROC:_NFE:_INFNFE:_EMIT:_XNOME:Text))
+				if "LEROY" $ _cForn
+
+					// Verificando se os campos existem na base.
+					If 	SD1->(FieldPos("D1_ZZXPED"))  > 0 .and.;
+						SD1->(FieldPos("D1_ZZITPED")) > 0 .and.;
+						SD1->(FieldPos("D1_LOTEFOR")) > 0 .and.;
+						SD1->(FieldPos("D1_DTVALID")) > 0 .and.;
+						SD1->(FieldPos("D1_LOTECTL")) > 0  
+
+						// Colentando informações Lote 
+						If type("PARAMIXB[2]:_INFADPROD") != "U" 
+						
+							// Padrão Leroy no XML nesta data-->	
+							// Pedido		: <xPed>2000026097</xPed>
+							// ItemPedido	: <nItemPed>000010</nItemPed>
+							// Lote:		: <infAdProd>|LOTE;LMQ19|DTVAL;31122099|</infAdProd>
+							cTmpLote := AllTrim(oDetItem:_INFADPROD:text) //AllTrim(getLote(AllTrim(oDetItem:_INFADPROD:text)))
+
+							// Somente se contiver informações do Lote
+							if '|' $ cTmpLote .and. ';' $ cTmpLote
+
+								aLote    := StrTokArr(cTmpLote,';' )
+								aTmpLote := StrTokArr(aLote[02],'|' )   
+								cLote    := AllTrim(Upper(aTmpLote[01]))
+								aTmpDt	 := if ( len(aLote)>2, StrTokArr(aLote[03],'|' ), {} ) 
+								dDtValLt := if ( !empty(aTmpDt), AllTrim(aTmpDt[01]), Space(08) )  
+								dDtValLt := ctod(Substr(dDtValLt,1,2) + '/' + Substr(dDtValLt,3,2) + '/' + right(dDtValLt,4))
+						
+								If !Empty(cLote)
+
+									aadd(aItem,{"D1_LOTECTL" , cLote   , nil })
+
+									if !empty(dDtValLt)
+										aadd(aItem,{"D1_DTVALID" , dDtValLt, nil })
+									Endif
+									//aadd(aItem,{"D1_LOTEFOR " , cLote, nil })
+
+								EndIf
+
+							Endif
+							 		 	
+						EndIf
+
+						// Informações do Pedido e Item
+						if type("PARAMIXB[2]:_PROD:_XPED") != "U"  .and. type("PARAMIXB[2]:_PROD:_NITEMPED") != "U" 
+
+							_cPedLeroy 	:= PARAMIXB[2]:_PROD:_XPED:text 
+							_cItPedLeroy:= PARAMIXB[2]:_PROD:_NITEMPED:text 
+ 
+							if !empty(_cPedLeroy) .and. !empty(_cItPedLeroy)
+								aadd(aItem,{"D1_ZZXPED"  , _cPedLeroy	, nil})
+								aadd(aItem,{"D1_ZZITPED" , _cItPedLeroy , nil})
+							endif
+
+						endif
+
+					endif
+
+				endif
+
+			endif
+
+		EndIf
+	
+	EndIf
+
+	//TODO THIAGO VALIDAR SPL
+	//if FWUnitBusiness() == DHL_BUSINESSUNIT_SPL
+	cProd := aInfProd[3]
+
+	if !empty(aInfProd[9])
+		cTes := u_DHLMaTes(1,,cFornece, cLoja, if(lFornece, "F", "C"), cProd,)
+		//cWhere := getQuery(aInfProd[9])
+		//oSql:newTable("SFM", "FM_TE", cWhere)
+		//if oSql:hasRecords()
+		aadd(aItem,{"D1_ZZTES" 	, cTes	,Nil})
+		//endif
+		oSql:close()
+	endif
+	//endif
+	
+	if type("PARAMIXB[2]:_PROD:_CBENEF") != "U"
+		cBenef := PARAMIXB[2]:_PROD:_CBENEF:TEXT
+		aadd(aItem,{"D1_ZZCBENE" 	, cBenef	,Nil})
+	endIf
+
+	aItem := u_ProcTaxes(aItem, oDetItem, aInfProd)	
+
+
+Return aItem
+
+/*********************************************************************************************************
+getQuery - Monta Where para busca de compensações.
+*********************************************************************************************************/
+static function getQuery(cCfop)
+	local cWhere	:= ""
+
+	cWhere := "FM_FILIAL = '%SFM.FILIAL%' AND FM_ZZCFOP = '" +cCfop+ "'"
+return cWhere
+
+
+/*
+*	Função responsável pelo tratamento da data.
+*/
+static function trataData(cData)
+	dData	:= STOD(STRTRAN(cData,"-",""))
+return dData
+
+
+/*
+*	Função responsável por localizar e retornar a informação LOTE a partir da tag INFADPROD.
+*/
+static function getLote(cInfAdProd)
+
+	Local cRet		:= ""
+	Local nI		:= 0
+	Local lInicio	:= .f.
+
+	For nI := 1 to Len(cInfAdProd)
+		If (SubStr(cInfAdProd,nI,1) == "#")
+			If !lInicio
+				lInicio := .t.
+			Else
+				Exit
+			EndIf
+		EndIf
+
+		If lInicio .and. !((SubStr(cInfAdProd,nI,1) == "#"))
+			cRet += SubStr(cInfAdProd,nI,1)
+		EndIf	
+	Next nI
+
+return cRet
+
+/**
+*	FUnção para obter ZZQTRIB quando Lote
+**/
+static function getZZQTrib(aInfProd)
+
+	local nZZQTrib := aInfProd[6]
+
+return nZZQTrib
+
+/**
+* Retorna se o produto controla lote
+**/
+static function isProdutLote(cCodProd) 
+
+	local lIsProdlote	:= .F.
+	local aArea 		:= getArea()
+	local aAreaSB1 		:= SB1->(getArea())
+	local cChaveSB1		:= ""
+
+	cCodProd := padr(cCodProd, tamSx3("B1_COD")[1], "")
+	cChaveSB1:= fwxFilial("SB1") + cCodProd
+
+	SB1->(dbSetOrder(1))
+
+	if SB1->(dbSeek(cChaveSB1))
+		if SB1->B1_RASTRO = "L"
+			lIsProdlote := .T.
+		endif
+	endIf
+
+	restArea(aAreaSB1)
+	restArea(aArea)
+
+return lIsProdlote
