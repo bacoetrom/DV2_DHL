@@ -200,6 +200,38 @@ A tabela compara as tags e regras comentadas no `HTMLConsolidado.xml` com o `Mas
 
 ## 4. Fases do plano
 
+### Convenção de marcação e autoria
+
+Toda alteração feita neste projeto é marcada no fonte com um bloco delimitado, no padrão já usado nos fontes da DHL:
+
+```advpl
+// INICIO Wellington 18/11/2026
+If cFinNfe $ "5|6"
+    ...
+EndIf
+// FIM Wellington 18/11/2026
+```
+
+Alteração de uma única linha usa a forma curta, sem o `FIM`:
+
+```advpl
+oProd:setAttributeValue("vProdLiq", ...)  // Wellington 18/11/2026
+```
+
+Regras de uso:
+
+1. **O nome é o do autor da alteração**, sempre na mesma grafia: `Wellington` ou `Pablo`. O marcador é chave de busca — grafias diferentes para a mesma pessoa inutilizam a auditoria.
+2. **A data entra nas duas linhas do bloco**, no `INICIO` e no `FIM`, no formato `DD/MM/AAAA`. É a data da alteração, e as duas linhas repetem a mesma data.
+3. **Função ou método novo não usa marcador inline.** A autoria vai no bloco `/*/{Protheus.doc}` exigido pelo padrão do projeto, com `@author` e `@since`.
+4. **Sem acentos no marcador.** Os fontes são CP-1252 e serão editados por duas pessoas em dezenas de arquivos; acento em comentário é onde um save acidental em UTF-8 aparece primeiro. Escreva `alteracao`, `credito`, `calculo`.
+5. **Alteração replicada em fonte espelhado leva o mesmo marcador com a mesma data.** Vale para o par `ProcMsaNFe.prw` / `ProcRCOMsa.prw` e para as variantes por filial das Entregas 7 e 8.
+
+Auditoria da pegada do projeto:
+
+```bash
+grep -rn "INICIO Wellington\|INICIO Pablo" --include=*.prw --include=*.tlpp .
+```
+
 ### Fase 0: Pré-requisitos
 
 > Por **PREMISSA-01**, o item 1 **não é bloqueante**: é um controle de verificação que corre em paralelo às Fases 1 e 2. Os itens 2 (remerge do `nfesefaz.prw`), 3 e 4 (leiautes de terceiros) são **bloqueantes**.
