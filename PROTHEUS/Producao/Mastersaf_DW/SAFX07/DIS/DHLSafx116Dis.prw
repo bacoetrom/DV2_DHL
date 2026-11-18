@@ -100,7 +100,7 @@ method addLine(lCobert)   class DHLSafx116Dis
 	cDoc		:= ::getFieldValue("F3_NFISCAL")
 	cSer    	:= ::getFieldValue("F3_SERIE")
 	cType		:= ::getTypeDoc(cDoc, cSer, cCod, cBranch)
-	cIndFisJur	:= Iif( cType =="1",Iif(::getFieldValue("F3_TIPO") $ "DB" ,"2","1" ) , Iif(!::getFieldValue("F3_TIPO") $ "DB" ,"2","1" )      )
+	cIndFisJur := ::getIndFisJur(cType, ::getFieldValue("F3_TIPO"))   // INICIO Wellington 18/11/2026 - centralizado na classe base
 
 	if !Empty(::getFieldValue("F3_DTCANC"))
 		lDeleted := .t.

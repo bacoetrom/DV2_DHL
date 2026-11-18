@@ -60,7 +60,7 @@ method addLine(cTypeMsg)  class DHLSafx112Ag2
 	cDataEnt   	:= (cSF3_)->(F3_ENTRADA) //Emerson Holanda 14/08/25 - Armazenar a data de entrada da nota para ser enviado para a query do getTypeDoc
 	cType		:= ::getTypeDoc(cDoc, cSer, cCod, cBranch,,,cDataEnt)
 	
-	cIndFisJur	:= Iif( cType =="1",Iif((cSF3_)->(F3_TIPO) $ "DB" ,"2","1" ) , Iif(!(cSF3_)->(F3_TIPO) $ "DB" ,"2","1" )      )
+	cIndFisJur := ::getIndFisJur(cType, (cSF3_)->(F3_TIPO))   // INICIO Wellington 18/11/2026 - centralizado na classe base
 	
 	//aSupCus 		:= 	::getSupCusRecords(cIndFisJur,cCod,cBranch)
 	//aInOutFlows 	:= 	::getFlowsRecord(cType,cDoc, cSer,cCod,cBranch)	

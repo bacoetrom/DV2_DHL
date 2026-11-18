@@ -37,6 +37,7 @@ class DHLSafx
 	method initialize(nTamPos,oHeaderSql,oDetailSql)
 	method addField(nPos, xValue ) 
 	method getSupCusRecords(cType,cCod,cBranch)
+	method getIndFisJur(cType,cTipoDoc)
 	method getTaxRecord(cType,cDoc,cSer,cCod,cLoja) 
 	method getFlowsRecord(cType,cDoc,cSer,cCod,cBranch,lDeleted)
 	method getImportAdd(cDoc,cSer,cCod,cBranch) 
@@ -249,6 +250,77 @@ method getSupCusRecords(cType,cCod,cBranch)  class DHLSafx
 
 
 return  aFields
+
+/*/{Protheus.doc} getIndFisJur
+Indicador de pessoa do participante do documento, no formato esperado por
+getSupCusRecords(): "1" = fornecedor (SA2), "2" = cliente (SA1).
+
+INICIO Wellington 18/11/2026 - centraliza a decisao que estava duplicada em
+25 fontes, todos com a mesma expressao Iif encadeada apoiada apenas em
+F3_TIPO pertencer a "DB".
+
+Comportamento PRESERVADO para os tipos classicos:
+  entrada + D ou B   -> "2" cliente      (devolucao recebida)
+  entrada + outros   -> "1" fornecedor   (compra)
+  saida   + D ou B   -> "1" fornecedor   (devolucao enviada)
+  saida   + outros   -> "2" cliente      (venda)
+
+ACRESCENTADO para a Reforma Tributaria, por parametro, de modo que a
+definicao da area fiscal seja aplicada sem recompilar:
+  F*_TIPO = "5" credito -> ZZ_IFJCRE, default "2" cliente
+  F*_TIPO = "6" debito  -> ZZ_IFJDEB, default "2" cliente
+
+O default do credito e "2" porque a area fiscal ja indicou que o
+participante da nota de credito e um cliente. O do debito e "2" por ser o
+resultado atual na saida, portanto sem mudanca de comportamento.
+
+OBSERVACAO preservada do codigo original: o operador $ considera a string
+vazia contida em qualquer outra, logo F3_TIPO vazio cai no ramo de
+devolucao. Comportamento mantido de proposito, para nao alterar o
+resultado de documentos existentes. Ver o plano, Fase 6, item 3.
+
+@type  method
+@author Wellington
+@since 18/11/2026
+@param cType,    character, direcao do documento: "1" entrada, outros saida
+@param cTipoDoc, character, conteudo de F3_TIPO
+@return character, "1" fornecedor ou "2" cliente
+/*/
+method getIndFisJur(cType,cTipoDoc) class DHLSafx
+
+	local cRet     := ""
+	local cIndCred := GetNewPar("ZZ_IFJCRE", "2")
+	local cIndDeb  := GetNewPar("ZZ_IFJDEB", "2")
+
+	default cType    := ""
+	default cTipoDoc := ""
+
+	cTipoDoc := AllTrim(cTipoDoc)
+
+	Do Case
+		Case cTipoDoc == "5"
+			cRet := cIndCred
+		Case cTipoDoc == "6"
+			cRet := cIndDeb
+		Case cType == "1"
+			If cTipoDoc $ "DB"
+				cRet := "2"
+			Else
+				cRet := "1"
+			EndIf
+		Otherwise
+			If cTipoDoc $ "DB"
+				cRet := "1"
+			Else
+				cRet := "2"
+			EndIf
+	EndCase
+
+return cRet
+/*/
+FIM Wellington 18/11/2026
+/*/
+
 
 /*/{Protheus.doc} getTaxRecord
 

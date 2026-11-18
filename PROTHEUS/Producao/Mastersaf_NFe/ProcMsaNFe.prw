@@ -43,6 +43,12 @@ user function ProcMsaNFe(oXml, cKey, cType, cSeries, cInvoice, cCustSupl, cBranc
 	private lRefTribCo	:= dDataBase >= dDataRTC
 
 	cTxtFile := "" //ajuste Denis Dias | 10/06/2018 - anterior sem atribuição
+	// INICIO Wellington 18/11/2026 - Auditoria de tags da Reforma Tributaria, controle
+	// compensatorio da PREMISSA-01 do plano. Nao altera o XML nem o TXT: apenas registra
+	// em log a tag esperada que nao veio do XmlNfeSef. Inerte antes da data de MV_RTC55
+	U_DHLRtcTagAudit(oXmlUtil, cNrInvoice, cNrSeries)
+	// FIM Wellington 18/11/2026
+
 	if !lSerCont
 		mountTags()     		                                      	
 	
@@ -73,7 +79,7 @@ Static Function MountTags()
 	SetPrvt("oPis_aliq,oPis_qtde,oPis_nt,oPis_outr,oX_pis_percent,oX_pis_valor,oPISST,oPis_st,oX_pisst_percent,oX_pisst_valor,oCOFINS,oCofins_aliq,oCofins_qtde,oPisst_valorf")
 	SetPrvt("oCofins_nt,oCofins_outr,oX_cofinsoutr_percent,oX_cofinsoutr_valor,oCOFINSST,oCofins_st,oX_cofinsst_percent,oX_cofinsst_valor,oISSQN,oImposto_devol,oIpi_devol,oInf_adicionais,oCofinsst_valorf,oPag_valorf,oDetPag, oxIcms_st, oSeq_IcmsSt")
 	SetPrvt("oInf_RespTec, oSeq_RespTec")
-	SetPrvt("oIBSCBS,ogIBSCBS,ogIBSUF,ogIBSUFDif,ogIBSUFDevTrib,ogIBSUFRed,ogIBSMu,ogIBSMuDif,ogIBSMuDevTrib,ogIBSMuRed,ogCBS,ogCBSDif,ogCBSDevTrib,ogCBSRed,ogTribRegular,ogIBSCredPres,ogCBSCredPres,ogTribCompraGov,ogIBSCBSMon,ogMonPadrao,ogMonReten,ogMonRet,ogMonDif,ogIBCBMonAttrib,ogTransfCred,ogCredPresIBSZFM,oIBSCBSTot,ogIBSTot,ogIBSUFTot,ogIBSMuTot,ogIBSTotAttrib,ogCBSTot,ogMonTot,ovNFTot,oIcms_02,oXIcmsSt10Des,oIcms_15,oIcms_53,oIcms_61,oXIcmsSt70Des,oXIcmsSt90Des,oIcmsParAttrib,oPBio,oObsItem,oObsCont,oObsFisco,ovItem")
+	SetPrvt("oIBSCBS,ogIBSCBS,ogIBSUF,ogIBSUFDif,ogIBSUFDevTrib,ogIBSUFRed,ogIBSMu,ogIBSMuDif,ogIBSMuDevTrib,ogIBSMuRed,ogCBS,ogCBSDif,ogCBSDevTrib,ogCBSRed,ogTribRegular,ogIBSCredPres,ogCBSCredPres,ogTribCompraGov,ogIBSCBSMon,ogMonPadrao,ogMonReten,ogMonRet,ogMonDif,ogIBCBMonAttrib,ogTransfCred,ogCredPresIBSZFM,oIBSCBSTot,ogIBSTot,ogIBSUFTot,ogIBSMuTot,ogIBSTotAttrib,ogCBSTot,ogMonTot,ovNFTot,oIcms_02,oXIcmsSt10Des,oIcms_15,oIcms_53,oIcms_61,oXIcmsSt70Des,oXIcmsSt90Des,oIcmsParAttrib,oPBio,oObsItem,oObsCont,oObsFisco,ovItem",oIS,ogAjusteCompet,ogEstornoCred,oICMSPrevAnt,oDFeRef,ovProdLiqTot,oISTot")
 		
 	DoNota()
 	DoVersaoLayout()
@@ -98,9 +104,15 @@ Static Function MountTags()
 	DoAutXML()
 	DoDetProd() 		//Alterado por Denis Dias | 10/06/2018 - Alterada a posição de chamada da function para montagem direta dos dados
 	DoTotal()
+	// INICIO Wellington 18/11/2026 - vProdLiqTot vem antes do ICMSTot (NT, rejeicoes 1282/1283)
+	DovProdLiqTot()
+	// FIM Wellington 18/11/2026
 	DoIcmsTot()
 	DoIssqnTot()
 	DoRetTrib()
+	// INICIO Wellington 18/11/2026 - ISTot vem depois do ICMSTot e antes do IBSCBSTot (NT)
+	DoISTot()
+	// FIM Wellington 18/11/2026
 	DoIBSCBSTot()
 	DogIBSTot()
 	DogIBSUFTot()
@@ -216,8 +228,20 @@ static function DoIde()
 	oIde:setAttributeValue("cDV"		,	cDv )
 	oIde:setAttributeValue("tpAmb"		,	cTpAmb )
 	oIde:setAttributeValue("finNfe"		,	cFinNfe )
-	oIde:setAttributeValue("tpNFDebito"	,	EMPTY_VALUE )
-	oIde:setAttributeValue("tpNFCredito",	EMPTY_VALUE )
+	// INICIO Wellington 18/11/2026 - tpNFDebito sai de F2_TPCOMPL/F1_TPCOMPL quando finNFe = 6
+	If cFinNfe == "6"
+		oIde:setAttributeValue("tpNFDebito"	,	getTpCompl() )
+	Else
+		oIde:setAttributeValue("tpNFDebito"	,	EMPTY_VALUE )
+	EndIf
+	// FIM Wellington 18/11/2026
+	// INICIO Wellington 18/11/2026 - tpNFCredito sai de F2_TPCOMPL/F1_TPCOMPL quando finNFe = 5
+	If cFinNfe == "5"
+		oIde:setAttributeValue("tpNFCredito",	getTpCompl() )
+	Else
+		oIde:setAttributeValue("tpNFCredito",	EMPTY_VALUE )
+	EndIf
+	// FIM Wellington 18/11/2026
 	oIde:setAttributeValue("indFinal"	,	retValueAttribute("infnfe:_ide:_indFinal:text")	)
 	oIde:setAttributeValue("indPres"	,	"0"	)//Emerson Holanda 26/02/2021 - NT 2020.006 Alterado de 9 para 0, para nao ser obrigatorio preencher a nova tag:indPres
 	oIde:setAttributeValue("indIntermed",	EMPTY_VALUE )
@@ -246,8 +270,21 @@ static function getFinNfe()
 		endif
 	elseIf (cTipoNf $ "CIP")
 		cFinNfe := "2"
+	// INICIO Wellington 18/11/2026 - finNFe 5 (credito) e 6 (debito), definicao da area fiscal.
+	// A finalidade vem de F2_TIPO/F1_TIPO e o subtipo de F2_TPCOMPL/F1_TPCOMPL.
+	// Convencao ja usada no nfesefaz.prw, linhas 1203, 4526 e 4897.
+	elseIf (cTipoNf == "5")   // nota de credito, documento de entrada (SF1)
+		cFinNfe := "5"
+	elseIf (cTipoNf == "6")   // nota de debito
+		cFinNfe := "6"
+	// FIM Wellington 18/11/2026
 	else
-		if FWUnitBusiness() == DHL_BUSINESSUNIT_AG2
+		// INICIO Wellington 18/11/2026 - finNFe 3 (ajuste) estava restrito a AG2, mas o fluxo
+		// atende varias unidades (SPL, REV, REP, AGL, PKG, MUL). A lista de unidades que podem
+		// emitir nota de ajuste passa a vir de ZZ_FINAJUS, default = so AG2, portanto sem
+		// mudanca de comportamento. Apontado pela area fiscal: 'getfinnfe: ajuste so na ag2'
+		if FWUnitBusiness() $ GetNewPar("ZZ_FINAJUS", DHL_BUSINESSUNIT_AG2)
+		// FIM Wellington 18/11/2026
 			
 			if SF2->F2_ZZTPNF == AJUSTE_FISCAL //Ajuste Denis Dias | 10/06/2018 - anterior = F2_ZZTPNF
 				cFinNfe := "3"
@@ -264,6 +301,31 @@ static function getFinNfe()
 	endIf
 	
 return cFinNfe
+
+/**
+* ===================================================================
+* INICIO Wellington 18/11/2026 - subtipo da nota de credito/debito
+* ===================================================================
+* Devolve o F2_TPCOMPL (saida) ou F1_TPCOMPL (entrada), que carrega o
+* subtipo da nota de credito ou de debito: 03, 04, 06, 07 e assim por
+* diante. Definicao da area fiscal; a convencao ja e usada pelo
+* nfesefaz.prw nas linhas 1203, 4526 e 4897.
+**/
+static function getTpCompl()
+
+	local cTpCompl := ""
+
+	if cTypeInv == DHL_NFE_INVOICE_INFLOW
+		cTpCompl := AllTrim(SF1->F1_TPCOMPL)
+	else
+		cTpCompl := AllTrim(SF2->F2_TPCOMPL)
+	endIf
+
+return cTpCompl
+/**
+* FIM Wellington 18/11/2026
+**/
+
 
 /**
  * Calculo do DV da NFe
@@ -1556,6 +1618,12 @@ static function DoEXTIPI()
 	oEXTIPI:setAttributeValue("qCom"		,validTagValue("oDetProd:_prod:_qCom:text"))
 	oEXTIPI:setAttributeValue("vUnCom"		,validTagValue("oDetProd:_prod:_vUnCom:text"))
 	oEXTIPI:setAttributeValue("vProd"		,validTagValue("oDetProd:_prod:_vProd:text"))
+	// INICIO Wellington 18/11/2026 - vUnComLiq e vProdLiq entram entre vProd e cEANTrib (ordem
+	// da NT). vProdLiq = vUnComLiq x qCom (rejeicao 1279). POSICAO CRITICA:
+	// sao campos dentro de grupo existente, confirmar no leiaute do Mastersaf
+	oEXTIPI:setAttributeValue("vUnComLiq"	,validTagValue("oDetProd:_prod:_vUnComLiq:text"))
+	oEXTIPI:setAttributeValue("vProdLiq"	,validTagValue("oDetProd:_prod:_vProdLiq:text"))
+	// FIM Wellington 18/11/2026
 	oEXTIPI:setAttributeValue("cEANTrib"	,validTagValue("oDetProd:_prod:_eantrib:text"))
 	oEXTIPI:setAttributeValue("cBarraTrib"	,validTagValue("oDetProd:_prod:_barratrib:text"))
 	oEXTIPI:setAttributeValue("uTrib"		,validTagValue("oDetProd:_prod:_uTrib:text"))
@@ -3839,6 +3907,9 @@ static function DoDetProd()
 		DoAllTaxes(oDetProd)
 		DoInfAdicionais()
 		DovItem()	
+		// INICIO Wellington 18/11/2026 - DFeReferenciado vem depois do vItem no item (NT)
+		DoDFeReferenciado()
+		// FIM Wellington 18/11/2026
 		
 	next nI
 return
@@ -3877,6 +3948,9 @@ return aAttribute
 **/
 static function DoAllTaxes()
 	DoICMS(oDetProd)
+	// INICIO Wellington 18/11/2026 - ICMSPrevistoPagtoAntecip, usado no debito 06
+	DoICMSPrevAntecip()
+	// FIM Wellington 18/11/2026
 	DoIcms00(oDetProd)
 	DoSICM00()		
 	DoIcms02()	
@@ -3970,6 +4044,9 @@ static function DoAllTaxes()
 	DoStCofValor()
 	DoSeqCofst()
 	DoISSQN()
+	// INICIO Wellington 18/11/2026 - IS entre COFINS e IBSCBS (ordem da NT)
+	DoIS()
+	// FIM Wellington 18/11/2026
 	DoIBSCBS()
 	DoSIBSCBS()
 	DogIBSCBS()
@@ -3997,6 +4074,12 @@ static function DoAllTaxes()
 	DogIBCBMonAttrib()
 	DogTransfCred()
 	DogCredPresIBSZFM()
+	// INICIO Wellington 18/11/2026 - gAjusteCompet (debito 03) e gEstornoCred (debito 07).
+	// Dependem de oSeqXML apontar para sequencia_XML_IBSCBS, por isso ficam
+	// no fim da cadeia IBSCBS, junto com os demais irmaos do gIBSCBS
+	DogAjusteCompet()
+	DogEstornoCred()
+	// FIM Wellington 18/11/2026
 	DoImpostoDevol()
 	DoIpiDevol()
 return
@@ -4588,8 +4671,11 @@ static function DogIBSMuRed()
 	
 	ogIBSMuRed := MsafNFeTag():newMsafNFeTag("gRed")
 
-	ogIBSMuRed:setAttributeValue("pRedAliq",retValTax(cTax,cAliq, oDetProd, "pRedAliq","tributo:_gIBSCBS:_gIBSUF:_gRed"))
-	ogIBSMuRed:setAttributeValue("pAliqEfet",retValTax(cTax,cAliq, oDetProd, "pAliqEfet","tributo:_gIBSCBS:_gIBSUF:_gRed"))
+	// INICIO Wellington 18/11/2026 - Correcao de erro existente: o gRed do gIBSMun lia o caminho do
+	// gIBSUF, gravando a reducao estadual no lugar da municipal. Correto: _gIBSMun:_gRed
+	ogIBSMuRed:setAttributeValue("pRedAliq",retValTax(cTax,cAliq, oDetProd, "pRedAliq","tributo:_gIBSCBS:_gIBSMun:_gRed"))
+	ogIBSMuRed:setAttributeValue("pAliqEfet",retValTax(cTax,cAliq, oDetProd, "pAliqEfet","tributo:_gIBSCBS:_gIBSMun:_gRed"))
+	// FIM Wellington 18/11/2026
 	
 	ogIBSMu:addElementNode(ogIBSMuRed)
 	
@@ -4890,6 +4976,155 @@ static function DogCredPresIBSZFM()
 return
 
 /**
+* ===================================================================
+* INICIO Wellington 18/11/2026 - Grupos novos da Reforma Tributaria
+* NT 2025.002 v1.53 e NT 2026.008 v1.01
+*
+* ORDEM DOS CAMPOS: segue a sequencia da NT, extraida dos 11 exemplos
+* de plan/HTMLConsolidado.xml. E HIPOTESE DE TRABALHO ate o leiaute
+* posicional do Mastersaf chegar (Fase 0, item 3, do plano).
+* O TXT e posicional: confirmar a ordem antes de homologar.
+* Ver plan/Dimensionamento_Forks_NFe_2027.md secao 3.4.
+* ===================================================================
+**/
+
+/**
+* Instancia o objeto que representa a tag "IS" (Imposto Seletivo)
+* XML oficial: det/imposto/IS - irmao de IBSCBS, entre COFINS e IBSCBS
+* CONFIRMAR NO LEIAUTE: nome do marcador e ordem do grupo entre os irmaos
+**/
+static function DoIS()
+
+	local cTax			:= GetNewPar("ZZ_TRIBIS", "IS")
+	local cAliq			:= ""
+	local lFormatZero 	:= .F.
+
+	oIS := MsafNFeTag():newMsafNFeTag("IS")
+
+	oIS:setAttributeValue("CSTIS"		, retValTax(cTax,cAliq, oDetProd, "CSTIS"		, "tributo", lFormatZero))
+	oIS:setAttributeValue("cClassTribIS", retValTax(cTax,cAliq, oDetProd, "cClassTribIS", "tributo", lFormatZero))
+	oIS:setAttributeValue("vBCIS"		, retValTax(cTax,cAliq, oDetProd, "vBCIS"		, "tributo"))
+	oIS:setAttributeValue("pIS"			, retValTax(cTax,cAliq, oDetProd, "pIS"			, "tributo"))
+	oIS:setAttributeValue("vIS"			, retValTax(cTax,cAliq, oDetProd, "vIS"			, "tributo"))
+
+	oImpostos:addElementNode(oIS)
+
+return
+
+/**
+* Instancia o objeto que representa a tag "gAjusteCompet" do no "IBSCBS"
+* XML oficial: det/imposto/IBSCBS/gAjusteCompet - debito 03, CST 811
+* Quando presente, o gIBSCBS nao pode ir (rejeicoes 1021, 1170 e 1171)
+* Adiciona em oSeqXML, mesmo pai do gIBSCBS
+**/
+static function DogAjusteCompet()
+
+	local cTax		:= "IBSCBS"
+	local cAliq		:= ""
+
+	ogAjusteCompet := MsafNFeTag():newMsafNFeTag("gAjusteCompet")
+
+	ogAjusteCompet:setAttributeValue("competApur",retValTax(cTax,cAliq, oDetProd, "competApur","tributo:_gAjusteCompet", .F.))
+	ogAjusteCompet:setAttributeValue("vIBS",retValTax(cTax,cAliq, oDetProd, "vIBS","tributo:_gAjusteCompet"))
+	ogAjusteCompet:setAttributeValue("vCBS",retValTax(cTax,cAliq, oDetProd, "vCBS","tributo:_gAjusteCompet"))
+
+	oSeqXML:addElementNode(ogAjusteCompet)
+
+return
+
+/**
+* Instancia o objeto que representa a tag "gEstornoCred" do no "IBSCBS"
+* XML oficial: det/imposto/IBSCBS/gEstornoCred - debito 07, CST 410
+* Rejeicoes 1173, 1176 e 1177
+* Adiciona em oSeqXML, mesmo pai do gIBSCBS
+**/
+static function DogEstornoCred()
+
+	local cTax		:= "IBSCBS"
+	local cAliq		:= ""
+
+	ogEstornoCred := MsafNFeTag():newMsafNFeTag("gEstornoCred")
+
+	ogEstornoCred:setAttributeValue("vIBSEstCred",retValTax(cTax,cAliq, oDetProd, "vIBSEstCred","tributo:_gEstornoCred"))
+	ogEstornoCred:setAttributeValue("vCBSEstCred",retValTax(cTax,cAliq, oDetProd, "vCBSEstCred","tributo:_gEstornoCred"))
+
+	oSeqXML:addElementNode(ogEstornoCred)
+
+return
+
+/**
+* Instancia o objeto que representa a tag "ICMSPrevistoPagtoAntecip"
+* XML oficial: det/imposto/ICMS/ICMSPrevistoPagtoAntecip - debito 06
+* A partir de 01/03/2027 a ausencia gera rejeicao 1281
+**/
+static function DoICMSPrevAntecip()
+
+	local cTax		:= GetNewPar("ZZ_TRIBICM", "ICM")
+	local cAliq		:= ""
+
+	oICMSPrevAnt := MsafNFeTag():newMsafNFeTag("ICMSPrevistoPagtoAntecip")
+
+	oICMSPrevAnt:setAttributeValue("vICMSPrevisto",retValTax(cTax,cAliq, oDetProd, "vICMSPrevisto","tributo:_ICMSPrevistoPagtoAntecip"))
+
+	oICMS:addElementNode(oICMSPrevAnt)
+
+return
+
+/**
+* Instancia o objeto que representa a tag "DFeReferenciado" do item
+* XML oficial: det/DFeReferenciado - depois do vItem
+* Regras: a referencia vai no cabecalho OU no item, nunca nos dois
+* (VC02-05, rejeicao 1010); nItem e proibido no debito 03 (VC03-10,
+* rejeicao 1039). As regras de obrigatoriedade por finalidade dependem
+* de decisao fiscal - ver Fase 0, item 5, do plano.
+**/
+static function DoDFeReferenciado()
+
+	oDFeRef := MsafNFeTag():newMsafNFeTag("DFeReferenciado")
+
+	oDFeRef:setAttributeValue("chaveAcesso",validTagValue("oDetProd:_DFeReferenciado:_chaveAcesso:text"))
+	oDFeRef:setAttributeValue("nItem",validTagValue("oDetProd:_DFeReferenciado:_nItem:text"))
+
+	oDet:addElementNode(oDFeRef)
+
+return
+
+/**
+* Instancia o objeto que representa a tag "vProdLiqTot" do no "total"
+* XML oficial: total/vProdLiqTot - ANTES do ICMSTot
+* Rejeicoes 1282 e 1283
+**/
+static function DovProdLiqTot()
+
+	ovProdLiqTot := MsafNFeTag():newMsafNFeTag("vProdLiqTot")
+
+	ovProdLiqTot:setAttributeValue("vProdLiqTot",retValueAttribute("infNfe:_total:_vProdLiqTot:text"))
+
+	oTotal:addElementNode(ovProdLiqTot)
+
+return
+
+/**
+* Instancia o objeto que representa a tag "ISTot" do no "total"
+* XML oficial: total/ISTot - depois do ICMSTot e antes do IBSCBSTot
+* Obrigatorio quando algum item tem IS (rejeicao 1117)
+**/
+static function DoISTot()
+
+	oISTot := MsafNFeTag():newMsafNFeTag("ISTot")
+
+	oISTot:setAttributeValue("vIS",retValueAttribute("infNfe:_total:_ISTot:_vIS:text"))
+
+	oTotal:addElementNode(oISTot)
+
+return
+
+/**
+* FIM Wellington 18/11/2026 - Grupos novos da Reforma Tributaria
+**/
+
+
+/**
 * Instancia o objeto que representa a tag "IBSCBSTot"
 **/ 
 static function DoIBSCBSTot()
@@ -4925,9 +5160,13 @@ static function DoIBSCBSTot()
 					lIBSCBS := .t.
 					if fTypeVar("oDetNfe:_imposto:_Tributo:_CST") == "O"
 						if allTrim(oDetNfe:_imposto:_Tributo:_CST:text) $ cCstgXml
-							if fTypeVar("oDetNfe:_imposto:_Tributo::_gIBSCBS:_vBC") = "O"
+							// INICIO Wellington 18/11/2026 - Correcao de erro existente: havia dois pontos
+							// duplicados em "_Tributo::_gIBSCBS". O fTypeVar nunca retornava "O" e a base do
+							// item com um unico imposto ficava fora da soma do vBCIBSCBS
+							if fTypeVar("oDetNfe:_imposto:_Tributo:_gIBSCBS:_vBC") = "O"
 								nvBCIBSCBS += val(oDetNfe:_imposto:_Tributo:_gIBSCBS:_vBC:text)
 							endif
+							// FIM Wellington 18/11/2026
 						endIf
 					endIf
 				endIf
@@ -5003,7 +5242,10 @@ static function DogIBSTotAttrib()
 	ogIBSTotAttrib := MsafNFeTag():newMsafNFeTag("")
 
 	ogIBSTotAttrib:setAttributeValue("vIBS", retValueAttribute("infNfe:_total:_IBSCBSTot:_gIBS:_vIBS:text"), lFormatZero)
-	ogIBSTotAttrib:setAttributeValue("vCresPres", retValueAttribute("infNfe:_total:_IBSCBSTot:_gIBS:_vCredPres:text"), lFormatZero)
+	// INICIO Wellington 18/11/2026 - Correcao de erro existente: nome do atributo estava
+	// "vCresPres". Nao afeta o TXT, que e posicional, mas divergia do equivalente no gCBS
+	ogIBSTotAttrib:setAttributeValue("vCredPres", retValueAttribute("infNfe:_total:_IBSCBSTot:_gIBS:_vCredPres:text"), lFormatZero)
+	// FIM Wellington 18/11/2026
 	ogIBSTotAttrib:setAttributeValue("vCredPresCondSus", retValueAttribute("infNfe:_total:_IBSCBSTot:_gIBS:_vCredPresCondSus:text"), lFormatZero)
 
 	ogIBSTot:addElementNode(ogIBSTotAttrib)

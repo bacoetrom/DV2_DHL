@@ -322,16 +322,31 @@ method pathImcs90() class DHLTaxes
 return "_IMPOSTO:_ICMS:_ICMS90:_VICMS:TEXT"
 
 method pathIBSUF() class DHLTaxes
-return "_IMPOSTO:_gIBS:_gIBSUF:_VIBSUF:TEXT"
+	// INICIO Wellington 18/11/2026 - Correcao de erro existente: faltavam os niveis _IBSCBS:_gIBSCBS.
+	// Estrutura oficial da NF-e: det/imposto/IBSCBS/gIBSCBS/gIBSUF/vIBSUF.
+	// Sem esses niveis o type() devolvia 'U' e o getIBSUF retornava sempre '0'.
+	return "_IMPOSTO:_IBSCBS:_gIBSCBS:_gIBSUF:_VIBSUF:TEXT"
+	// FIM Wellington 18/11/2026
 
 method pathIBSMUN() class DHLTaxes
-return "_IMPOSTO:_gIBS:_gIBSMUN:_VIBSMUN:TEXT"
+	// INICIO Wellington 18/11/2026 - Correcao de erro existente: faltavam os niveis _IBSCBS:_gIBSCBS
+	return "_IMPOSTO:_IBSCBS:_gIBSCBS:_gIBSMUN:_VIBSMUN:TEXT"
+	// FIM Wellington 18/11/2026
 
 method pathCBS() class DHLTaxes
-return "_IMPOSTO:_gCBS:_VCBS:TEXT"
+	// INICIO Wellington 18/11/2026 - Correcao de erro existente: faltavam os niveis _IBSCBS:_gIBSCBS
+	return "_IMPOSTO:_IBSCBS:_gIBSCBS:_gCBS:_VCBS:TEXT"
+	// FIM Wellington 18/11/2026
 
 method pathCBSIBSTOT() class DHLTaxes
-return "_IMPOSTO:_IBSCBSTot:_vBCIBSCBS:TEXT"
+	// INICIO Wellington 18/11/2026 - PENDENTE, nao corrigido por tipografia.
+	// O IBSCBSTot e grupo de TOTAL (total/IBSCBSTot/vBCIBSCBS), nao fica sob
+	// det/imposto. A classe recebe um no 'det' (ProcTaxes.prw linha 14), logo
+	// este metodo NAO tem como funcionar so arrumando o caminho: exige receber
+	// o no infNFe/total. E mudanca de desenho, nao de string. Mantido como esta
+	// para nao criar falsa impressao de correcao. Ver o plano, Fase 4.
+	return "_IMPOSTO:_IBSCBSTot:_vBCIBSCBS:TEXT"
+	// FIM Wellington 18/11/2026
 /*/{Protheus.doc} validTaxes
 Valida Total e Impostos 
 

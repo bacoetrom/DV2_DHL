@@ -176,7 +176,7 @@ method addLine(cItenOri, cId , xobj ) class DHLSafx08Ag2
 		cItem 		:= (cSFT_)->FT_ITEM //::getFieldValue(::cPrefix+"_ITEM")
 		cType		:= (cSF3_)->ENT_sai //::getTypeDoc(cDoc, cSer, cCod, cBranch) 
 		
-		cIndFisJur	:= Iif( cType =="1",Iif((cSF3_)->(F3_TIPO) $ "DB" ,"2","1" ) , Iif(!(cSF3_)->(F3_TIPO) $ "DB" ,"2","1" )      )
+		cIndFisJur := ::getIndFisJur(cType, (cSF3_)->(F3_TIPO))   // INICIO Wellington 18/11/2026 - centralizado na classe base
 		
 		IF lEN( _uftaxes ) = 1
 			aUFTAXES := ACLONE( _uftaxes[1] )

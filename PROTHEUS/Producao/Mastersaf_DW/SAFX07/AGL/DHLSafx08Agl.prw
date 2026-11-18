@@ -175,7 +175,7 @@ method addLine(cItenOri, cId,  lIdRef , xObj ) class DHLAGL08
 		cType		:= (cSF3_)->ENT_sai                         //::getTypeDoc(cDoc, cSer, cCod, cBranch) 
 
 		//cIndFisJur	:= Iif( cType =="1",Iif(::getFieldValue("F3_TIPO") $ "DB" ,"2","1" ) , Iif(!::getFieldValue("F3_TIPO") $ "DB" ,"2","1" )      )
-		cIndFisJur	:= Iif( cType =="1",Iif((cSF3_)->(F3_TIPO)         $ "DB" ,"2","1" ) , Iif(!(cSF3_)->(F3_TIPO)         $ "DB" ,"2","1" )      )
+		cIndFisJur := ::getIndFisJur(cType, (cSF3_)->(F3_TIPO))   // INICIO Wellington 18/11/2026 - centralizado na classe base
 
 
 		//aSupCus 		:=  ::getSupCusRecords(cIndFisJur,cCod,cBranch)

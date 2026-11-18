@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(/c/Python312/python -c ' *)",
+      "Bash(grep -cE '🔴 Desenvolvimento \\\\|\\\\s*\\\\|$' Questoes_Fiscais_NFe_2027.md)",
+      "Bash(echo \"  bloqueia desenvolvimento: $\\(grep -cE '🔴 Desenvolvimento \\\\|\\\\s*\\\\|$' Questoes_Fiscais_NFe_2027.md\\)\")",
+      "Bash(grep -cE '🟡 Produção \\\\|\\\\s*\\\\|$' Questoes_Fiscais_NFe_2027.md)",
+      "Bash(echo \"  bloqueia producao:        $\\(grep -cE '🟡 Produção \\\\|\\\\s*\\\\|$' Questoes_Fiscais_NFe_2027.md\\)\")",
+      "Bash(grep -cE '🟢 Teste \\\\|\\\\s*\\\\|$' Questoes_Fiscais_NFe_2027.md)",
+      "Bash(awk '{print $5, $9}')"
+    ]
+  }
+}
