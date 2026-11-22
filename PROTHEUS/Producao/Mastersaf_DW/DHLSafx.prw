@@ -37,7 +37,8 @@ class DHLSafx
 	method initialize(nTamPos,oHeaderSql,oDetailSql)
 	method addField(nPos, xValue ) 
 	method getSupCusRecords(cType,cCod,cBranch)
-	method getIndFisJur(cType,cTipoDoc)
+	method indFisJurPorTipo(cType,cTipoDoc)
+	method tpMovtoFiscal(cType,cTipoDoc,cTpMovSql,cDoc,cSer,cCod,cBranch)
 	method getTaxRecord(cType,cDoc,cSer,cCod,cLoja) 
 	method getFlowsRecord(cType,cDoc,cSer,cCod,cBranch,lDeleted)
 	method getImportAdd(cDoc,cSer,cCod,cBranch) 
@@ -251,7 +252,7 @@ method getSupCusRecords(cType,cCod,cBranch)  class DHLSafx
 
 return  aFields
 
-/*/{Protheus.doc} getIndFisJur
+/*/{Protheus.doc} indFisJurPorTipo
 Indicador de pessoa do participante do documento, no formato esperado por
 getSupCusRecords(): "1" = fornecedor (SA2), "2" = cliente (SA1).
 
@@ -286,7 +287,7 @@ resultado de documentos existentes. Ver o plano, Fase 6, item 3.
 @param cTipoDoc, character, conteudo de F3_TIPO
 @return character, "1" fornecedor ou "2" cliente
 /*/
-method getIndFisJur(cType,cTipoDoc) class DHLSafx
+method indFisJurPorTipo(cType,cTipoDoc) class DHLSafx
 
 	local cRet     := ""
 	local cIndCred := GetNewPar("ZZ_IFJCRE", "2")
@@ -1415,3 +1416,79 @@ method getUfTaxes(cType, cTypeDoc, cSerie, cDoc, cCliFor, cLoja, cItem , lTodos 
 	oSql:close()
 	
 return(aret)  // {nVlrFCP, nVlrUfDest, nVlrUfOri})
+
+/*/{Protheus.doc} tpMovtoFiscal
+Tipo de movimento do documento no arquivo Mastersaf DW (campo NORM_DEV).
+
+INICIO Pablo Regis 21/11/2026 - substitui o parametro unico ZZ_SFXMOVR, que nao
+comportava a regra: o discriminante e o subtipo da nota (F*_TPCOMPL), que NAO
+existe na SF3 lida pelas queries das SAFX.
+
+Matriz da area fiscal (anexo 8 do questionario de 19/11/2026):
+  Devolucao        -> credito 03, credito 06 e debito 09
+  Operacao normal  -> credito 01/02/04/05 e debito 01 a 07
+
+Fora dos tipos "5" e "6" devolve o valor que a query ja calculou, portanto
+NAO ha mudanca de comportamento para nenhum documento existente.
+
+@type  method
+@author Pablo Regis
+@since 21/11/2026
+@param cType,     character, direcao do documento: "1" entrada, outros saida
+@param cTipoDoc,  character, conteudo de F3_TIPO
+@param cTpMovSql, character, tipo de movimento calculado pela query
+@param cDoc,      character, numero do documento
+@param cSer,      character, serie
+@param cCod,      character, codigo do cliente ou fornecedor
+@param cBranch,   character, loja
+@return character, SAFX_MOVIMENTO_NORMAL ou SAFX_MOVIMENTO_DEVOLUCAO
+/*/
+method tpMovtoFiscal(cType,cTipoDoc,cTpMovSql,cDoc,cSer,cCod,cBranch) class DHLSafx
+
+	local cRet     := ""
+	local cTpCompl := ""
+	local cLstDev  := GetNewPar("ZZ_SFXDEV", "5-3;5-6;6-9")
+	local aArea    := FWGetArea()
+
+	default cType     := ""
+	default cTipoDoc  := ""
+	default cTpMovSql := ""
+	default cDoc      := ""
+	default cSer      := ""
+	default cCod      := ""
+	default cBranch   := ""
+
+	cRet := cTpMovSql
+
+	// fora de credito/debito nada muda
+	If !(AllTrim(cTipoDoc) $ "5|6")
+		FWRestArea(aArea)
+		Return cRet
+	EndIf
+
+	If cType == "1"
+		dbSelectArea("SF1")
+		SF1->(dbSetOrder(1))
+		If SF1->(MsSeek(xFilial("SF1") + cDoc + cSer + cCod + cBranch))
+			cTpCompl := AllTrim(SF1->F1_TPCOMPL)
+		EndIf
+	Else
+		dbSelectArea("SF2")
+		SF2->(dbSetOrder(1))
+		If SF2->(MsSeek(xFilial("SF2") + cDoc + cSer + cCod + cBranch))
+			cTpCompl := AllTrim(SF2->F2_TPCOMPL)
+		EndIf
+	EndIf
+
+	If !Empty(cTpCompl)
+		If (AllTrim(cTipoDoc) + "-" + cTpCompl) $ cLstDev
+			cRet := SAFX_MOVIMENTO_DEVOLUCAO
+		Else
+			cRet := SAFX_MOVIMENTO_NORMAL
+		EndIf
+	EndIf
+
+	FWRestArea(aArea)
+
+return cRet
+/* FIM Pablo Regis 21/11/2026 */

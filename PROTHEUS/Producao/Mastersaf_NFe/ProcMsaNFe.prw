@@ -4,6 +4,23 @@
 #include "totvs.ch"
 #include "dhl.ch"
 
+/*
+* INICIO Pablo Regis 21/11/2026 - nomes dos marcadores novos do TXT Mastersaf.
+* Isolados aqui porque o leiaute posicional 2027 ainda nao foi recebido: a
+* confirmacao vira alteracao de 1 token em 1 lugar, nao cacada por literais.
+* O dfe_referenciado segue a grafia do ajuste Agility de 26/07/2026, feito
+* com o leiaute em maos - e a unica evidencia externa sobre o nome.
+*/
+#define MSA_TAG_DFEREF      "dfe_referenciado"
+#define MSA_TAG_IS          "IS"
+#define MSA_TAG_ISTOT       "ISTot"
+#define MSA_TAG_AJUSTCOMP   "gAjusteCompet"
+#define MSA_TAG_ESTCRED     "gEstornoCred"
+#define MSA_TAG_ICMSPREV    "ICMSPrevistoPagtoAntecip"
+#define MSA_TAG_VPRODLIQTOT "vProdLiqTot"
+/* FIM Pablo Regis 21/11/2026 */
+
+
 #define EMPTY_VALUE 			Space(1)    
 
 Static nTIPIDevol	:= 0
@@ -79,7 +96,7 @@ Static Function MountTags()
 	SetPrvt("oPis_aliq,oPis_qtde,oPis_nt,oPis_outr,oX_pis_percent,oX_pis_valor,oPISST,oPis_st,oX_pisst_percent,oX_pisst_valor,oCOFINS,oCofins_aliq,oCofins_qtde,oPisst_valorf")
 	SetPrvt("oCofins_nt,oCofins_outr,oX_cofinsoutr_percent,oX_cofinsoutr_valor,oCOFINSST,oCofins_st,oX_cofinsst_percent,oX_cofinsst_valor,oISSQN,oImposto_devol,oIpi_devol,oInf_adicionais,oCofinsst_valorf,oPag_valorf,oDetPag, oxIcms_st, oSeq_IcmsSt")
 	SetPrvt("oInf_RespTec, oSeq_RespTec")
-	SetPrvt("oIBSCBS,ogIBSCBS,ogIBSUF,ogIBSUFDif,ogIBSUFDevTrib,ogIBSUFRed,ogIBSMu,ogIBSMuDif,ogIBSMuDevTrib,ogIBSMuRed,ogCBS,ogCBSDif,ogCBSDevTrib,ogCBSRed,ogTribRegular,ogIBSCredPres,ogCBSCredPres,ogTribCompraGov,ogIBSCBSMon,ogMonPadrao,ogMonReten,ogMonRet,ogMonDif,ogIBCBMonAttrib,ogTransfCred,ogCredPresIBSZFM,oIBSCBSTot,ogIBSTot,ogIBSUFTot,ogIBSMuTot,ogIBSTotAttrib,ogCBSTot,ogMonTot,ovNFTot,oIcms_02,oXIcmsSt10Des,oIcms_15,oIcms_53,oIcms_61,oXIcmsSt70Des,oXIcmsSt90Des,oIcmsParAttrib,oPBio,oObsItem,oObsCont,oObsFisco,ovItem",oIS,ogAjusteCompet,ogEstornoCred,oICMSPrevAnt,oDFeRef,ovProdLiqTot,oISTot")
+	SetPrvt("oIBSCBS,ogIBSCBS,ogIBSUF,ogIBSUFDif,ogIBSUFDevTrib,ogIBSUFRed,ogIBSMu,ogIBSMuDif,ogIBSMuDevTrib,ogIBSMuRed,ogCBS,ogCBSDif,ogCBSDevTrib,ogCBSRed,ogTribRegular,ogIBSCredPres,ogCBSCredPres,ogTribCompraGov,ogIBSCBSMon,ogMonPadrao,ogMonReten,ogMonRet,ogMonDif,ogIBCBMonAttrib,ogTransfCred,ogCredPresIBSZFM,oIBSCBSTot,ogIBSTot,ogIBSUFTot,ogIBSMuTot,ogIBSTotAttrib,ogCBSTot,ogMonTot,ovNFTot,oIcms_02,oXIcmsSt10Des,oIcms_15,oIcms_53,oIcms_61,oXIcmsSt70Des,oXIcmsSt90Des,oIcmsParAttrib,oPBio,oObsItem,oObsCont,oObsFisco,ovItem,oIS,ogAjusteCompet,ogEstornoCred,oICMSPrevAnt,oDfe_referenciado,ovProdLiqTot,oISTot")
 		
 	DoNota()
 	DoVersaoLayout()
@@ -105,13 +122,17 @@ Static Function MountTags()
 	DoDetProd() 		//Alterado por Denis Dias | 10/06/2018 - Alterada a posição de chamada da function para montagem direta dos dados
 	DoTotal()
 	// INICIO Pablo Regis 18/11/2026 - vProdLiqTot vem antes do ICMSTot (NT, rejeicoes 1282/1283)
-	DovProdLiqTot()
+	If lRefTribCo   // INICIO Pablo Regis 21/11/2026 - gate de vigencia
+		DovProdLiqTot()
+	EndIf           // FIM Pablo Regis 21/11/2026
 	// FIM Pablo Regis 18/11/2026
 	DoIcmsTot()
 	DoIssqnTot()
 	DoRetTrib()
 	// INICIO Pablo Regis 18/11/2026 - ISTot vem depois do ICMSTot e antes do IBSCBSTot (NT)
-	DoISTot()
+	If lRefTribCo   // INICIO Pablo Regis 21/11/2026 - gate de vigencia
+		DoISTot()
+	EndIf           // FIM Pablo Regis 21/11/2026
 	// FIM Pablo Regis 18/11/2026
 	DoIBSCBSTot()
 	DogIBSTot()
@@ -205,6 +226,7 @@ static function DoIde()
 	local cTpEmis    := GetNewPar("ZZ_TPEMIS", "1")
 	local cTpAmb     := GetNewPar("ZZ_TPAMB", "2")
 	local cFinNfe    := getFinNfe()
+	local cIndPres   := ""   // INICIO Pablo Regis 21/11/2026 - PREMISSA-01
 	local cProcEmi	 := "0"
 	local cMod		 := "55"
 	local cDv        := CalcDigit(cKeyInv)
@@ -222,29 +244,27 @@ static function DoIde()
 	oIde:setAttributeValue("tpNF"		,	iif(retValueAttribute("infnfe:_ide:_tpNF:text") $ '2', '0', retValueAttribute("infnfe:_ide:_tpNF:text")))
 	oIde:setAttributeValue("idDest"		,	retValueAttribute("infnfe:_ide:_idDest:text")		)
 	oIde:setAttributeValue("cMunFG"		,	cMunFG )
-	oIde:setAttributeValue("cMunFGIBS"	,	EMPTY_VALUE )
+	oIde:setAttributeValue("cMunFGIBS"	,	retValueAttribute("infnfe:_ide:_cMunFGIBS:text") )   // INICIO Pablo Regis 21/11/2026 - PREMISSA-01: le do XML
 	oIde:setAttributeValue("tpImp"		,	cTpImp )
 	oIde:setAttributeValue("tpEmis"		,	cTpEmis	)
 	oIde:setAttributeValue("cDV"		,	cDv )
 	oIde:setAttributeValue("tpAmb"		,	cTpAmb )
-	oIde:setAttributeValue("finNfe"		,	cFinNfe )
-	// INICIO Pablo Regis 18/11/2026 - tpNFDebito sai de F2_TPCOMPL/F1_TPCOMPL quando finNFe = 6
-	If cFinNfe == "6"
-		oIde:setAttributeValue("tpNFDebito"	,	getTpCompl() )
-	Else
-		oIde:setAttributeValue("tpNFDebito"	,	EMPTY_VALUE )
-	EndIf
-	// FIM Pablo Regis 18/11/2026
-	// INICIO Pablo Regis 18/11/2026 - tpNFCredito sai de F2_TPCOMPL/F1_TPCOMPL quando finNFe = 5
-	If cFinNfe == "5"
-		oIde:setAttributeValue("tpNFCredito",	getTpCompl() )
-	Else
-		oIde:setAttributeValue("tpNFCredito",	EMPTY_VALUE )
-	EndIf
-	// FIM Pablo Regis 18/11/2026
+	// INICIO Pablo Regis 21/11/2026 - PREMISSA-01: o XML vem pronto do nfesefaz, que ja emite
+	// tpNFDebito/tpNFCredito com padl(aNota[11],2,'0') e gate lRefTribCo (nfesefaz.prw:7782-7792).
+	// O mapper apenas le; ir a SF1/SF2 duplicaria a regra e quebraria o gate de vigencia.
+	oIde:setAttributeValue("tpNFDebito"	,	retValueAttribute("infnfe:_ide:_tpNFDebito:text")	)
+	oIde:setAttributeValue("tpNFCredito",	retValueAttribute("infnfe:_ide:_tpNFCredito:text")	)
+	// FIM Pablo Regis 21/11/2026
 	oIde:setAttributeValue("indFinal"	,	retValueAttribute("infnfe:_ide:_indFinal:text")	)
-	oIde:setAttributeValue("indPres"	,	"0"	)//Emerson Holanda 26/02/2021 - NT 2020.006 Alterado de 9 para 0, para nao ser obrigatorio preencher a nova tag:indPres
-	oIde:setAttributeValue("indIntermed",	EMPTY_VALUE )
+	// INICIO Pablo Regis 21/11/2026 - PREMISSA-01: o nfesefaz ja emite indPres (retIndPres).
+	// Fallback "0" preserva o comportamento de nota sem a tag.
+	cIndPres := retValueAttribute("infnfe:_ide:_indPres:text")
+	If Empty(cIndPres)
+		cIndPres := "0"
+	EndIf
+	oIde:setAttributeValue("indPres"	,	cIndPres )
+	// FIM Pablo Regis 21/11/2026
+	oIde:setAttributeValue("indIntermed",	retValueAttribute("infnfe:_ide:_indIntermed:text") )   // INICIO Pablo Regis 21/11/2026 - PREMISSA-01: le do XML
 	oIde:setAttributeValue("procEmi"	,	cProcEmi	)
 	oIde:setAttributeValue("verProc"	,	retValueAttribute("infnfe:_ide:_verProc:text")	)
 
@@ -302,32 +322,6 @@ static function getFinNfe()
 	
 return cFinNfe
 
-/**
-* ===================================================================
-* INICIO Pablo Regis 18/11/2026 - subtipo da nota de credito/debito
-* ===================================================================
-* Devolve o F2_TPCOMPL (saida) ou F1_TPCOMPL (entrada), que carrega o
-* subtipo da nota de credito ou de debito: 03, 04, 06, 07 e assim por
-* diante. Definicao da area fiscal; a convencao ja e usada pelo
-* nfesefaz.prw nas linhas 1203, 4526 e 4897.
-**/
-static function getTpCompl()
-
-	local cTpCompl := ""
-
-	if cTypeInv == DHL_NFE_INVOICE_INFLOW
-		cTpCompl := AllTrim(SF1->F1_TPCOMPL)
-	else
-		cTpCompl := AllTrim(SF2->F2_TPCOMPL)
-	endIf
-
-return cTpCompl
-/**
-* FIM Pablo Regis 18/11/2026
-**/
-
-
-/**
  * Calculo do DV da NFe
  */
 static function CalcDigit(cChave)
@@ -1618,12 +1612,11 @@ static function DoEXTIPI()
 	oEXTIPI:setAttributeValue("qCom"		,validTagValue("oDetProd:_prod:_qCom:text"))
 	oEXTIPI:setAttributeValue("vUnCom"		,validTagValue("oDetProd:_prod:_vUnCom:text"))
 	oEXTIPI:setAttributeValue("vProd"		,validTagValue("oDetProd:_prod:_vProd:text"))
-	// INICIO Pablo Regis 18/11/2026 - vUnComLiq e vProdLiq entram entre vProd e cEANTrib (ordem
-	// da NT). vProdLiq = vUnComLiq x qCom (rejeicao 1279). POSICAO CRITICA:
-	// sao campos dentro de grupo existente, confirmar no leiaute do Mastersaf
-	oEXTIPI:setAttributeValue("vUnComLiq"	,validTagValue("oDetProd:_prod:_vUnComLiq:text"))
-	oEXTIPI:setAttributeValue("vProdLiq"	,validTagValue("oDetProd:_prod:_vProdLiq:text"))
-	// FIM Pablo Regis 18/11/2026
+	// INICIO Pablo Regis 21/11/2026 - vUnComLiq/vProdLiq REMOVIDOS deste bloco.
+	// O EXTIPI e bloco EXISTENTE: inserir campo no meio desloca 14 posicoes de
+	// TODAS as notas. Religar somente quando o leiaute Mastersaf 2027 confirmar
+	// o offset. As funcoes de leitura permanecem no fonte.
+	// FIM Pablo Regis 21/11/2026
 	oEXTIPI:setAttributeValue("cEANTrib"	,validTagValue("oDetProd:_prod:_eantrib:text"))
 	oEXTIPI:setAttributeValue("cBarraTrib"	,validTagValue("oDetProd:_prod:_barratrib:text"))
 	oEXTIPI:setAttributeValue("uTrib"		,validTagValue("oDetProd:_prod:_uTrib:text"))
@@ -3908,7 +3901,9 @@ static function DoDetProd()
 		DoInfAdicionais()
 		DovItem()	
 		// INICIO Pablo Regis 18/11/2026 - DFeReferenciado vem depois do vItem no item (NT)
-		DoDFeReferenciado()
+		If lRefTribCo   // INICIO Pablo Regis 21/11/2026 - gate de vigencia
+			DoDfeReferenciado()
+		EndIf           // FIM Pablo Regis 21/11/2026
 		// FIM Pablo Regis 18/11/2026
 		
 	next nI
@@ -3949,7 +3944,9 @@ return aAttribute
 static function DoAllTaxes()
 	DoICMS(oDetProd)
 	// INICIO Pablo Regis 18/11/2026 - ICMSPrevistoPagtoAntecip, usado no debito 06
-	DoICMSPrevAntecip()
+	If lRefTribCo   // INICIO Pablo Regis 21/11/2026 - gate de vigencia
+		DoICMSPrevAntecip()
+	EndIf           // FIM Pablo Regis 21/11/2026
 	// FIM Pablo Regis 18/11/2026
 	DoIcms00(oDetProd)
 	DoSICM00()		
@@ -4045,7 +4042,9 @@ static function DoAllTaxes()
 	DoSeqCofst()
 	DoISSQN()
 	// INICIO Pablo Regis 18/11/2026 - IS entre COFINS e IBSCBS (ordem da NT)
-	DoIS()
+	If lRefTribCo   // INICIO Pablo Regis 21/11/2026 - gate de vigencia
+		DoIS()
+	EndIf           // FIM Pablo Regis 21/11/2026
 	// FIM Pablo Regis 18/11/2026
 	DoIBSCBS()
 	DoSIBSCBS()
@@ -4077,8 +4076,12 @@ static function DoAllTaxes()
 	// INICIO Pablo Regis 18/11/2026 - gAjusteCompet (debito 03) e gEstornoCred (debito 07).
 	// Dependem de oSeqXML apontar para sequencia_XML_IBSCBS, por isso ficam
 	// no fim da cadeia IBSCBS, junto com os demais irmaos do gIBSCBS
-	DogAjusteCompet()
-	DogEstornoCred()
+	If lRefTribCo   // INICIO Pablo Regis 21/11/2026 - gate de vigencia
+		DogAjusteCompet()
+	EndIf           // FIM Pablo Regis 21/11/2026
+	If lRefTribCo   // INICIO Pablo Regis 21/11/2026 - gate de vigencia
+		DogEstornoCred()
+	EndIf           // FIM Pablo Regis 21/11/2026
 	// FIM Pablo Regis 18/11/2026
 	DoImpostoDevol()
 	DoIpiDevol()
@@ -4999,7 +5002,7 @@ static function DoIS()
 	local cAliq			:= ""
 	local lFormatZero 	:= .F.
 
-	oIS := MsafNFeTag():newMsafNFeTag("IS")
+	oIS := MsafNFeTag():newMsafNFeTag(MSA_TAG_IS)
 
 	oIS:setAttributeValue("CSTIS"		, retValTax(cTax,cAliq, oDetProd, "CSTIS"		, "tributo", lFormatZero))
 	oIS:setAttributeValue("cClassTribIS", retValTax(cTax,cAliq, oDetProd, "cClassTribIS", "tributo", lFormatZero))
@@ -5022,7 +5025,7 @@ static function DogAjusteCompet()
 	local cTax		:= "IBSCBS"
 	local cAliq		:= ""
 
-	ogAjusteCompet := MsafNFeTag():newMsafNFeTag("gAjusteCompet")
+	ogAjusteCompet := MsafNFeTag():newMsafNFeTag(MSA_TAG_AJUSTCOMP)
 
 	ogAjusteCompet:setAttributeValue("competApur",retValTax(cTax,cAliq, oDetProd, "competApur","tributo:_gAjusteCompet", .F.))
 	ogAjusteCompet:setAttributeValue("vIBS",retValTax(cTax,cAliq, oDetProd, "vIBS","tributo:_gAjusteCompet"))
@@ -5043,7 +5046,7 @@ static function DogEstornoCred()
 	local cTax		:= "IBSCBS"
 	local cAliq		:= ""
 
-	ogEstornoCred := MsafNFeTag():newMsafNFeTag("gEstornoCred")
+	ogEstornoCred := MsafNFeTag():newMsafNFeTag(MSA_TAG_ESTCRED)
 
 	ogEstornoCred:setAttributeValue("vIBSEstCred",retValTax(cTax,cAliq, oDetProd, "vIBSEstCred","tributo:_gEstornoCred"))
 	ogEstornoCred:setAttributeValue("vCBSEstCred",retValTax(cTax,cAliq, oDetProd, "vCBSEstCred","tributo:_gEstornoCred"))
@@ -5059,10 +5062,10 @@ return
 **/
 static function DoICMSPrevAntecip()
 
-	local cTax		:= GetNewPar("ZZ_TRIBICM", "ICM")
+	local cTax		:= GetNewPar("ZZ_TRIBICM", "ICMS")
 	local cAliq		:= ""
 
-	oICMSPrevAnt := MsafNFeTag():newMsafNFeTag("ICMSPrevistoPagtoAntecip")
+	oICMSPrevAnt := MsafNFeTag():newMsafNFeTag(MSA_TAG_ICMSPREV)
 
 	oICMSPrevAnt:setAttributeValue("vICMSPrevisto",retValTax(cTax,cAliq, oDetProd, "vICMSPrevisto","tributo:_ICMSPrevistoPagtoAntecip"))
 
@@ -5071,23 +5074,54 @@ static function DoICMSPrevAntecip()
 return
 
 /**
-* Instancia o objeto que representa a tag "DFeReferenciado" do item
-* XML oficial: det/DFeReferenciado - depois do vItem
-* Regras: a referencia vai no cabecalho OU no item, nunca nos dois
-* (VC02-05, rejeicao 1010); nItem e proibido no debito 03 (VC03-10,
-* rejeicao 1039). As regras de obrigatoriedade por finalidade dependem
-* de decisao fiscal - ver Fase 0, item 5, do plano.
+* Instancia o objeto que representa a tag "dfe_referenciado"
+*
+* INICIO Pablo Regis 21/11/2026 - adotado o nome do ajuste Agility (merge) para
+* evitar funcao duplicada: identificadores AdvPL sao case-insensitive.
+* O no pode vir como OBJETO (1 referencia) ou ARRAY (N referencias), conforme
+* o nfesefaz emitir - PREMISSA-01 diz que o mapper apenas le o que vier, entao
+* a resiliencia de leitura e responsabilidade daqui.
+* FIM Pablo Regis 21/11/2026
 **/
-static function DoDFeReferenciado()
+static function DoDfeReferenciado()
 
-	oDFeRef := MsafNFeTag():newMsafNFeTag("DFeReferenciado")
+	local nI    := 0
+	local nQtd  := 0
+	local cTipo := ""
+	local cPath := ""
 
-	oDFeRef:setAttributeValue("chaveAcesso",validTagValue("oDetProd:_DFeReferenciado:_chaveAcesso:text"))
-	oDFeRef:setAttributeValue("nItem",validTagValue("oDetProd:_DFeReferenciado:_nItem:text"))
+	cTipo := fTypeVar("oDetProd:_DFeReferenciado")
 
-	oDet:addElementNode(oDFeRef)
+	Do Case
+		Case cTipo == "A"
+			nQtd := Len(oDetProd:_DFeReferenciado)
+		Case cTipo == "O"
+			nQtd := 1
+	EndCase
+
+	// sem referencia: grava o bloco vazio, preservando a estrutura do TXT
+	If nQtd == 0
+		oDfe_referenciado := MsafNFeTag():newMsafNFeTag(MSA_TAG_DFEREF)
+		oDfe_referenciado:setAttributeValue("chaveAcesso", EMPTY_VALUE)
+		oDfe_referenciado:setAttributeValue("nItem"      , EMPTY_VALUE)
+		oDet:addElementNode(oDfe_referenciado)
+		Return
+	EndIf
+
+	For nI := 1 To nQtd
+		If cTipo == "A"
+			cPath := "oDetProd:_DFeReferenciado[" + cValToChar(nI) + "]"
+		Else
+			cPath := "oDetProd:_DFeReferenciado"
+		EndIf
+		oDfe_referenciado := MsafNFeTag():newMsafNFeTag(MSA_TAG_DFEREF)
+		oDfe_referenciado:setAttributeValue("chaveAcesso", validTagValue(cPath + ":_chaveAcesso:text"))
+		oDfe_referenciado:setAttributeValue("nItem"      , validTagValue(cPath + ":_nItem:text"))
+		oDet:addElementNode(oDfe_referenciado)
+	Next nI
 
 return
+
 
 /**
 * Instancia o objeto que representa a tag "vProdLiqTot" do no "total"
@@ -5096,7 +5130,7 @@ return
 **/
 static function DovProdLiqTot()
 
-	ovProdLiqTot := MsafNFeTag():newMsafNFeTag("vProdLiqTot")
+	ovProdLiqTot := MsafNFeTag():newMsafNFeTag(MSA_TAG_VPRODLIQTOT)
 
 	ovProdLiqTot:setAttributeValue("vProdLiqTot",retValueAttribute("infNfe:_total:_vProdLiqTot:text"))
 
@@ -5111,7 +5145,7 @@ return
 **/
 static function DoISTot()
 
-	oISTot := MsafNFeTag():newMsafNFeTag("ISTot")
+	oISTot := MsafNFeTag():newMsafNFeTag(MSA_TAG_ISTOT)
 
 	oISTot:setAttributeValue("vIS",retValueAttribute("infNfe:_total:_ISTot:_vIS:text"))
 

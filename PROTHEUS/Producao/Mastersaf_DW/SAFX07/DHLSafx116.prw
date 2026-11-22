@@ -114,7 +114,7 @@ method addLine(lCobert , xObj )   class DHLSafx116
 		cType := getTypeAju(cType, ::cPrefix)
 	endIf
 
-	cIndFisJur := ::getIndFisJur(cType, (cSF3_)->(F3_TIPO))   // INICIO Pablo Regis 18/11/2026 - centralizado na classe base
+	cIndFisJur := ::indFisJurPorTipo(cType, (cSF3_)->(F3_TIPO))   // INICIO Pablo Regis 18/11/2026 - centralizado na classe base
 
 	//if lTST_
 	//	//aSupCus		:= aclone( _SupCus )

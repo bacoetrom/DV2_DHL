@@ -136,7 +136,7 @@ method addLine(lCobert, oDHLSafx07 , xobj )   class DHLSafx116Ag2
 	cDoc		:= (cSF3_)->(F3_NFISCAL)
 	cSer    	:= (cSF3_)->(F3_SERIE)
 	cType		:= (cSF3_)->ENT_SAI //::getTypeDoc(cDoc, cSer, cCod, cBranch)
-	cIndFisJur := ::getIndFisJur(cType, (cSF3_)->(F3_TIPO))   // INICIO Pablo Regis 18/11/2026 - centralizado na classe base
+	cIndFisJur := ::indFisJurPorTipo(cType, (cSF3_)->(F3_TIPO))   // INICIO Pablo Regis 18/11/2026 - centralizado na classe base
 	
 	//aSupCus		:= ::getSupCusRecords(cIndFisJur,cCod,cBranch)
 	cMsg		:= ::getMsgF3()

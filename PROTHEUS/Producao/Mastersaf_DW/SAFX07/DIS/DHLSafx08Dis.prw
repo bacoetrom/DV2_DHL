@@ -185,7 +185,7 @@ method addLine(cItenOri, cId, lIdRef) class DHLSafx08Dis
 			ENDIF
 		endif
 		
-		cIndFisJur := ::getIndFisJur(cType, ::getFieldValue("F3_TIPO"))   // INICIO Pablo Regis 18/11/2026 - centralizado na classe base
+		cIndFisJur := ::indFisJurPorTipo(cType, ::getFieldValue("F3_TIPO"))   // INICIO Pablo Regis 18/11/2026 - centralizado na classe base
 		
 		aSupCus 		:=  ::getSupCusRecords(cIndFisJur,cCod,cBranch)
 		aTax    		:= 	::getTaxRecord(cType  ,cDoc, cSer,cCod,cBranch,cItem)
