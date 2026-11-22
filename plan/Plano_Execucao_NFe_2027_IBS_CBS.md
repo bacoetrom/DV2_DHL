@@ -700,3 +700,71 @@ Para a pauta não se misturar, os pontos abaixo **não** dependem da área fisca
 - **Largura dos campos `F1_ZZDSNFE`/`F2_ZZDSNFE`** para as descrições de rejeição de 2027 — dicionário.
 - **`IND_COMPRA_VENDA` sempre vazio** nas SAFX — defeito a confirmar rodando a query.
 - **Compilação e teste de regressão** de tudo que foi alterado em 18/11/2026.
+
+---
+
+## 8. Execução de 21/11/2026 — Fase 0 da reconciliação
+
+Branch `wjr_rtc_2027`, commit `de5e98f`. Detalhe em `C:/Users/baco_/.claude/plans/workspace-protheus-prd-20260707-plan-qu-parsed-meerkat.md`.
+
+### 8.1 PREMISSA-01 como regra de escopo
+
+Reafirmada pelo usuário e aplicada a **toda** questão do Mastersaf: o XML vem pronto e correto do `nfesefaz`. Daí a divisão:
+
+| Camada | Responsabilidade | De quem |
+|---|---|---|
+| `nfesefaz.prw` | decidir o conteúdo do XML segundo a NT | TOTVS / pacote |
+| `ProcMsaNFe` / `ProcRCOMsa` | **mapear fielmente XML → TXT** | **DHL** |
+| Mastersaf | montar e transmitir o XML final | fornecedor |
+
+Consequência: o mapper **não** implementa a matriz de tributação nem a de referenciamento, e **não** calcula valor líquido. Se o grupo não vier no XML, `retValTax()` devolve `""`, o TXT recebe linha vazia e o Mastersaf omite a tag — mecanismo já validado em produção.
+
+### 8.2 Três defeitos que impediam a compilação
+
+Nada do trabalho de 18/11 compilava. Corrigidos:
+
+1. **`SetPrvt` com literal não terminado** nos dois mappers — a string fechava depois de `ovItem` e os 7 nomes novos ficavam como identificadores nus. Erro no script que aplicou a alteração.
+2. **`ZZ_TRIBICM` com default `"ICM"`** — o `<codigo>` do ICMS no XML é `"ICMS"`. Com o valor errado, `vICMSPrevisto` sairia sempre vazio.
+3. **`getTpCompl()` devolvia 1 dígito** (`"3"` em vez de `"03"`). **Função removida**: o `nfesefaz:7782-7792` já emite `tpNFDebito`/`tpNFCredito` com `padl(...,2,'0')` e gate `lRefTribCo`.
+
+### 8.3 O mapper parou de descartar dado pronto
+
+Os cinco campos que o mapper fixava e o `nfesefaz` já emite:
+
+| Campo | Antes | Agora |
+|---|---|---|
+| `indPres` | `"0"` fixo | lê do XML, com fallback `"0"` em `If/Else/EndIf` explícito |
+| `tpNFDebito` / `tpNFCredito` | `EMPTY_VALUE` | lê do XML |
+| `cMunFGIBS` | `EMPTY_VALUE` | lê do XML |
+| `indIntermed` | `EMPTY_VALUE` | lê do XML |
+
+Isso encerra a questão 9 do fiscal (`indPres`) sem depender de decisão.
+
+### 8.4 Risco de regressão eliminado
+
+- **`vUnComLiq`/`vProdLiq` retirados do bloco `EXTIPI`.** O bloco é existente: a inserção deslocava **14 campos de todas as notas**, para gravar valor que hoje não tem origem. As funções permanecem no fonte, prontas para religar quando o leiaute confirmar o offset.
+- **Os 7 grupos novos ganharam gate `lRefTribCo`.** Nota anterior a `MV_RTC55` passa a produzir TXT **byte-idêntico** ao atual — o que torna o teste de regressão objetivo.
+
+### 8.5 Alinhamento com o ajuste Agility da pasta `merge/`
+
+A revisão fiscal usou o `merge/`, não a Produção — confirmado: zero ocorrências de DFe referenciado em `merge/ProcRCOMsa.prw`, 8 em `merge/ProcMsaNFe.prw`, exatamente a assimetria relatada.
+
+- `DoDFeReferenciado` → **`DoDfeReferenciado`**, tag **`dfe_referenciado`**, adotando a grafia do Agility. Identificadores AdvPL são case-insensitive: manter as duas geraria função duplicada no merge.
+- Leitura resiliente a nó **objeto ou array** — se o `nfesefaz` emitir N referências, o `:text` direto quebraria.
+- Os 7 marcadores novos isolados em `#define` no topo do fonte: a confirmação do leiaute vira 1 token em 1 lugar.
+- **Propagado para o `ProcRCOMsa`**, que não o tinha.
+
+### 8.6 SAFX
+
+- **`getIndFisJur` da classe base renomeado para `indFisJurPorTipo`** em 26 fontes. `SAFX010/DHLSafx010.prw:27` declara método homônimo com outra assinatura e **sobrescrevia o da base em silêncio**, sem erro de compilação.
+- **`ZZ_SFXMOVR` revertido das 7 queries** — elas voltam a ser idênticas a produção. O parâmetro único não comportava a regra: o discriminante é o subtipo (`F*_TPCOMPL`), que **não existe na SF3**. Substituído por `DHLSafx:tpMovtoFiscal()`, que lê o subtipo de SF1/SF2 apenas quando `F3_TIPO $ "5|6"` e consulta `ZZ_SFXDEV` (default `"5-3;5-6;6-9"`, conforme o anexo 8). Fora de 5/6 devolve o valor da query — zero mudança de comportamento.
+
+### 8.7 Validação feita
+
+Integridade byte a byte nos 29 fontes: CP-1252 preservado, zero bytes UTF-8, zero U+FFFD, contagem de acentos idêntica ao backup. Diffs dos dois mappers comparados entre si — **idênticos**. Conjuntos de funções iguais salvo as 8 exclusivas do fluxo RCO. Blocos `If`/`EndIf` e `For`/`Next` balanceados no código novo. Zero `IIF`/`If()` inline e zero `ConOut` introduzidos.
+
+**Não compilado.** É o próximo passo e não é opcional.
+
+### 8.8 Parâmetros
+
+`ZZ_RTCAUDI` (.T.), `ZZ_TRIBIS` ("IS"), `ZZ_TRIBICM` (**"ICMS"**, corrigido), `ZZ_IFJCRE`/`ZZ_IFJDEB` ("2"), `ZZ_FINAJUS` (ver §7 questão 1), **`ZZ_SFXDEV`** ("5-3;5-6;6-9", novo). **`ZZ_SFXMOVR` deixou de existir.**
