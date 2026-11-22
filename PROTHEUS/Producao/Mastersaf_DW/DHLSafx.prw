@@ -255,7 +255,7 @@ return  aFields
 Indicador de pessoa do participante do documento, no formato esperado por
 getSupCusRecords(): "1" = fornecedor (SA2), "2" = cliente (SA1).
 
-INICIO Wellington 18/11/2026 - centraliza a decisao que estava duplicada em
+INICIO Pablo Regis 18/11/2026 - centraliza a decisao que estava duplicada em
 25 fontes, todos com a mesma expressao Iif encadeada apoiada apenas em
 F3_TIPO pertencer a "DB".
 
@@ -280,7 +280,7 @@ devolucao. Comportamento mantido de proposito, para nao alterar o
 resultado de documentos existentes. Ver o plano, Fase 6, item 3.
 
 @type  method
-@author Wellington
+@author Pablo Regis
 @since 18/11/2026
 @param cType,    character, direcao do documento: "1" entrada, outros saida
 @param cTipoDoc, character, conteudo de F3_TIPO
@@ -318,7 +318,7 @@ method getIndFisJur(cType,cTipoDoc) class DHLSafx
 
 return cRet
 /*/
-FIM Wellington 18/11/2026
+FIM Pablo Regis 18/11/2026
 /*/
 
 

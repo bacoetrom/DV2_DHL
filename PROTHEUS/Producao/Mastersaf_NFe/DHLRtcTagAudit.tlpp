@@ -18,7 +18,7 @@ Dimensionamento_Forks_NFe_2027.md secao 3: no caminho do XML oficial,
 det/imposto/<TRIBUTO> vira "tributo", e os niveis se juntam com ":_".
 
 @type  function
-@author Wellington
+@author Pablo Regis
 @since 18/11/2026
 @param oXmlUtil, object, objeto IpXmlObject com o XML ja parseado
 @param cDoc,     character, numero do documento, so para o log
@@ -98,7 +98,7 @@ Cada elemento e { cTagLog, cCaminho, lNivelItem }, onde lNivelItem indica que
 o no fica sob "det" e por isso precisa ser testado tambem com indice [1].
 
 @type  function
-@author Wellington
+@author Pablo Regis
 @since 18/11/2026
 @param cFinNfe,  character, finalidade da NF-e
 @param cTpNFDeb, character, tipo da nota de debito
@@ -171,7 +171,7 @@ Para no de nivel item, testa o caminho sem indice e com [1], porque o
 IpXmlObject devolve objeto quando ha um unico item e array quando ha varios.
 
 @type  function
-@author Wellington
+@author Pablo Regis
 @since 18/11/2026
 @param oXmlUtil,  object, objeto IpXmlObject
 @param aEsperadas, array, lista produzida por getEsperadas
@@ -209,7 +209,7 @@ Devolve o rotulo do cenario, para o log, conforme a numeracao dos 11
 exemplos de Inventario_Tags_NFe_2027.md.
 
 @type  function
-@author Wellington
+@author Pablo Regis
 @since 18/11/2026
 @param cFinNfe,  character, finalidade da NF-e
 @param cTpNFDeb, character, tipo da nota de debito

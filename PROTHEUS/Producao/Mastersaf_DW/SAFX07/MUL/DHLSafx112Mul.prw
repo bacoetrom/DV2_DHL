@@ -55,7 +55,7 @@ method addLine(cTypeMsg)  class DHLSafx112Mul
 	cSer    	:= ::getFieldValue("F3_SERIE")
 	cType		:= ::getTypeDoc(cDoc, cSer, cCod, cBranch)
 	
-	cIndFisJur := ::getIndFisJur(cType, ::getFieldValue("F3_TIPO"))   // INICIO Wellington 18/11/2026 - centralizado na classe base
+	cIndFisJur := ::getIndFisJur(cType, ::getFieldValue("F3_TIPO"))   // INICIO Pablo Regis 18/11/2026 - centralizado na classe base
 	
 	aSupCus 		:= 	::getSupCusRecords(cIndFisJur,cCod,cBranch)
 	aInOutFlows 	:= 	::getFlowsRecord(cType,cDoc, cSer,cCod,cBranch)	

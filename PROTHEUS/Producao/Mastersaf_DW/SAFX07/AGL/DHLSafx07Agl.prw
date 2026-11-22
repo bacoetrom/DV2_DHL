@@ -78,7 +78,7 @@ method getSql(nType,dDtFrom , dDtUntil)  class DHLAGL07
 	default dDtUntil	:= stod("")
 	
 	cQuery := " Select "
-	cQuery += " case when f3_tipo in ( '5','6') then '"+GetNewPar("ZZ_SFXMOVR", SAFX_MOVIMENTO_NORMAL)+"' when f3_tipo in ( 'D' ,'B') then '"+SAFX_MOVIMENTO_DEVOLUCAO+"' else '"+SAFX_MOVIMENTO_NORMAL+"' end tipo, "   // INICIO Wellington 18/11/2026 - ramo de credito/debito; valor por ZZ_SFXMOVR, default = comportamento atual
+	cQuery += " case when f3_tipo in ( '5','6') then '"+GetNewPar("ZZ_SFXMOVR", SAFX_MOVIMENTO_NORMAL)+"' when f3_tipo in ( 'D' ,'B') then '"+SAFX_MOVIMENTO_DEVOLUCAO+"' else '"+SAFX_MOVIMENTO_NORMAL+"' end tipo, "   // INICIO Pablo Regis 18/11/2026 - ramo de credito/debito; valor por ZZ_SFXMOVR, default = comportamento atual
 	cQuery += " f3_cliefor, f3_loja, f3_nfiscal, f3_serie, f3_entrada,f3_dtcanc,	                                                  "
 	cQuery += " sum(f3_valicm) f3_valicm, sum(f3_icmsret) f3_icmsret, sum(f3_isenicm) f3_isenicm, sum(f3_outricm) f3_outricm,      "
 	cQuery += " sum(f3_isenipi) f3_isenipi, sum(f3_baseicm) f3_baseicm, sum(f3_outripi) f3_outripi, sum(f3_basimp6) f3_basimp6,    "
@@ -148,7 +148,7 @@ method  addLine() class DHLAGL07
 		endif
 		
 		cType 		:= (cSF3_)->ENT_SAI      //::getTypeDoc(cDoc, cSer,cCod,cBranch)
-		cIndFisJur := ::getIndFisJur(cType, (cSF3_)->(F3_TIPO))   // INICIO Wellington 18/11/2026 - centralizado na classe base
+		cIndFisJur := ::getIndFisJur(cType, (cSF3_)->(F3_TIPO))   // INICIO Pablo Regis 18/11/2026 - centralizado na classe base
 
 
 

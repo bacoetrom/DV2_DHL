@@ -57,7 +57,7 @@ method addLine(cTypeMsg)  class DHLSafx112
 	cSer    	:= (cSF3_)->(F3_SERIE)
 	cType		:= (cSF3_)->ENT_SAI //::getTypeDoc(cDoc, cSer, cCod, cBranch) // na querie
 	
-	cIndFisJur := ::getIndFisJur(cType, (cSF3_)->(F3_TIPO))   // INICIO Wellington 18/11/2026 - centralizado na classe base
+	cIndFisJur := ::getIndFisJur(cType, (cSF3_)->(F3_TIPO))   // INICIO Pablo Regis 18/11/2026 - centralizado na classe base
 	
 	//if	lTST_
 		//aSupCus		:= aclone( _SupCus ) // esta na querie principal como left join ( a1 a2 )
