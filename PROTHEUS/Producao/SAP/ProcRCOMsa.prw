@@ -16,8 +16,9 @@
 #define MSA_TAG_ISTOT       "ISTot"
 #define MSA_TAG_AJUSTCOMP   "gAjusteCompet"
 #define MSA_TAG_ESTCRED     "gEstornoCred"
-#define MSA_TAG_ICMSPREV    "ICMSPrevistoPagtoAntecip"
+#define MSA_TAG_ICMSPREV   "ICMS_Previsto"      // 245b.01 - leiaute DFe 4.19
 #define MSA_TAG_VPRODLIQTOT "vProdLiqTot"
+#define MSA_TAG_SEQLIQ      "sequencia_XML_liq"  // 110.01 - leiaute DFe 4.19
 /* FIM Pablo Regis 21/11/2026 */
 
 
@@ -96,7 +97,7 @@ Static Function MountTags()
 	SetPrvt("oPis_aliq,oPis_qtde,oPis_nt,oPis_outr,oX_pis_percent,oX_pis_valor,oPISST,oPis_st,oX_pisst_percent,oX_pisst_valor,oCOFINS,oCofins_aliq,oCofins_qtde,oPisst_valorf")
 	SetPrvt("oCofins_nt,oCofins_outr,oX_cofinsoutr_percent,oX_cofinsoutr_valor,oCOFINSST,oCofins_st,oX_cofinsst_percent,oX_cofinsst_valor,oISSQN,oImposto_devol,oIpi_devol,oInf_adicionais,oShipment,oKeySCJ,oCofinsst_valorf,oPag_valorf,oDetPag, oxIcms_st, oSeq_IcmsSt")
 	SetPrvt("oInf_RespTec, oSeq_RespTec, oDelivery")
-	SetPrvt("oIBSCBS,ogIBSCBS,ogIBSUF,ogIBSUFDif,ogIBSUFDevTrib,ogIBSUFRed,ogIBSMu,ogIBSMuDif,ogIBSMuDevTrib,ogIBSMuRed,ogCBS,ogCBSDif,ogCBSDevTrib,ogCBSRed,ogTribRegular,ogIBSCredPres,ogCBSCredPres,ogTribCompraGov,ogIBSCBSMon,ogMonPadrao,ogMonReten,ogMonRet,ogMonDif,ogIBCBMonAttrib,ogTransfCred,ogCredPresIBSZFM,oIBSCBSTot,ogIBSTot,ogIBSUFTot,ogIBSMuTot,ogIBSTotAttrib,ogCBSTot,ogMonTot,ovNFTot,oIcms_02,oXIcmsSt10Des,oIcms_15,oIcms_53,oIcms_61,oXIcmsSt70Des,oXIcmsSt90Des,oIcmsParAttrib,oPBio,oObsItem,oObsCont,oObsFisco,ovItem,oIS,ogAjusteCompet,ogEstornoCred,oICMSPrevAnt,oDfe_referenciado,ovProdLiqTot,oISTot")
+	SetPrvt("oIBSCBS,ogIBSCBS,ogIBSUF,ogIBSUFDif,ogIBSUFDevTrib,ogIBSUFRed,ogIBSMu,ogIBSMuDif,ogIBSMuDevTrib,ogIBSMuRed,ogCBS,ogCBSDif,ogCBSDevTrib,ogCBSRed,ogTribRegular,ogIBSCredPres,ogCBSCredPres,ogTribCompraGov,ogIBSCBSMon,ogMonPadrao,ogMonReten,ogMonRet,ogMonDif,ogIBCBMonAttrib,ogTransfCred,ogCredPresIBSZFM,oIBSCBSTot,ogIBSTot,ogIBSUFTot,ogIBSMuTot,ogIBSTotAttrib,ogCBSTot,ogMonTot,ovNFTot,oIcms_02,oXIcmsSt10Des,oIcms_15,oIcms_53,oIcms_61,oXIcmsSt70Des,oXIcmsSt90Des,oIcmsParAttrib,oPBio,oObsItem,oObsCont,oObsFisco,ovItem,oIS,ogAjusteCompet,ogEstornoCred,oICMSPrevAnt,oDfe_referenciado,oSeqXmlLiq,ogEstCredTot,ovProdLiqTot,oISTot")
   
 	DoNota()
 	DoVersaoLayout()
@@ -121,11 +122,6 @@ Static Function MountTags()
 	DoAutXML()
 	DoDetProd() 		//Alterado por Denis Dias | 10/06/2018 - Alterada a posição de chamada da function para montagem direta dos dados
 	DoTotal()
-	// INICIO Pablo Regis 18/11/2026 - vProdLiqTot vem antes do ICMSTot (NT, rejeicoes 1282/1283)
-	If lRefTribCo   // INICIO Pablo Regis 21/11/2026 - gate de vigencia
-		DovProdLiqTot()
-	EndIf           // FIM Pablo Regis 21/11/2026
-	// FIM Pablo Regis 18/11/2026
 	DoIcmsTot()
 	DoIssqnTot()
 	DoRetTrib()
@@ -141,7 +137,19 @@ Static Function MountTags()
 	DogIBSTotAttrib()
 	DogCBSTot()
 	DogMonTot()
+	// INICIO Pablo Regis 22/11/2026 - gEstornoCred de TOTAL (355.29e), dentro do IBSCBSTot
+	If lRefTribCo
+		DogEstCredTot()
+	EndIf
+	// FIM Pablo Regis 22/11/2026
 	DovNFTot()
+	// INICIO Pablo Regis 22/11/2026 - leiaute DFe 4.19: vProdLiqTot (326a) vem DEPOIS do
+	// vNFTot (355.30) e fora do icms_Tot. O fornecedor alertou que a posicao
+	// mudou em relacao a previa de 15/10/2026, quando ficava no fim do icms_Tot.
+	If lRefTribCo
+		DovProdLiqTot()
+	EndIf
+	// FIM Pablo Regis 22/11/2026
 	DoInfTransporte()
 	DoTransp()
 	DoTransporta()
@@ -1572,6 +1580,11 @@ static function DoProd()
 	EndIf
 	oProd:setAttributeValue("NCM"	,validTagValue("oDetProd:_prod:_NCM:text"))
 	
+	// INICIO Pablo Regis 22/11/2026 - bloco 110.01 como ULTIMO elemento do prod
+	If lRefTribCo
+		DoSeqXmlLiq()
+	EndIf
+	// FIM Pablo Regis 22/11/2026
 	oDet:addElementNode(oProd)  //Alterado por Denis Dias 16/06/2018
 
 return
@@ -5129,6 +5142,29 @@ return
 
 
 /**
+* Instancia o objeto que representa a tag "sequencia_XML_liq"
+*
+* INICIO Pablo Regis 22/11/2026 - leiaute ONESOURCE DFe 4.19, posicao 110.01.
+* Bloco NOMEADO, ULTIMO elemento do grupo prod, imediatamente antes do
+* --prod_fim--. No XML a sequencia sai entre vProd e cEANTrib, mas no TXT
+* vai no fim do bloco: o fornecedor posiciona campo novo sempre ao final,
+* "para evitar impacto em integracoes ja existentes".
+*   110.02 vUnComLiq - numerico, 21 posicoes, 0 a 10 decimais
+*   110.03 vProdLiq  - numerico, 15 posicoes, 2 decimais
+* FIM Pablo Regis 22/11/2026
+**/
+static function DoSeqXmlLiq()
+
+	oSeqXmlLiq := MsafNFeTag():newMsafNFeTag(MSA_TAG_SEQLIQ)
+
+	oSeqXmlLiq:setAttributeValue("vUnComLiq", validTagValue("oDetProd:_prod:_vUnComLiq:text"))
+	oSeqXmlLiq:setAttributeValue("vProdLiq" , validTagValue("oDetProd:_prod:_vProdLiq:text"))
+
+	oProd:addElementNode(oSeqXmlLiq)
+
+return
+
+/**
 * Instancia o objeto que representa a tag "vProdLiqTot" do no "total"
 * XML oficial: total/vProdLiqTot - ANTES do ICMSTot
 * Rejeicoes 1282 e 1283
@@ -5330,6 +5366,29 @@ static function DogMonTot()
 	
 return
  
+/**
+* Instancia o objeto que representa a tag "gEstornoCred" do no "IBSCBSTot"
+*
+* INICIO Pablo Regis 22/11/2026 - leiaute ONESOURCE DFe 4.19, posicao 355.29e.
+* O gEstornoCred existe em DOIS niveis: item (324116) e total (355.29e).
+* No total fica dentro do IBSCBSTot, logo apos o gMono_Tot.
+*   355.29f vIBSEstCred - numerico, 15 posicoes, 2 decimais
+*   355.29g vCBSEstCred - numerico, 15 posicoes, 2 decimais
+* FIM Pablo Regis 22/11/2026
+**/
+static function DogEstCredTot()
+
+	local lFormatZero := .T.
+
+	ogEstCredTot := MsafNFeTag():newMsafNFeTag(MSA_TAG_ESTCRED)
+
+	ogEstCredTot:setAttributeValue("vIBSEstCred", retValueAttribute("infNfe:_total:_IBSCBSTot:_gEstornoCred:_vIBSEstCred:text"), lFormatZero)
+	ogEstCredTot:setAttributeValue("vCBSEstCred", retValueAttribute("infNfe:_total:_IBSCBSTot:_gEstornoCred:_vCBSEstCred:text"), lFormatZero)
+
+	oIBSCBSTot:addElementNode(ogEstCredTot)
+
+return
+
 /**
 * Instancia o objeto que representa o atributo "vNFTot" da tag "total"
 **/ 
