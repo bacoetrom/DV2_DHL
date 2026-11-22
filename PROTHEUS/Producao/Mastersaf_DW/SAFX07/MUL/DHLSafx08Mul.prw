@@ -169,7 +169,7 @@ method addLine(cItenOri, cId, lIdRef) class DHLSafx08Mul
 		cItem 		:= ::getFieldValue(::cPrefix+"_ITEM")
 		cType		:= ::getTypeDoc(cDoc, cSer, cCod, cBranch) 
 		
-		cIndFisJur := ::getIndFisJur(cType, ::getFieldValue("F3_TIPO"))   // INICIO Wellington 18/11/2026 - centralizado na classe base
+		cIndFisJur := ::indFisJurPorTipo(cType, ::getFieldValue("F3_TIPO"))   // INICIO Wellington 18/11/2026 - centralizado na classe base
 		
 		aSupCus 		:=  ::getSupCusRecords(cIndFisJur,cCod,cBranch)
 		aTax    		:= 	::getTaxRecord(cType  ,cDoc, cSer,cCod,cBranch,cItem)

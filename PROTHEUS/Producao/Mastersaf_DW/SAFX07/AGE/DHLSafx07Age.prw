@@ -77,7 +77,7 @@ method getSql(nType,dDtFrom , dDtUntil)  class DHLSafx07Age
 	default dDtUntil	:= stod("")
 	
 	cQuery := " Select "
-	cQuery += " case when f3_tipo in ( '5','6') then '"+GetNewPar("ZZ_SFXMOVR", SAFX_MOVIMENTO_NORMAL)+"' when f3_tipo in ( 'D' ,'B') then '"+SAFX_MOVIMENTO_DEVOLUCAO+"' else '"+SAFX_MOVIMENTO_NORMAL+"' end tipo, "   // INICIO Wellington 18/11/2026 - ramo de credito/debito; valor por ZZ_SFXMOVR, default = comportamento atual
+	cQuery += " case when f3_tipo in ( 'D' ,'B') then '"+SAFX_MOVIMENTO_DEVOLUCAO+"' else '"+SAFX_MOVIMENTO_NORMAL+"' end tipo, "   // Wellington 21/11/2026 - ZZ_SFXMOVR revertido; regra em DHLSafx:tpMovtoFiscal
 	cQuery += " f3_cliefor, f3_loja, f3_nfiscal, f3_serie, f3_entrada,f3_dtcanc,	                                                  "
 	cQuery += " sum(f3_valicm) f3_valicm, sum(f3_icmsret) f3_icmsret, sum(f3_isenicm) f3_isenicm, sum(f3_outricm) f3_outricm,      "
 	cQuery += " sum(f3_isenipi) f3_isenipi, sum(f3_baseicm) f3_baseicm, sum(f3_outripi) f3_outripi, sum(f3_basimp6) f3_basimp6,    "
@@ -148,7 +148,7 @@ method  addLine() class DHLSafx07Age
 		endif
 		
 		cType 		:= (cSF3_)->ENT_SAI      //::getTypeDoc(cDoc, cSer,cCod,cBranch)
-		cIndFisJur := ::getIndFisJur(cType, (cSF3_)->(F3_TIPO))   // INICIO Wellington 18/11/2026 - centralizado na classe base
+		cIndFisJur := ::indFisJurPorTipo(cType, (cSF3_)->(F3_TIPO))   // INICIO Wellington 18/11/2026 - centralizado na classe base
 
 
 
@@ -180,7 +180,8 @@ method  addLine() class DHLSafx07Age
 		::addField(COD_EMPRESA				, alltrim(GetNewPar("ZZ_IDEMPDW", "SOL")))
 	    ::addField(COD_ESTAB				, alltrim(GetNewPar("ZZ_CDEMPDW", FwCodEmp())))
 	    ::addField(MOVTO_E_S				, iif(cType == "1", SAFX_DOCUMENTO_ENTRADA, SAFX_DOCUMENTO_SAIDA) )
-	    ::addField(NORM_DEV					, (csf3_)->tipo )                //::getFieldValue("TIPO"))
+	    // Wellington 21/11/2026 - tipo de movimento por subtipo da nota (anexo 8 fiscal)
+	    ::addField(NORM_DEV					, ::tpMovtoFiscal(cType, (cSF3_)->(F3_TIPO), (cSF3_)->tipo, cDoc, cSer, cCod, cBranch) )
 	    ::addField(COD_DOCTO				, "NFE")
 	    ::addField(IDENT_FIS_JUR			, (cSF3_)->ZZINDDW )           //Iif(cIndFisJur == "1",::getFieldValue("A2_ZZINDDW",aSupCus), ::getFieldValue("A1_ZZINDDW",aSupCus)))
 	    ::addField(COD_FIS_JUR  			, alltrim(GetNewPar("ZZ_CDEMPDW", FwCodEmp()))+cCod+cBranch)

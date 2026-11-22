@@ -69,7 +69,7 @@ method addLine(cTypeMsg)  class DHLSafx112Dis
 		ENDIF
 	endif
 	
-	cIndFisJur := ::getIndFisJur(cType, ::getFieldValue("F3_TIPO"))   // INICIO Wellington 18/11/2026 - centralizado na classe base
+	cIndFisJur := ::indFisJurPorTipo(cType, ::getFieldValue("F3_TIPO"))   // INICIO Wellington 18/11/2026 - centralizado na classe base
 	
 	aSupCus 		:= 	::getSupCusRecords(cIndFisJur,cCod,cBranch)
 	aInOutFlows 	:= 	::getFlowsRecord(cType,cDoc, cSer,cCod,cBranch)	

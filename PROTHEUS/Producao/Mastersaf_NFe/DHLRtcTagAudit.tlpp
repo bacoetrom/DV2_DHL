@@ -124,11 +124,15 @@ Static Function getEsperadas(cFinNfe, cTpNFDeb, cTpNFCre)
 	EndIf
 
 	// DFe referenciado: devolucao, credito 06 e debitos 03, 04 e 07
-	If cFinNfe == "4" ;
-		.Or. (cFinNfe == "5" .And. cTpNFCre == "06") ;
-		.Or. (cFinNfe == "6" .And. cTpNFDeb $ "03|04|07")
+	// INICIO Wellington 21/11/2026 - matriz de referenciamento do anexo 4 (NT v1.53),
+	// restrita ao escopo do FDD IM04: credito 01/03/04 e debito 02/03/04/06.
+	// Por item e obrigatorio apenas no debito 03 e 04. No credito 01/03/04 e no
+	// debito 02 e 06 e PROIBIDO - informar gera rejeicao 1039/1042.
+	If cFinNfe == "6" .And. cTpNFDeb $ "03|04"
 		aAdd(aEsp, {"DFeReferenciado", "infnfe:_det:_DFeReferenciado", .T.})
 		aAdd(aEsp, {"chaveAcesso", "infnfe:_det:_DFeReferenciado:_chaveAcesso", .T.})
+	EndIf
+	// FIM Wellington 21/11/2026
 	EndIf
 
 	// Debito 03: ajuste de competencia no lugar do gIBSCBS
@@ -137,7 +141,8 @@ Static Function getEsperadas(cFinNfe, cTpNFDeb, cTpNFCre)
 	EndIf
 
 	// Debito 07: estorno de credito no lugar do gIBSCBS
-	If cFinNfe == "6" .And. cTpNFDeb == "07"
+	// FORA DE ESCOPO FDD IM04 - debito 07 - Wellington 21/11/2026
+	If .F. .And. cFinNfe == "6" .And. cTpNFDeb == "07"
 		aAdd(aEsp, {"gEstornoCred", "infnfe:_det:_imposto:_tributo:_gEstornoCred", .T.})
 	EndIf
 
@@ -150,7 +155,8 @@ Static Function getEsperadas(cFinNfe, cTpNFDeb, cTpNFCre)
 	EndIf
 
 	// IBSCBS e seus totais: todos os cenarios menos os debitos 03 e 07
-	If !(cFinNfe == "6" .And. cTpNFDeb $ "03|07")
+	// Wellington 21/11/2026 - 07 fora do escopo IM04; so o debito 03 dispensa o gIBSCBS
+	If !(cFinNfe == "6" .And. cTpNFDeb == "03")
 		aAdd(aEsp, {"gIBSCBS", "infnfe:_det:_imposto:_tributo:_gIBSCBS", .T.})
 		aAdd(aEsp, {"IBSCBSTot", "infnfe:_total:_IBSCBSTot", .F.})
 	EndIf
