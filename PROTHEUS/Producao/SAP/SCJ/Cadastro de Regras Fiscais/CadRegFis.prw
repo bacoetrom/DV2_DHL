@@ -24,7 +24,7 @@ Fonte utlizado para determinar TES aproximada para o faturamento da NF RCO
 @since 18/05/2017
 @version 1.1
 
-@history 21/11/2026, Pablo Regis, [RTC-2026/2027] Validação TudoOk: regra duplicada,
+@history 21/11/2026, Wellington Santana, [RTC-2026/2027] Validação TudoOk: regra duplicada,
          TES inexistente e coerência TES x finalidade/subtipo (ZC_FINNFE/ZC_TPCOMPL)
          conforme Ajuste SINIEF 49/2025. Include Protheus.ch substituído por totvs.ch.
 
@@ -104,7 +104,7 @@ Validação TudoOk da regra fiscal (SZC).
      validação desligável pelo parâmetro ZZ_RTCVLCF (default .T.).
 
 @type function
-@author Pablo Regis
+@author Wellington Santana
 @since 21/11/2026
 @param oModel, object, Modelo MVC ativo
 @return logical, .T. se a regra é válida
@@ -209,7 +209,7 @@ Lista de CFOPs aceitos por finalidade/subtipo, conforme Ajuste SINIEF 49/2025
 e definição do levantamento fiscal (FDD IM04). Retorno vazio = sem restrição.
 
 @type function
-@author Pablo Regis
+@author Wellington Santana
 @since 21/11/2026
 @param cFinNfe, character, Finalidade ("5" crédito / "6" débito)
 @param cTpCompl, character, Subtipo sem zero à esquerda (convenção F2_TPCOMPL)

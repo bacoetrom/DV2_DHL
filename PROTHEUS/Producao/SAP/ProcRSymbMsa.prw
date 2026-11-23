@@ -196,7 +196,10 @@ static function DoIde()
 	oIde:setAttributeValue("tpAmb"		,	cTpAmb )
 	oIde:setAttributeValue("finNfe"		,	cFinNfe )
 	oIde:setAttributeValue("indFinal"	,	retValueAttribute("infnfe:_ide:_indFinal:text")	)
-	oIde:setAttributeValue("indPres"	,	"0"	)//Emerson Holanda 26/02/2021 - NT 2020.006 Alterado de 9 para 0, para nao ser obrigatorio preencher a nova tag:indIntermed
+	// INICIO Wellington Santana 22/11/2026 - [RTC-2026/2027 - Lote 4] indPres reflete a nota autorizada (XML);
+	// "0" mantido como fallback (regra Emerson Holanda 26/02/2021 - NT 2020.006)
+	oIde:setAttributeValue("indPres"	,	getIndPres()	)
+	// FIM Wellington Santana 22/11/2026
 	oIde:setAttributeValue("procEmi"	,	cProcEmi	)
 	oIde:setAttributeValue("verProc"	,	retValueAttribute("infnfe:_ide:_verProc:text")	)
 
@@ -2954,6 +2957,28 @@ static function DoDetProd()
 		DoDocSerie()
 	next nI
 return
+
+
+/*/{Protheus.doc} getIndPres
+Indicador de presenca do comprador (indPres) para o arquivo IP050.
+
+[RTC-2026/2027 - Lote 4] Antes fixo em "0". Passa a refletir a nota autorizada
+(tag infNFe/ide/indPres do XML), mantendo "0" quando a tag nao vier.
+
+@type function
+@author Wellington Santana
+@since 22/11/2026
+@return character, Codigo do indPres
+/*/
+static function getIndPres()
+
+	local cIndPres := AllTrim(retValueAttribute("infnfe:_ide:_indPres:text"))
+
+	if Empty(cIndPres)
+		cIndPres := "0"
+	endIf
+
+return cIndPres
 
 
 /**

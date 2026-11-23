@@ -1,4 +1,4 @@
-#include 'protheus.ch'
+#include 'totvs.ch'
 #include 'dhl.ch'
 
 #Define TABLE_FROM	1
@@ -296,7 +296,8 @@ method getTesOperation(nIcmsValue, nIcmsStValue, nIcmsRedBValue, nIcmsDifalValue
 	default nIcmsValue     := 0
 	default nIcmsStValue   := 0
 	default nIcmsRedBValue := 0
-	default nIcmsRedBValue := 0
+	// [RTC-2026/2027 | Wellington Santana 22/11/2026] Correcao: o default estava duplicado em nIcmsRedBValue e nIcmsDifalValue ficava NIL
+	default nIcmsDifalValue := 0
 	default cIcmsZFM 		 := ""
 	
 	::oSql:newTable("SZC", "ZC_TES TES", fQryTes(nIcmsValue, nIcmsStValue, nIcmsRedBValue, nIcmsDifalValue, cIcmsZFM))
@@ -325,6 +326,7 @@ method validValues(oSqlSZB, oSqlGroup) class DHLIp040Sap
 	Local cAliq	:= ""
 	Local lOk	:= .t.
 	Local lOkPos	:= .t.
+	Local lAvisoRtc	:= .f.	// [RTC-2026/2027 | Wellington Santana 22/11/2026] aviso de de/para IBS/CBS -> CD2 registrado uma unica vez
 	openTables()
 	
 	FWLogMsg("INFO", , "BusinessObject", funName(), "", "01", "*********************INICIO METODO  validValues IN DHLIp040Sap.PRW " + time() + " USUARIO " + PswRet()[1][2]  + " ********************" + CRLF, 0, 0, {})
@@ -379,6 +381,17 @@ method validValues(oSqlSZB, oSqlGroup) class DHLIp040Sap
 						ElseIf ::aFieldsSZB[nI, FIELD_FROM] $ FIELDS_ICMS_SUFRAMA
 							If CD2->(dbSeek(SD2->(D2_FILIAL + "S" + D2_SERIE + D2_DOC + D2_CLIENTE + D2_LOJA + PadR(D2_ITEM, TamSx3("FT_ITEM")[1]) + D2_COD) + "ZFM"))
 								lOk := .t.
+							EndIf
+						ElseIf ::aFieldsSZB[nI, FIELD_FROM] $ FIELDS_IBS_UF + FIELDS_IBS_MUN + FIELDS_CBS
+							// [RTC-2026/2027 - Lote 2 | Wellington Santana 22/11/2026] IBS/CBS nao sao gravados na CD2 pelo padrao TOTVS: vem do
+							// motor de tributos (nfesefaz: oXmlRefTri:GetXmlIbsCbs / oNfTciIntg). Nao ha codigo
+							// CD2_IMP para IBS/CBS, entao o de/para e ignorado - agora com registro em log
+							// (antes era descartado silenciosamente). O CadDePara bloqueia novos cadastros.
+							If !lAvisoRtc
+								lAvisoRtc := .t.
+								FWLogMsg("WARN", , "BusinessObject", funName(), "", "RTC", "De/Para SZD de IBS/CBS para CD2 ignorado (" + ;
+									AllTrim(::aFieldsSZB[nI, FIELD_FROM]) + " -> " + AllTrim(::aFieldsSZB[nI, FIELD_TO]) + "). " + ;
+									"IBS/CBS sao calculados pelo motor de tributos TOTVS e nao possuem registro na CD2.", 0, 0, {})
 							EndIf
 						EndIf
 		
@@ -822,17 +835,68 @@ method getItensSZB(cKeyScj) class DHLIp040Sap
 Return (oSql)
 
 
+/*/{Protheus.doc} fQryTes
+Monta o filtro da regra fiscal (SZC) usada para obter a TES da NF RCO.
+
+[RTC-2026/2027 - Lote 2 | Wellington Santana 22/11/2026] O IP_040 gera somente a remessa por conta e ordem
+(finNFe 1 - normal). Quando os campos ZC_FINNFE/ZC_TPCOMPL existem no
+dicionario, a busca passa a considerar apenas regras de finalidade normal
+(vazia ou "1"), impedindo que uma regra de credito/debito (finNFe 5/6)
+cadastrada no CadRegFis com os mesmos indicadores de ICMS seja usada na RCO.
+Removido IIF (SonarQube CA4000).
+
+@type function
+@author Thiago Meschiatti
+@since 21/08/2017
+@history 22/11/2026, Wellington Santana, [RTC-2026/2027] Filtro por finalidade/subtipo e remocao de IIF
+@param nIcmsValue, numeric, Valor do ICMS
+@param nIcmsStValue, numeric, Valor do ICMS ST
+@param nIcmsRedBValue, numeric, Valor do ICMS com reducao de base
+@param nIcmsDifalValue, numeric, Valor do ICMS DIFAL
+@param cIcmsZFM, character, Codigo de isencao do ICMS (ZFM)
+@return character, Clausula WHERE para IpSqlObject:newTable
+/*/
 Static Function fQryTes(nIcmsValue, nIcmsStValue, nIcmsRedBValue, nIcmsDifalValue, cIcmsZFM)
-	Local cQuery := ""
-	
+	Local cQuery 	:= ""
+	Local cIcmProp	:= "N"
+	Local cIcmRedB	:= "N"
+	Local cIcmSt	:= "N"
+	Local cIcmDifa	:= "N"
+	Local cIcmZfm	:= "N"
+
+	If nIcmsValue > 0
+		cIcmProp := "S"
+	EndIf
+	If nIcmsRedBValue > 0
+		cIcmRedB := "S"
+	EndIf
+	If nIcmsStValue > 0
+		cIcmSt := "S"
+	EndIf
+	If nIcmsDifalValue > 0
+		cIcmDifa := "S"
+	EndIf
+	If cIcmsZFM $ "7"
+		cIcmZfm := "S"
+	EndIf
+
 	cQuery += " 	1=1                                                               "+CRLF
 	cQuery += " 	AND %SZC.XFILIAL%                                                 "+CRLF
-	cQuery += " 	AND ZC_ICMPROP	= '" + Iif(nIcmsValue > 0, 'S', 'N') + "'         "+CRLF
-	cQuery += " 	AND ZC_ICMREDB 	= '" + Iif(nIcmsRedBValue > 0, 'S', 'N') + "'       "+CRLF
-	cQuery += " 	AND ZC_ICMST		= '" + Iif(nIcmsStValue > 0, 'S', 'N') + "'     "+CRLF
-	cQuery += " 	AND ZC_ICMDIFA	= '" + Iif(nIcmsDifalValue > 0, 'S', 'N') + "'    "+CRLF
-	cQuery += " 	AND ZC_ICMZFM		= '" + Iif(cIcmsZFM $ "7" , 'S', 'N') + "'    "+CRLF
-		
+	cQuery += " 	AND ZC_ICMPROP	= '" + cIcmProp + "'         "+CRLF
+	cQuery += " 	AND ZC_ICMREDB 	= '" + cIcmRedB + "'       "+CRLF
+	cQuery += " 	AND ZC_ICMST		= '" + cIcmSt + "'     "+CRLF
+	cQuery += " 	AND ZC_ICMDIFA	= '" + cIcmDifa + "'    "+CRLF
+	cQuery += " 	AND ZC_ICMZFM		= '" + cIcmZfm + "'    "+CRLF
+
+	// [RTC-2026/2027 - Lote 2 | Wellington Santana 22/11/2026] RCO = finalidade normal: ignora regras de credito/debito/ajuste
+	// GetSx3Cache: nao depende da SZC estar aberta no job da IP_040
+	If !Empty(GetSx3Cache("ZC_FINNFE", "X3_CAMPO"))
+		cQuery += " 	AND ZC_FINNFE IN (' ', '1')                               "+CRLF
+	EndIf
+	If !Empty(GetSx3Cache("ZC_TPCOMPL", "X3_CAMPO"))
+		cQuery += " 	AND ZC_TPCOMPL = ' '                                      "+CRLF
+	EndIf
+
 Return (cQuery)
 
 

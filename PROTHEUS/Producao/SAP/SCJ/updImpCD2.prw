@@ -7,7 +7,7 @@ Rotina para atualizar a CD2 campos CD2_PFCP, CD2_VFCP, CD2_BFCP (Fundo de Pobrez
 @author Gustavo Luiz
 @since 30/07/2018
 @version 1.1
-@history 21/11/2026, Pablo Regis, [RTC-2026/2027] Correções de comunicação entre NF original
+@history 21/11/2026, Wellington Santana, [RTC-2026/2027] Correções de comunicação entre NF original
          e NF de devolução/crédito: condição do While, MsUnlock ausente em CD2/SFT, loja do
          cliente da saída, série original no vínculo SZA, nomes físicos via %XXX.SQLNAME%,
          consulta da chave IP_040 fora do laço. Chamada estendida (MT103FIM) para Nota de
