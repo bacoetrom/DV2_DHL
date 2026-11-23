@@ -26,13 +26,21 @@ user function MT103FIM()
 	local lInclusao		:= INCLUI
 	local lAlteracao	:= ALTERA
 	local lSerCont		:= aScan(separa(GetNewPar("ZZ_SERCONT", ""), ";"), {|x| x == upper(alltrim(cSerie))}) > 0
+	// [RTC-2026/2027] Unidades e subtipos de Nota de Crédito (F1_TIPO 5) que propagam FCP/UTRIB da NF original.
+	// Defaults preservam o comportamento anterior (apenas AG2 / apenas devolução F1_TIPO D).
+	local cUnUpdCD2		:= GetNewPar("ZZ_UPDCD2U", DHL_BUSINESSUNIT_AG2)
+	local cTpCrdDev		:= GetNewPar("ZZ_UPDCD2C", "")
 	
 	private oSql        := ipSqlObject():newIpSqlObject()
 	
 	FWLogMsg("INFO", , "BusinessObject", funName(), "", "01", "ENTROU NO P.E. MT103FIM", 0, 0, {})
 	
-	if  FWUnitBusiness() == DHL_BUSINESSUNIT_AG2
-		if 	SF1->F1_TIPO == DEVOLUCAO .and. (lInclusao .or. lAlteracao)
+	// [RTC-2026/2027] Antes restrito a AG2 + devolução. Agora parametrizável por unidade (ZZ_UPDCD2U)
+	// e estendido à Nota de Crédito finNFe 5 de retorno/recusa (ex.: ZZ_UPDCD2C = "3|6").
+	if  !Empty(FWUnitBusiness()) .and. FWUnitBusiness() $ cUnUpdCD2
+		if 	(lInclusao .or. lAlteracao) .and. ;
+			(SF1->F1_TIPO == DEVOLUCAO .or. ;
+			 (SF1->F1_TIPO == "5" .and. !Empty(cTpCrdDev) .and. !Empty(SF1->F1_TPCOMPL) .and. AllTrim(SF1->F1_TPCOMPL) $ cTpCrdDev))
 			u_updImpCD2()
 		endIf
 	endif

@@ -1,10 +1,12 @@
 /*Importar as bibliotecas*/
-#INCLUDE "PROTHEUS.CH"
+#INCLUDE "TOTVS.CH"
 #INCLUDE "FWMBROWSE.CH"
 #INCLUDE "FWMVCDEF.CH"
 
 #Define MVC_MAIN_ID       "CadDePara"
-#Define MVC_MODEL_ID      "MIDREGFI"
+// [RTC-2026/2027] Antes "MIDREGFI" - mesmo ID de modelo do CadRegFis (SZC). IDs de modelo MVC
+// devem ser únicos (cache do FwLoadModel / pontos de entrada MVC). Nenhum fonte referencia o ID.
+#Define MVC_MODEL_ID      "MIDDEPAR"
 #Define TITLE_MODEL       "Cadastro de De/Para Campos Fiscais"
 #Define TITLE_VIEW        TITLE_MODEL
 #Define ALIAS_FORM		  "SZD"
@@ -19,19 +21,30 @@
 
 #DEFINE FIELD_HEADER 'ZD_TABDE|'
 
-/*Iniciando sua função*/
+// [RTC-2026/2027] Tabelas de destino efetivamente tratadas por DHLIp040Sap:validValues()
+#DEFINE TAB_PARA_OK  'SF2|SD2|SFT|SB1|CD2|SF3|'
+
+/*/{Protheus.doc} CadDePara
+Cadastro de De/Para de campos fiscais (SZD) usado por DHLIp040Sap:setFieldsSzd()
+para sobrescrever SF2/SD2/SFT/SB1/CD2/SF3 com os valores recebidos do SAP (IP_040).
+
+@type function
+@author DHL
+@history 21/11/2026, Pablo Regis, [RTC-2026/2027] ID de modelo único, validação de linha
+         (campos de origem/destino existentes no dicionário e tabela destino suportada).
+/*/
 User Function CadDePara()
-	
+
 	Local cTabela := ""
 	Local lRet := .T.
 	Local aRet := {}
 	Local aParamBox 	:= {}
-	
+
 	Private oBrowse
 	Private cChaveAux := ""
 
 	aAdd( aParamBox ,{2,"Tabela",1, {"", "SZA-Cabeçalho IP_040", "SZB-Itens IP_040", "ZZZ-Todas"}, 70,'.T.',.T.})
-	
+
 	If ParamBox(aParamBox,"Parâmetros...",@aRet)
 		if valType(aRet[1]) == "N"
 			alert("Parâmetro não foi informado!")
@@ -55,41 +68,44 @@ User Function CadDePara()
 		endif
 		oBrowse:Activate()
 	EndIf
-	
+
 Return
 
 
 Static Function MenuDef()
-	
+
 	Local aRotina := {}
 	local cViewId := "viewDef."+MVC_MAIN_ID
-	
+
 	ADD OPTION aRotina TITLE "Pesquisar"  	ACTION 'PesqBrw' 	OPERATION 1 ACCESS 0
 	ADD OPTION aRotina TITLE "Visualizar" 	ACTION cViewId 		OPERATION 2 ACCESS 0
 	ADD OPTION aRotina TITLE "Incluir"    	ACTION cViewId 		OPERATION 3 ACCESS 0
 	ADD OPTION aRotina TITLE "Alterar"    	ACTION cViewId 		OPERATION 4 ACCESS 0
 	ADD OPTION aRotina TITLE "Imprimir" 	ACTION cViewId 		OPERATION 8 ACCESS 0
 	ADD OPTION aRotina TITLE "Copiar" 		ACTION cViewId 		OPERATION 9 ACCESS 0
-	
+
 Return aRotina
 
 
 Static Function ModelDef()
 
 	Local oModel
-	Local oStr1Form := FWFormStruct( 1, ALIAS_FORM, { | cField |  AllTrim( cField ) + '|' $ FIELD_HEADER }) 
+	Local oStr1Form := FWFormStruct( 1, ALIAS_FORM, { | cField |  AllTrim( cField ) + '|' $ FIELD_HEADER })
 	Local oStr2Grid := FWFormStruct( 1, ALIAS_FORM, { | cField |  !AllTrim( cField ) + '|' $ FIELD_HEADER })
-	
+	// [RTC-2026/2027] Validação de linha: evita de/para "morto" (campo inexistente gera erro de macro
+	// em DHLIp040Sap:validValues e interrompe a sobrescrita dos tributos IBS/CBS/ICMS).
+	Local bLinePost := { | oGrid | vldLinha( oGrid ) }
+
 	oModel := MPFormModel():New(MVC_MODEL_ID, /*bPreValidacao*/, , /*{ | oMdl | CadTabSx5C( oMdl ) }*/ ,, /*bCancel*/ )
 
 	oModel:SetDescription(TITLE_MODEL)
 	oModel:addFields(ID_MODEL_FORM,,oStr1Form,,,)
-	oModel:AddGrid( ID_MODEL_GRID, ID_MODEL_FORM /*cOwner*/, oStr2Grid, /*bLinePre*/, , )
+	oModel:AddGrid( ID_MODEL_GRID, ID_MODEL_FORM /*cOwner*/, oStr2Grid, /*bLinePre*/, bLinePost, , )
 	oModel:getModel(ID_MODEL_FORM):SetDescription(TITLE_MODEL)
 	oModel:SetPrimaryKey({'ZD_FILIAL', 'ZD_TABDE' })
-	
+
 	oModel:SetRelation( ID_MODEL_GRID, { { 'ZD_FILIAL', "xFilial( 'SZD' )" } , { 'ZD_TABDE', 'ZD_TABDE' } } , SZD->( IndexKey( 1 ) ) )
-	
+
 Return oModel
 
 
@@ -98,17 +114,62 @@ Static Function ViewDef()
 	Local oModel := ModelDef()
 	Local oStr1Form := FWFormStruct( 2, ALIAS_FORM, { | cField |  AllTrim( cField ) + '|' $ FIELD_HEADER })
 	Local oStr2Grid := FWFormStruct( 2, ALIAS_FORM, { | cField |  !AllTrim( cField ) + '|' $ FIELD_HEADER })
-	
+
 	oView := FWFormView():New()
 	oView:SetModel(oModel)
 	oView:AddField(ID_VIEW_FORM, oStr1Form, ID_MODEL_FORM)
 	oView:AddGrid(ID_VIEW_GRID, oStr2Grid, ID_MODEL_GRID)
-	
+
 	oView:CreateHorizontalBox( BOX_FORM, 10)
 	oView:CreateHorizontalBox( BOX_GRID, 90)
-	
+
 	oView:SetOwnerView(ID_VIEW_FORM,BOX_FORM)
 	oView:SetOwnerView(ID_VIEW_GRID,BOX_GRID)
-	
+
 Return oView
 
+
+/*/{Protheus.doc} vldLinha
+Pós-validação da linha do grid de De/Para (SZD).
+
+[RTC-2026/2027] Garante a comunicação SZA/SZB (IP_040) -> tabelas fiscais:
+- campo de origem (ZD_CPODE) e de destino (ZD_CPOPARA) devem existir no SX3;
+- tabela destino deve ser uma das tratadas por DHLIp040Sap:validValues().
+
+@type function
+@author Pablo Regis
+@since 21/11/2026
+@param oGrid, object, Submodelo do grid (FWFormGridModel)
+@return logical, .T. se a linha é válida
+/*/
+Static Function vldLinha(oGrid)
+
+	Local lRet		:= .T.
+	Local cCpoDe	:= ""
+	Local cTabPara	:= ""
+	Local cCpoPara	:= ""
+
+	If oGrid:IsDeleted()
+		Return .T.
+	EndIf
+
+	cCpoDe		:= AllTrim(oGrid:GetValue("ZD_CPODE"))
+	cTabPara	:= AllTrim(oGrid:GetValue("ZD_TABPARA"))
+	cCpoPara	:= AllTrim(oGrid:GetValue("ZD_CPOPARA"))
+
+	If Empty(GetSx3Cache(cCpoDe, "X3_CAMPO"))
+		Help(" ", 1, "CADDEPARA",, "Campo de origem '" + cCpoDe + "' não existe no dicionário (SX3).", 1, 0)
+		lRet := .F.
+	ElseIf !(cTabPara + "|" $ TAB_PARA_OK)
+		Help(" ", 1, "CADDEPARA",, "Tabela destino '" + cTabPara + "' não é tratada pela integração IP_040. " + ;
+			"Permitidas: " + TAB_PARA_OK, 1, 0)
+		lRet := .F.
+	ElseIf Empty(GetSx3Cache(cCpoPara, "X3_CAMPO"))
+		Help(" ", 1, "CADDEPARA",, "Campo de destino '" + cCpoPara + "' não existe no dicionário (SX3).", 1, 0)
+		lRet := .F.
+	ElseIf PrefixoCpo(cTabPara) + "_" != Left(cCpoPara, Len(PrefixoCpo(cTabPara)) + 1)
+		Help(" ", 1, "CADDEPARA",, "Campo de destino '" + cCpoPara + "' não pertence à tabela " + cTabPara + ".", 1, 0)
+		lRet := .F.
+	EndIf
+
+Return lRet
