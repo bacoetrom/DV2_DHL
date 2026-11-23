@@ -105,17 +105,17 @@ icms_Tot -> issqn_Tot (342) -> ret_Trib (348) -> ISTot (355.1)
 
 ---
 
-## 4. Correções necessárias no que foi implementado
+## 4. Correções — TODAS APLICADAS em 22/11/2026 (commit `8656ca8`)
 
 | # | Item | Como está | Como deve ficar |
 |---|---|---|---|
-| 1 | `vUnComLiq` / `vProdLiq` | retirados na Fase 0, funções mantidas | criar bloco `sequencia_XML_liq` como **último** elemento do `prod` |
-| 2 | `vProdLiqTot` | chamado **antes** do `DoIcmsTot()` | mover para **depois** do `DovNFTot()` |
-| 3 | `ICMSPrevistoPagtoAntecip` | marcador com esse nome | renomear o marcador para **`ICMS_Previsto`** |
-| 4 | `gEstornoCred` | só no item | acrescentar o de **total** (355.29e), dentro do `IBSCBSTot`, após o `gMono_Tot` |
+| 1 | `vUnComLiq` / `vProdLiq` | retirados na Fase 0 | ✅ bloco `sequencia_XML_liq` criado como **último** elemento do `prod` |
+| 2 | `vProdLiqTot` | chamado antes do `DoIcmsTot()` | ✅ movido para **depois** do `DovNFTot()` |
+| 3 | `ICMSPrevistoPagtoAntecip` | marcador com esse nome | ✅ renomeado para **`ICMS_Previsto`** |
+| 4 | `gEstornoCred` | só no item | ✅ acrescentado o de **total** (355.29e), via `DogEstCredTot()` |
 | 5 | `DoISTot()` | antes do `DoIBSCBSTot()` | ✅ **já correto** — confere com 355.1 antes de 355.4 |
 | 6 | `DoIS()` | antes do `DoIBSCBS()`, depois do `DoISSQN()` | ✅ **já correto** — confere com 324.01 depois de 899 |
-| 7 | `DHL_NFE_LAYOUT` | `"4.16"` | bumpar para `"4.19"`, tratando antes o `ProcRSymbMsa` |
+| 7 | `DHL_NFE_LAYOUT` | `"4.16"` | ⏸ **pendente** — bumpar para `"4.19"` exige tratar antes o `ProcRSymbMsa` |
 
 Os `#define` de marcador criados na Fase 0 tornam os itens 3 e 1 alterações de um token.
 

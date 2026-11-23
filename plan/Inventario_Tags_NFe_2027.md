@@ -1,5 +1,11 @@
 # Inventário de tags: NF-e 2027 (Fase 0, item 1)
 
+> ⚠️ **Correções de 22/11/2026.**
+> 1. **`DFeReferenciado` e `chaveAcesso` NÃO estão ausentes.** O `nfesefaz.prw:10230` chama `GetTagRef(aNota)`, que emite o grupo lendo a tabela DKN (linhas 14662-14684). A limitação é outra: o `while` que varre múltiplas referências está comentado, então sai no máximo 1 chave, igual para todos os itens.
+> 2. **O escopo real são 7 tipos, não 11 cenários.** Pelo FDD IM04, confirmado pela planilha `TAGS reforma tribitaria + demais.xlsx`: crédito **01, 03, 04** e débito **02, 03, 04, 06**. Crédito 06 e débito 07 saem; crédito 01 e débito 02 entram e **não têm exemplo** no `HTMLConsolidado.xml`.
+> 3. **`vUnComLiq`, `vProdLiq` e `vProdLiqTot` têm posição confirmada** no leiaute 4.19 — ver `Leiaute_Mastersaf_4_19.md`.
+
+
 - **Data:** 18/11/2026
 - **Origem:** `plan/HTMLConsolidado.xml` (11 cenários, NT 2025.002 v1.53 e NT 2026.008 v1.01)
 - **Cruzado com:** `PROTHEUS/Producao/Mastersaf_NFe/ProcMsaNFe.prw` e `PROTHEUS/Producao/SAP/ProcRCOMsa.prw`

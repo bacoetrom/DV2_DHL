@@ -90,3 +90,29 @@ Os testes usarão como base os 11 cenários de nota fiscal da documentação da 
 ---
 
 *Documento extraído da seção 7 do `Plano_Execucao_NFe_2027_IBS_CBS.md`, onde cada questão está vinculada à etapa de desenvolvimento correspondente.*
+
+
+---
+
+## Atualização de 22/11/2026 — o que as planilhas já responderam
+
+Chegaram dois documentos que respondem parte das questões acima, sem precisar voltar à área fiscal:
+
+| Questão | Situação |
+|---|---|
+| **1** (quais notas a DHL emite) | ✅ **Respondida.** A planilha `TAGS reforma tribitaria + demais.xlsx` descreve o cenário DHL de cada tipo: crédito **01, 03, 04**; débito **02, 03, 04, 06** |
+| **8** (CFOPs) | ✅ Respondida pelo anexo 1 do questionário |
+| **9** (indPres) | ✅ Resolvida tecnicamente: o `nfesefaz` já emite o campo; o mapper passou a lê-lo |
+| **16** (tipo de movimento no DW) | ⏸ Parcial — a regra veio no anexo 8, mas o **leiaute Mastersaf DW 2027** ainda falta |
+
+**Correção importante ao que foi respondido antes:** o **débito 02** não é "bens e serviços para uso e consumo próprio" (resposta 15) — é **"Anulação de Crédito por Saídas Imunes/Isentas"**. O valor vem da apuração assistida do IBS, a partir dos `cClassTrib` das notas de fornecimento. Isso muda a modelagem do cenário.
+
+### Questões que permanecem abertas
+
+1. **Unidades (questão 2)** — segue não aplicável: "DHL, DOX e SOL" são códigos de empresa do Mastersaf, não unidades de negócio.
+2. **Débito 07** — a resposta 1 e a planilha de TAGS o excluem do escopo DHL, mas quatro anexos o detalham.
+3. **CST do `gAjusteCompet`** — 810 ou 811.
+4. **Crédito 01 e débito 02** — faltam os **exemplos de XML**, no formato dos 11 existentes. É o insumo pendente de melhor relação custo/valor.
+5. **Questões 17 e 18** — continuam sem resposta.
+6. **Unidade DIS** — continua sem dono.
+7. **Nota de crédito vem do SIGACOM** (Compras), não do Faturamento — confirmar se o fluxo Mastersaf cobre esses documentos de entrada.

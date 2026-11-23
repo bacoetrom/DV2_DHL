@@ -78,17 +78,17 @@ O item 3 antes do 4 pelo mesmo motivo: `ProcMsaNFe` e `ProcRCOMsa` chamam `U_DHL
 
 | # | Fonte | Pasta | Linhas | Consultor |
 |---|---|---|---|---|
-| 1 | ProcMsaNFe.prw | Mastersaf_NFe | 5341 (a planilha diz 5375) | Wellington |
+| 1 | ProcMsaNFe.prw | Mastersaf_NFe | 5341 (a planilha diz 5375) | Pablo Regis |
 | 2 | ImpMsaNfe.prw | Mastersaf_NFe | 2047 | Pablo |
-| 3 | PrcXmlNfe.prw | Mastersaf_NFe | 183 | Wellington |
+| 3 | PrcXmlNfe.prw | Mastersaf_NFe | 183 | Pablo Regis |
 | 4 | TagProcRef.tlpp | Mastersaf_NFe | 58 | Pablo |
 | 5 | MsafNFeFile.prw | Mastersaf_NFe | 192 | Pablo |
 | 6 | MsafNFeTag.prw | Mastersaf_NFe | 170 | Pablo |
-| 7 | PrcGrvRco.prw | SAP/SCJ | 420 | Wellington |
+| 7 | PrcGrvRco.prw | SAP/SCJ | 420 | Pablo Regis |
 | 8 | PrcNfRco.prw | SAP/SCJ | 615 | Pablo |
 | 9 | PrcNfRet.prw | SAP/SCJ | 675 | Pablo |
 
-### 1.2 Entrega 7: Desenvolvimento SAFX (Wellington), 6 fontes existentes
+### 1.2 Entrega 7: Desenvolvimento SAFX (Pablo Regis), 6 fontes existentes
 
 | # | Fonte | Pasta | Linhas |
 |---|---|---|---|
@@ -161,7 +161,7 @@ Itens da planilha que **ainda não existem**: os includes SAFX3007 e SAFX3008, e
 ### 1.5 Divergências entre a planilha e o workspace
 
 1. **A pasta `SAFX07/DIS/` não está na planilha.** Ela tem 8 fontes: SAFX07DIS, SAFX08DIS, SAFX112DIS, SAFX116DIS, DHLSafx07Dis, DHLSafx08Dis, DHLSafx112Dis e DHLSafx116Dis.
-2. **Consultor diferente para "SAFX07MSDW (PKG)".** A primeira tabela da planilha diz Pablo e a segunda diz Wellington.
+2. **Consultor diferente para "SAFX07MSDW (PKG)".** A primeira tabela da planilha diz Pablo e a segunda diz Pablo Regis.
 3. **O `SAFX2013MSDW.prw` não está na planilha.** Ele fica em `Mastersaf_DW/SAFX2013/`, ao lado do DHLSafx2013.
 4. **Linhas do ProcMsaNFe.prw.** A planilha diz 5375 e o arquivo tem 5341.
 5. **REP não tem pasta própria.** A REP reusa a geração da AGE.
@@ -243,22 +243,24 @@ A tabela compara as tags e regras comentadas no `HTMLConsolidado.xml` com o `Mas
 Toda alteração feita neste projeto é marcada no fonte com um bloco delimitado, no padrão já usado nos fontes da DHL:
 
 ```advpl
-// INICIO Wellington 18/11/2026
+// INICIO Pablo Regis 18/11/2026
 If cFinNfe $ "5|6"
     ...
 EndIf
-// FIM Wellington 18/11/2026
+// FIM Pablo Regis 18/11/2026
 ```
 
 Alteração de uma única linha usa a forma curta, sem o `FIM`:
 
 ```advpl
-oProd:setAttributeValue("vProdLiq", ...)  // Wellington 18/11/2026
+oProd:setAttributeValue("vProdLiq", ...)  // Pablo Regis 18/11/2026
 ```
+
+> **Alteração de 22/11/2026:** os marcadores foram renomeados de `Wellington` para `Pablo Regis` em 154 pontos, 30 fontes, a pedido do responsável — o nome é a chave de busca que torna as alterações localizáveis. Não há mais nenhum marcador com a grafia anterior.
 
 Regras de uso:
 
-1. **O nome é o do autor da alteração**, sempre na mesma grafia: `Wellington` ou `Pablo`. O marcador é chave de busca — grafias diferentes para a mesma pessoa inutilizam a auditoria.
+1. **O nome é o do autor da alteração**, sempre na mesma grafia: `Pablo Regis` ou `Pablo`. O marcador é chave de busca — grafias diferentes para a mesma pessoa inutilizam a auditoria.
 2. **A data entra nas duas linhas do bloco**, no `INICIO` e no `FIM`, no formato `DD/MM/AAAA`. É a data da alteração, e as duas linhas repetem a mesma data.
 3. **Função ou método novo não usa marcador inline.** A autoria vai no bloco `/*/{Protheus.doc}` exigido pelo padrão do projeto, com `@author` e `@since`.
 4. **Sem acentos no marcador.** Os fontes são CP-1252 e serão editados por duas pessoas em dezenas de arquivos; acento em comentário é onde um save acidental em UTF-8 aparece primeiro. Escreva `alteracao`, `credito`, `calculo`.
@@ -267,7 +269,7 @@ Regras de uso:
 Auditoria da pegada do projeto:
 
 ```bash
-grep -rn "INICIO Wellington\|INICIO Pablo" --include=*.prw --include=*.tlpp .
+grep -rn "INICIO Pablo Regis\|INICIO Pablo" --include=*.prw --include=*.tlpp .
 ```
 
 ### Fase 0: Pré-requisitos
@@ -296,7 +298,7 @@ grep -rn "INICIO Wellington\|INICIO Pablo" --include=*.prw --include=*.tlpp .
    - **se os CSTs 410 e 811 entram no `MV_CSTGXML`** (ver Fase 0.5, item 4).
 6. **Definir quais tipos de nota a DHL vai emitir de fato.** Isso diz quais dos 11 cenários entram no escopo.
 
-### Fase 0.5: Primeiro ciclo — defeitos existentes (Wellington) ✅ CONCLUÍDA em 18/11/2026
+### Fase 0.5: Primeiro ciclo — defeitos existentes (Pablo Regis) ✅ CONCLUÍDA em 18/11/2026
 
 Escolhida como primeiro ciclo de desenvolvimento por não depender de nenhum bloqueante: não precisa do leiaute do Mastersaf, do remerge do `nfesefaz.prw` nem de tag nova. Incide sobre código que **já roda em produção gerando IBSCBS**, então o ganho é imediato e a regressão pode ser medida contra a saída de hoje. Serviu também para calibrar o custo real do fork `ProcMsaNFe` × `ProcRCOMsa`, que a planilha original não previa.
 
@@ -431,7 +433,7 @@ Nota de conformidade: as linhas de `cIndFisJur` usam `Iif` encadeado, proibido p
 
 *"Não exportam IBS/CBS/IS, CST nem cClassTrib"* — coerente com a Fase 6, que permanece bloqueada no leiaute Mastersaf DW 2027 (Fase 0, item 4).
 
-### Fase 1: ProcMsaNFe, cabeçalho e referências (Wellington)
+### Fase 1: ProcMsaNFe, cabeçalho e referências (Pablo Regis)
 
 > **Replicação no `ProcRCOMsa.prw`:** o dimensionamento de 18/11/2026 mostrou que **as 10 funções alteradas pelas Fases 1 e 2 são idênticas nos dois fontes** — 233 das 247 funções do fork são iguais. A replicação é **mecânica**, não exige reanálise. Atenção apenas a `MountTags` (orquestrador, divergente, afetado por qualquer grupo novo) e a `DoDetProd` (divergente por uma linha, dentro do escopo da Fase 2). Ver `Dimensionamento_Forks_NFe_2027.md` §1.
 
@@ -447,7 +449,7 @@ Nota de conformidade: as linhas de `cIndFisJur` usam `Iif` encadeado, proibido p
 5. **Criar o `gPagAntecipado`**, para a nota que abate um débito 06.
 6. **Ajustar o `DoAllRef`.** Em finNFe 2 e em crédito 03/04 deve ir exatamente uma `refNFe` (B25-30/B25-40, rejeições 254/255). Também é preciso rever o laço que hoje gera várias referências.
 
-### Fase 2: ProcMsaNFe, item e totais (Wellington)
+### Fase 2: ProcMsaNFe, item e totais (Pablo Regis)
 
 > **Geração dos grupos novos concluída em 18/11/2026**, nos dois fontes, com diffs idênticos. 7 funções novas e 8 pontos de chamada. A **ordem dos campos e dos grupos** segue a sequência da NT, extraída dos 11 exemplos do `HTMLConsolidado.xml`, e é **hipótese de trabalho** até o leiaute do Mastersaf chegar.
 >
@@ -481,9 +483,9 @@ Nota de conformidade: as linhas de `cIndFisJur` usam `Iif` encadeado, proibido p
    - demais finalidades: PIS e COFINS continuam obrigatórios no modelo 55 (rejeições 745/748).
 7. **Corrigir os defeitos da seção 3.1**: `DogIBSMuRed`, o `::` duplo, a regra do `MV_CSTGXML` e o `vCresPres`.
 
-### Fase 3: Origem dos dados, SAP SC Johnson (Pablo e Wellington)
+### Fase 3: Origem dos dados, SAP SC Johnson (Pablo e Pablo Regis)
 
-1. **PrcGrvRco (Wellington).** Ajustar ou recalcular a F2D depois que os valores são regravados na desoneração ZFM. Sem isso, a base do IBS/CBS (`vProd - vICMS + vIS`) e o `vItem` ficam diferentes do item final. O risco está documentado em `Analise_IBS_CBS_IP040_PrcGrvRco.md` §2, com o exemplo numérico (item de 1.000 com `ZB_VLDIICM` de 120 passa a 880, enquanto a F2D guarda a base antiga).
+1. **PrcGrvRco (Pablo Regis).** Ajustar ou recalcular a F2D depois que os valores são regravados na desoneração ZFM. Sem isso, a base do IBS/CBS (`vProd - vICMS + vIS`) e o `vItem` ficam diferentes do item final. O risco está documentado em `Analise_IBS_CBS_IP040_PrcGrvRco.md` §2, com o exemplo numérico (item de 1.000 com `ZB_VLDIICM` de 120 passa a 880, enquanto a F2D guarda a base antiga).
 
    Restrições de implementação que vêm de `Analise_PrcGrvRco.md` e **não podem ser violadas**:
    - **O ajuste da F2D tem de ocorrer antes da linha 306.** O `U_PrcXmlNfe` é obrigatoriamente o último passo (restrição 4): tudo gravado depois dele não entra no XML enviado ao Mastersaf.
@@ -513,14 +515,14 @@ Nota de conformidade: as linhas de `cIndFisJur` usam `Iif` encadeado, proibido p
 
 ### Fase 6: SAFX / Mastersaf DW
 
-**Entrega 7 (Wellington)**
+**Entrega 7 (Pablo Regis)**
 
 1. Criar os includes `safx3007.ch` e `safx3008.ch` com as posições.
 2. Criar `DHLSafx3007` e `DHLSafx3008` no padrão de `DHLSafx07` e `DHLSafx08`, lendo IBS/CBS/IS da F2D e da SFT.
 3. Incluir a geração em `ProcMsaDW`, `SAFX07MSDW` e `SAFX08MSDW`.
 4. Avaliar se `DHLSafx112`, `DHLSafx116` e `DHLSafx2013` precisam dos campos novos, como finalidade crédito/débito e chave referenciada.
 
-**Entrega 8 (Pablo e Wellington, conforme a planilha)**
+**Entrega 8 (Pablo e Pablo Regis, conforme a planilha)**
 
 1. Replicar nas variantes por filial:
    - AG2 (8 fontes);
@@ -768,3 +770,81 @@ Integridade byte a byte nos 29 fontes: CP-1252 preservado, zero bytes UTF-8, zer
 ### 8.8 Parâmetros
 
 `ZZ_RTCAUDI` (.T.), `ZZ_TRIBIS` ("IS"), `ZZ_TRIBICM` (**"ICMS"**, corrigido), `ZZ_IFJCRE`/`ZZ_IFJDEB` ("2"), `ZZ_FINAJUS` (ver §7 questão 1), **`ZZ_SFXDEV`** ("5-3;5-6;6-9", novo). **`ZZ_SFXMOVR` deixou de existir.**
+
+---
+
+## 9. Execução de 22/11/2026 — leiaute recebido e correções aplicadas
+
+Branch `pgr_mastersaf_scj`, commits `3103ae5`, `5c4b9cd` e `8656ca8`.
+
+### 9.1 Dois documentos novos destravaram o projeto
+
+| Documento | O que resolve |
+|---|---|
+| `ONESOURCEDFE_Layout_NFe_NFCe_4_00v4_19.xlsx` | **o leiaute posicional do Mastersaf** — era o bloqueio nº 1 |
+| `TAGS reforma tribitaria + demais.xlsx` | cenários DHL por tipo de nota e de-para de origem dos campos |
+
+Detalhamento do leiaute em `Leiaute_Mastersaf_4_19.md`.
+
+### 9.2 O que a planilha de TAGS confirma e corrige
+
+**Confirma o escopo** da resposta 1 do fiscal: crédito **01, 03, 04**; débito **02, 03, 04, 06**. Cada um com o cenário DHL descrito.
+
+**Corrige a resposta 15:** o **débito 02 não é "bens e serviços para uso e consumo próprio"** — é **"Anulação de Crédito por Saídas Imunes/Isentas"**. O valor vem da apuração assistida do IBS, calculado a partir dos `cClassTrib` das notas de fornecimento emitidas. Cenário pontual, não automático.
+
+**Outros achados relevantes:**
+
+- O **débito 03** também exige `dest == emit` (mesmo CNPJ base), não só o 07. Cada item corresponde a um documento não processado, com a chave no grupo VC01 `DFeReferenciado` e o valor do débito em `vIBS`.
+- O **débito 04** deve referenciar o **item** da nota original, aplicando a mesma `cClassTrib` e a mesma alíquota efetiva do fornecimento original.
+- A **nota de crédito é gerada pelo SIGACOM** (Compras), não pelo Faturamento. A nota de débito é do SIGAFAT. Isso muda a premissa de que ambas saem do mesmo fluxo.
+- **`DFeReferenciado/chaveAcesso` tem origem confirmada em `DKN_CHVNFE`**; o `nItem` vem do mesmo vínculo DKN, com campo físico ainda não confirmado.
+- `vUnComLiq`, `vProdLiq`, `vProdLiqTot`, `vICMSPrevisto`, `vIBS` e `vCBS` estão todos marcados como **"Calculado"** — não há campo físico único. Confirma que o cálculo é do motor fiscal, não do mapper.
+- Crédito 03 e 06 decorrem do **Ajuste SINIEF nº 8/2026**, com vigência a partir de 04/05/2026.
+
+### 9.3 A DHL está três versões atrás no leiaute
+
+`Includes/dhl.ch:98` grava `DHL_NFE_LAYOUT "4.16"`, que corresponde à **NT 2025.002-RTC v1.20**. O alvo do projeto é a v1.53, que corresponde à **4.19**.
+
+| versaoLayoutDFe | NT | Produção SEFAZ |
+|---|---|---|
+| **4.16** (atual) | v1.20 | 06/10/2025 |
+| 4.17 | v1.30 | 10/11/2025 |
+| 4.18 | v1.36 e v1.40 | 03/08/2026 |
+| **4.19** | v1.50, v1.51 + NT 2026.008 v1.00 | 03/11/2026 |
+
+**O bump ainda não foi feito**, porque amarra o `ProcRSymbMsa.prw`, que compartilha o define e não produz nenhum bloco da reforma (Fase 1.5).
+
+### 9.4 Quatro correções aplicadas, duas confirmações
+
+| # | Item | Antes | Agora |
+|---|---|---|---|
+| 1 | `vUnComLiq` / `vProdLiq` | retirados na Fase 0 | bloco **`sequencia_XML_liq`** (110.01), **último elemento do `prod`** |
+| 2 | `vProdLiqTot` (326a) | antes do `DoIcmsTot()` | **depois do `DovNFTot()`**, fora do `icms_Tot` |
+| 3 | `ICMSPrevistoPagtoAntecip` | marcador com esse nome | **`ICMS_Previsto`** (245b.01) |
+| 4 | `gEstornoCred` | só no item (324116) | **mais o de total** (355.29e), dentro do `IBSCBSTot`, após o `gMono_Tot` |
+| 5 | `DoISTot()` antes do `DoIBSCBSTot()` | — | ✅ já estava correto (355.1 < 355.4) |
+| 6 | `DoIS()` depois do `DoISSQN()` | — | ✅ já estava correto (324.01 > 319) |
+
+Ordem final no `MountTags`, conferida contra o leiaute:
+`DoRetTrib → DoISTot → DoIBSCBSTot → … → DogMonTot → DogEstCredTot → DovNFTot → DovProdLiqTot`
+
+**O princípio do fornecedor valida a Fase 0.** Citação literal da planilha: *"Campos novos posicionados ao final de cada bloco, para evitar impacto em integrações já existentes."* Era exatamente o motivo de ter revertido a inserção no meio do `EXTIPI`.
+
+⚠️ **Alerta do fornecedor:** o `vProdLiqTot` **mudou de posição** entre a prévia de 15/10/2026 e a versão final — antes ficava no fim do `icms_Tot`, após o `vTotTrib`. Quem tiver adaptado alguma integração à prévia precisa reposicionar.
+
+### 9.5 Reconciliação de branch
+
+A Fase 0 havia sido commitada em `wjr_rtc_2027` enquanto o trabalho corrente estava em `pgr_mastersaf_scj` — por isso as alterações não apareciam. Mesclada, com 27 conflitos resolvidos pela versão da Fase 0. Os marcadores foram renomeados para `Pablo Regis` em 154 pontos.
+
+### 9.6 Validação
+
+Integridade conferida: CP-1252 e CRLF preservados, zero bytes UTF-8, zero U+FFFD, 69 acentos em cada mapper. As 73 linhas alteradas são **idênticas** nos dois fontes — a ordem dos hunks difere apenas porque o `ProcRCOMsa` tem 8 funções exclusivas. Nove gates `lRefTribCo`.
+
+**Nada compilado.** Segue sendo o próximo passo obrigatório.
+
+### 9.7 Pendências que estes documentos criam
+
+1. **Bumpar `DHL_NFE_LAYOUT` para `"4.19"`** — tratar antes o `ProcRSymbMsa`.
+2. **Débito 02 precisa ser remodelado** como anulação de crédito por saídas imunes/isentas, não como uso e consumo próprio.
+3. **A nota de crédito vem do SIGACOM** — confirmar se o fluxo Mastersaf cobre documentos de entrada gerados por Compras.
+4. **`nItem` do `DFeReferenciado`** — campo físico no vínculo DKN ainda não confirmado.
