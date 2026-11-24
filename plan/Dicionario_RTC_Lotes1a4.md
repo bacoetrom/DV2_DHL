@@ -52,6 +52,8 @@ Todos têm valor padrão no código, então **nenhum é obrigatório**.
 | `ZZ_RTCVLCF` | L | `.T.` | CadRegFis | Liga a validação CFOP × subtipo |
 | `ZZ_UPDCD2U` | C | `AG2` | MT103FIM | Unidades que executam o updImpCD2 |
 | `ZZ_UPDCD2C` | C | vazio | MT103FIM | Subtipos de nota de crédito que executam o updImpCD2 (ex.: `3\|6`) |
+| `ZZ_RTCCONF` | L | `.T.` | PrcGrvRco | Liga a conferência IBS/CBS SAP × Protheus na NF RCO (23/11/2026) |
+| `ZZ_TRIBSUF` / `ZZ_TRIBSMU` / `ZZ_TRIBCBS` | C | `TR0002` / `TR0003` / `TR0001` | PrcGrvRco, DHLIdManager | Códigos de IBS UF, IBS municipal e CBS na F2D. Já usados pelo DHLIdManager. Conferir se batem com o cadastro de tributos do ambiente |
 
 > ⚠️ **Atenção ao `ZZ_TRIBICM`:** o padrão antigo no código era `ICM`, e com ele o grupo `ICMSPrevistoPagtoAntecip` nunca era preenchido. Se o parâmetro **já existir** no SX6 com `ICM`, trocar para `ICMS`.
 

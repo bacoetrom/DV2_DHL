@@ -4,6 +4,8 @@
 #define CAMPOS_SZA  	"ZA_FILIAL #ZA_NFRET  #ZA_SERIRET#ZA_NFRCO  #ZA_SERIRCO#ZA_F3QTLIN #ZA_NFRCOX5"
 #define CAMPOS_SZB 	"ZB_FILIAL #ZB_PEDIDO #ZB_ITEMPV "
 #define SUFRAMA	  	"7"
+// Wellington Santana 23/11/2026 - [RTC-2026/2027] tolerancia de arredondamento na conferencia do rodape de IBS/CBS
+#define RTC_TOLERANCIA	0.01
 
 /*/{Protheus.doc} SAPIP040
 
@@ -12,6 +14,11 @@ Processo para a Unidade de Negócio AG2(SCJ - PUZZLE)
 	
 @author Diogo Mesquita
 @since 17/05/2017
+@history 23/11/2026, Wellington Santana, [RTC-2026/2027] Totais de IBS/CBS do FOOTER lidos com
+         verificacao de existencia da tag - sem a tag, nao interrompe a importacao.
+@history 23/11/2026, Wellington Santana, [RTC-2026/2027] Totais de IBS/CBS da SZA passam a ser a soma
+         dos itens (rodape do SAP divergente em IBS_MUN_TOTAL_VALUE e IBS_TOTAL_VALUE), com aviso no
+         log quando o rodape divergir. Aliquota de IBS/CBS calculada quando TAX_RATE vier vazio.
 /*/
 user function SAPIP040(cFilePath)
 
@@ -444,26 +451,164 @@ return Val(oXml:_IP_040:_BODY:_FOOTER:_ICMS_ST_TOTAL_VALUE:TEXT)
 /**
 * Coleta o Valor Total IBS Estadual
 **/
+// Wellington Santana 23/11/2026 - [RTC-2026/2027] total = soma dos itens (IBS_UF/TAX_VALUE); rodape so conferido
 static function getIBSUFTO()
-return (Val(oXml:_IP_040:_BODY:_FOOTER:_IBS_UF_TOTAL_VALUE:TEXT))
+return (getTotRtc({"IBS_UF"}, "IBS_UF_TOTAL_VALUE"))
 
 /**
 * Coleta o Valor Total IBS Municipal
 **/
+// Wellington Santana 23/11/2026 - [RTC-2026/2027] total = soma dos itens (IBS_MUN/TAX_VALUE); rodape so conferido
 static function getIBSMUTO()
-return (Val(oXml:_IP_040:_BODY:_FOOTER:_IBS_MUN_TOTAL_VALUE:TEXT))
+return (getTotRtc({"IBS_MUN"}, "IBS_MUN_TOTAL_VALUE"))
 
 /**
 * Coleta o Valor Total IBS
 **/
+// Wellington Santana 23/11/2026 - [RTC-2026/2027] total = soma dos itens (IBS_UF + IBS_MUN); rodape
+// (IBS_TOTAL_VALUE) so conferido. Antes somava IBS_UF_TOTAL_VALUE + IBS_MUN_TOTAL_VALUE do rodape.
 static function getIBSTOTA()
-return (Val(oXml:_IP_040:_BODY:_FOOTER:_IBS_UF_TOTAL_VALUE:TEXT)+Val(oXml:_IP_040:_BODY:_FOOTER:_IBS_MUN_TOTAL_VALUE:TEXT))
+return (getTotRtc({"IBS_UF", "IBS_MUN"}, "IBS_TOTAL_VALUE"))
 
 /**
 * Coleta o Valor Total CBS
 **/
+// Wellington Santana 23/11/2026 - [RTC-2026/2027] total = soma dos itens (CBS/TAX_VALUE); rodape so conferido
 static function getCBSTOTA()
-return (Val(oXml:_IP_040:_BODY:_FOOTER:_CBS_TOTAL_VALUE:TEXT))
+return (getTotRtc({"CBS"}, "CBS_TOTAL_VALUE"))
+
+/*/{Protheus.doc} getTotRtc
+Total de IBS/CBS da nota para a SZA, calculado pela soma dos itens do IP_040.
+
+[RTC-2026/2027] O rodape (FOOTER) enviado pelo SAP nao e confiavel. No arquivo
+SAPIP040_02836056014913_20261027200548_746.XML (27/10/2026):
+- IBS_MUN_TOTAL_VALUE = 666.79, mas os itens tem IBS municipal 0;
+- IBS_TOTAL_VALUE = 0, mas os itens somam 666.79 de IBS.
+O total gravado passa a ser a soma dos itens (mesma origem de ZB_IBSUFVL,
+ZB_IBSMUVL e ZB_CBSTXVL). Se a tag do rodape existir e divergir da soma, grava um
+aviso no log, sem interromper a importacao. Sem a tag, nao ha conferencia nem erro.
+
+@type function
+@author Wellington Santana
+@since 23/11/2026
+@param aGroups, array, Grupos do item somados. Ex.: {"IBS_UF", "IBS_MUN"}
+@param cFootTag, character, Tag do FOOTER usada so para conferencia (sem o "_" inicial)
+@return numeric, Soma de TAX_VALUE dos grupos informados em todos os itens
+/*/
+static function getTotRtc(aGroups, cFootTag)
+
+	local nTotal	:= 0
+	local nFooter	:= 0
+	local nI		:= 0
+
+	for nI := 1 to Len(aGroups)
+		nTotal += getItSum(aGroups[nI])
+	next nI
+
+	if Type("oXml:_IP_040:_BODY:_FOOTER:_" + cFootTag + ":TEXT") <> "U"
+		nFooter := Val(&("oXml:_IP_040:_BODY:_FOOTER:_" + cFootTag + ":TEXT"))
+		if Abs(nFooter - nTotal) > RTC_TOLERANCIA
+			FWLogMsg("WARN", , "BusinessObject", "SAPIP040", "", "01", ;
+				"[RTC-2026/2027] IP_040 com FOOTER/" + cFootTag + " = " + AllTrim(Str(nFooter, 14, 2)) + ;
+				" diferente da soma dos itens = " + AllTrim(Str(nTotal, 14, 2)) + ;
+				". Gravado o valor dos itens. Chave NF SCJ: " + AllTrim(getKeNFSCJ()) + ;
+				" - Arquivo: " + AllTrim(cValToChar(cFile)), 0, 0, {})
+		endif
+	endif
+
+return (nTotal)
+
+/*/{Protheus.doc} getItSum
+Soma o TAX_VALUE de um grupo de tributo (IBS_UF, IBS_MUN ou CBS) em todos os itens do IP_040.
+Usa XmlChildEx (via getItTxt) em vez de Type(), porque roda dentro de laco.
+
+@type function
+@author Wellington Santana
+@since 23/11/2026
+@param cGroup, character, Grupo do item (sem o "_" inicial). Ex.: "CBS"
+@return numeric, Soma dos valores
+/*/
+static function getItSum(cGroup)
+
+	local nTotal	:= 0
+	local nI		:= 0
+
+	if ValType(oXml:_IP_040:_BODY:_FILEITEM) == "A"
+		for nI := 1 to Len(oXml:_IP_040:_BODY:_FILEITEM)
+			nTotal += Val(getItTxt(nI, cGroup, "TAX_VALUE"))
+		next nI
+	else
+		nTotal := Val(getItTxt(0, cGroup, "TAX_VALUE"))
+	endif
+
+return (nTotal)
+
+/*/{Protheus.doc} getItTxt
+Texto de uma tag de um grupo de tributo do item do IP_040 (ex.: FILEITEM/CBS/TAX_RATE).
+
+@type function
+@author Wellington Santana
+@since 23/11/2026
+@param nItem, numeric, Numero do item (0 quando o IP_040 tem um unico FILEITEM)
+@param cGroup, character, Grupo (sem o "_" inicial). Ex.: "IBS_UF"
+@param cTag, character, Tag dentro do grupo (sem o "_" inicial). Ex.: "TAX_VALUE"
+@return character, Conteudo da tag sem espacos, ou "" quando o grupo ou a tag nao existirem
+/*/
+static function getItTxt(nItem, cGroup, cTag)
+
+	local cRet		:= ""
+	local oItem		:= nil
+	local oGroup	:= nil
+	local oTag		:= nil
+
+	if nItem > 0
+		oItem := oXml:_IP_040:_BODY:_FILEITEM[nItem]
+	else
+		oItem := oXml:_IP_040:_BODY:_FILEITEM
+	endif
+
+	oGroup := XmlChildEx(oItem, "_" + cGroup)
+	if ValType(oGroup) == "O"
+		oTag := XmlChildEx(oGroup, "_" + cTag)
+		if ValType(oTag) == "O"
+			cRet := AllTrim(oTag:TEXT)
+		endif
+	endif
+
+return (cRet)
+
+/*/{Protheus.doc} getItRate
+Aliquota de IBS UF, IBS municipal ou CBS do item do IP_040.
+
+[RTC-2026/2027] O SAP envia TAX_RATE vazio (arquivo de 27/10/2026) e o campo era
+gravado com 0. Com TAX_RATE vazio, a aliquota passa a ser calculada por
+TAX_VALUE / BASE_AMOUNT * 100, arredondada em 2 casas (tamanho de ZB_IBSUFTX,
+ZB_IBSMUTX e ZB_CBSTXRT). E a aliquota efetiva: com reducao de aliquota, nao e a
+nominal. Com TAX_RATE preenchido, o valor do SAP e mantido.
+
+@type function
+@author Wellington Santana
+@since 23/11/2026
+@param nItem, numeric, Numero do item (0 quando o IP_040 tem um unico FILEITEM)
+@param cGroup, character, Grupo (sem o "_" inicial): "IBS_UF", "IBS_MUN" ou "CBS"
+@return numeric, Aliquota em percentual
+/*/
+static function getItRate(nItem, cGroup)
+
+	local cRate	:= getItTxt(nItem, cGroup, "TAX_RATE")
+	local nBase	:= 0
+	local nRet	:= 0
+
+	if !Empty(cRate)
+		nRet := Val(cRate)
+	else
+		nBase := Val(getItTxt(nItem, cGroup, "BASE_AMOUNT"))
+		if nBase > 0
+			nRet := Round(Val(getItTxt(nItem, cGroup, "TAX_VALUE")) / nBase * 100, 2)
+		endif
+	endif
+
+return (nRet)
 
 /**
 * Coleta Mensagens adicionais da NF contidas na IP_040
@@ -937,20 +1082,9 @@ return (xRet)
 /**
 * Coleta o Percentual do IBS UF Percentual
 **/
+// Wellington Santana 23/11/2026 - [RTC-2026/2027] TAX_RATE vazio no SAP: aliquota calculada (getItRate)
 static function getIBSUFTX(nItem)
-	local xRet := 0
-	
-	if nItem > 0
-		if Type("oXml:_IP_040:_BODY:_FILEITEM["+str(nItem)+"]:_IBS_UF") <> "U"
-			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_IBS_UF:_TAX_RATE:TEXT)
-		endif
-	else
-		if Type("oXml:_IP_040:_BODY:_FILEITEM:_IBS_UF") <> "U"
-			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM:_IBS_UF:_TAX_RATE:TEXT)
-		endif
-	endif
-	
-return (xRet)
+return (getItRate(nItem, "IBS_UF"))
 
 
 /**
@@ -992,20 +1126,9 @@ return (xRet)
 /**
 * Coleta Percentual do IBS MUNICIPIAL
 **/
+// Wellington Santana 23/11/2026 - [RTC-2026/2027] TAX_RATE vazio no SAP: aliquota calculada (getItRate)
 static function getIBSMUTX(nItem)
-	local xRet := 0
-	
-	if nItem > 0
-		if Type("oXml:_IP_040:_BODY:_FILEITEM["+str(nItem)+"]:_IBS_MUN") <> "U"
-			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_IBS_MUN:_TAX_RATE:TEXT)
-		endif
-	else
-		if Type("oXml:_IP_040:_BODY:_FILEITEM:_IBS_MUN") <> "U"
-			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM:_IBS_MUN:_TAX_RATE:TEXT)
-		endif
-	endif
-	
-return (xRet)
+return (getItRate(nItem, "IBS_MUN"))
 
 
 /**
@@ -1047,20 +1170,9 @@ return (xRet)
 /**
 * Coleta Percentual do CBS
 **/
+// Wellington Santana 23/11/2026 - [RTC-2026/2027] TAX_RATE vazio no SAP: aliquota calculada (getItRate)
 static function getCBSTXRT(nItem)
-	local xRet := 0
-	
-	if nItem > 0
-		if Type("oXml:_IP_040:_BODY:_FILEITEM["+str(nItem)+"]:_CBS") <> "U"
-			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM[nItem]:_CBS:_TAX_RATE:TEXT)
-		endif
-	else
-		if Type("oXml:_IP_040:_BODY:_FILEITEM:_CBS") <> "U"
-			xRet := Val(oXml:_IP_040:_BODY:_FILEITEM:_CBS:_TAX_RATE:TEXT)
-		endif
-	endif
-	
-return (xRet)
+return (getItRate(nItem, "CBS"))
 
 /**
 * Coleta Base do CBS
