@@ -279,7 +279,8 @@ static function CalcDigit(cChave)
 	local nSoma		:= 0
 	local nDv 		:= 0
 	local nMult		:= 2
-	local cString	:= AllTrim(cChave)		
+	local cString	:= AllTrim(cChave)	
+	local nI	
 	
 	for nI := Len(cString) to 1 step -1		
 		nSoma += (Val(SubStr(cString, nI, 1)) * nMult)

@@ -7,7 +7,9 @@
       "Bash(grep -cE '🟡 Produção \\\\|\\\\s*\\\\|$' Questoes_Fiscais_NFe_2027.md)",
       "Bash(echo \"  bloqueia producao:        $\\(grep -cE '🟡 Produção \\\\|\\\\s*\\\\|$' Questoes_Fiscais_NFe_2027.md\\)\")",
       "Bash(grep -cE '🟢 Teste \\\\|\\\\s*\\\\|$' Questoes_Fiscais_NFe_2027.md)",
-      "Bash(awk '{print $5, $9}')"
+      "Bash(awk '{print $5, $9}')",
+      "Bash(ls -la \"/d/TDS/Workspace_Protheus_Prd/PROTHEUS/Includes\" 2>/dev/null | grep -i \"safx07\\\\|safx3007\\\\|dhl.ch\" || echo \"DIR NAO ACESSIVEL/NAO EXISTE\")",
+      "Read(//d/TDS/Workspace_Protheus_Prd/PROTHEUS/**)"
     ]
   }
 }
