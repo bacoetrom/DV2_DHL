@@ -16,6 +16,10 @@ Processamento NF Retorno Simbólico
 @author Diogo Mesquita
 @since 25/05/2017
 @version undefined
+@history 27/11/2026, Wellington Santana, [RTC-2026/2027] Apos gerar a NF de retorno simbolico (MaPvlNFS),
+         registra no log o IBS UF/IBS Mun/CBS/IS calculado pelo motor de tributos (F2D) e avisa quando
+         a nota nao tem IBS/CBS na F2D (audRtcRet). Os valores do SAP (SZB) sao da venda e nao sao
+         usados no retorno. Somente leitura.
 
 @type function
 /*/
@@ -86,6 +90,11 @@ user function PrcNfRet(cDocument, cSeries)
 						_cSerie       := aDadosNF[2] 
 						
 						U_GRAVAFCP(_cSerie,_cNF,_cDOCSCJ,_cSERISCJ) //Acrescentado por Edson Deluca - FIT Gestão - 22.06.2018 - NF 4.0
+
+						// INICIO Wellington Santana 27/11/2026 - [RTC-2026/2027] Auditoria do IBS/CBS/IS do retorno
+						// simbolico calculado pelo motor de tributos (F2D). Somente leitura: registra no log.
+						audRtcRet(aDadosNF[1], aDadosNF[2])
+						// FIM Wellington Santana 27/11/2026
 					else
 						if !lImpMsaNfe
 							MsgAlert("Erro ao gerar a nota fiscal de retorno simbólico.") 
@@ -384,6 +393,76 @@ Static Function execRET()
 	FWLogMsg("INFO", "LAST", "BusinessObject", funName(), "*********************FIM execRET IN PrcNfRet.prw " + time() + " ********************" + CRLF, "01", "", 0, 0, {})
 	
 return ( aRet )
+
+
+/*/{Protheus.doc} audRtcRet
+Auditoria do IBS UF, IBS municipal, CBS e IS da NF de retorno simbolico.
+
+O retorno simbolico e gerado pelo MaPvlNFS a partir do pedido (C6_TES) e o IBS/CBS/IS
+vem do motor de tributos (F2D). O IP_040 (SZA/SZB) traz o IBS/CBS da venda do
+depositante, por isso nao e comparado aqui. A funcao:
+- registra no log (INFO) os totais de IBS UF, IBS Mun, CBS e IS da nota;
+- avisa (WARN) quando nenhum item, ou parte dos itens, tem IBS/CBS na F2D: a nota pode
+  sair sem o grupo IBSCBS (CST/cClassTrib). Conferir a TES e o cClassTrib do retorno.
+
+[RTC-2026/2027] Somente leitura. Nao altera a nota nem interrompe o processo.
+Executa somente com ZZ_RTCCONF = .T. (padrao), dDataBase >= MV_RTC55 e com a funcao
+U_RtcF2DNf compilada (PrcGrvRco.prw).
+
+@type function
+@author Wellington Santana
+@since 27/11/2026
+@param cNota, character, Numero da NF de retorno simbolico
+@param cSerie, character, Serie da NF de retorno simbolico
+@return nil
+/*/
+Static Function audRtcRet(cNota, cSerie)
+
+	Local aArea		:= GetArea()
+	Local lConfere	:= SuperGetMv("ZZ_RTCCONF", .F., .T.)
+	Local dDataRTC	:= SuperGetMv("MV_RTC55", .F., SToD("20260105"))
+	Local aRetF2D	:= {}
+	Local aItens	:= {}
+	Local aTot		:= {0, 0, 0, 0}
+	Local nSemF2D	:= 0
+	Local nI		:= 0
+	Local nJ		:= 0
+	Local cNfLog	:= "[RTC-2026/2027] NF retorno simbolico " + AllTrim(cNota) + "/" + AllTrim(cSerie) + ": "
+
+	If lConfere .and. dDataBase >= dDataRTC .and. FindFunction("U_RtcF2DNf")
+
+		aRetF2D := U_RtcF2DNf(cNota, PadR(cSerie, TamSx3("D2_SERIE")[1]), "", "")
+
+		If aRetF2D[1]
+			aItens := aRetF2D[3]
+
+			For nI := 1 To Len(aItens)
+				If aItens[nI][5] == 0
+					nSemF2D++
+				EndIf
+				For nJ := 1 To Len(aTot)
+					aTot[nJ] += aItens[nI][2][nJ]
+				Next nJ
+			Next nI
+
+			If Len(aItens) > 0 .and. nSemF2D == Len(aItens)
+				FWLogMsg("WARN", , "BusinessObject", "PrcNfRet", "", "01", cNfLog + "nenhum item com IBS/CBS na F2D. " + ;
+					"A nota pode sair sem o grupo IBSCBS. Conferir a TES do pedido (C6_TES) e o cClassTrib do retorno.", 0, 0, {})
+			ElseIf nSemF2D > 0
+				FWLogMsg("WARN", , "BusinessObject", "PrcNfRet", "", "01", cNfLog + cValToChar(nSemF2D) + " de " + ;
+					cValToChar(Len(aItens)) + " item(ns) sem IBS/CBS na F2D. Conferir a TES do pedido (C6_TES).", 0, 0, {})
+			EndIf
+
+			FWLogMsg("INFO", , "BusinessObject", "PrcNfRet", "", "01", cNfLog + "IBS UF = " + AllTrim(Str(aTot[1], 16, 2)) + ;
+				", IBS Mun = " + AllTrim(Str(aTot[2], 16, 2)) + ", CBS = " + AllTrim(Str(aTot[3], 16, 2)) + ;
+				", IS = " + AllTrim(Str(aTot[4], 16, 2)) + " (motor de tributos; nao comparado com o IP_040, que traz a venda).", 0, 0, {})
+		EndIf
+
+	EndIf
+
+	RestArea(aArea)
+
+Return
 
 
 /**

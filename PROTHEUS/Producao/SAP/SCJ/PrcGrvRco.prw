@@ -12,6 +12,10 @@ Realiza processamento final da NF RCO - Referência do Fonte M460FIM
 @version undefined
 @history 23/11/2026, Wellington Santana, [RTC-2026/2027] Conferência do IBS/CBS calculado pelo Protheus (F2D)
          com o enviado pelo SAP no IP_040 (confIbsCbs). Somente aviso no log, sem alterar a nota.
+@history 27/11/2026, Wellington Santana, [RTC-2026/2027] confIbsCbs passa a conferir tambem a base
+         (ZB_IBSUFBS/ZB_IBSMUBS/ZB_CBSTXBS), a aliquota (ZB_IBSUFTX/ZB_IBSMUTX/ZB_CBSTXRT), os totais
+         da SZA (ZA_IBSUFTO/ZA_IBSMUTO/ZA_IBSTOTA/ZA_CBSTOTA) e o IS. Leitura da F2D isolada em
+         U_RtcF2DNf (FWExecStatement), reutilizada pelo PrcNfRet.
 
 @type function
 /*/
@@ -308,6 +312,7 @@ User Function PrcGrvRco()
 
 		// INICIO Wellington Santana 23/11/2026 - [RTC-2026/2027] Confere o IBS/CBS calculado pelo Protheus
 		// (motor de tributos - F2D) com o enviado pelo SAP no IP_040 (SZB). Somente leitura: avisa no log.
+		// Wellington Santana 27/11/2026 - inclui base, aliquota, totais da SZA e IS
 		confIbsCbs(oSqlSZB)
 		// FIM Wellington Santana 23/11/2026
 
@@ -335,9 +340,22 @@ Return (lRet)
 
 
 /*/{Protheus.doc} confIbsCbs
-Confere, item a item, o IBS UF, o IBS municipal e a CBS da NF RCO calculados pelo
-Protheus (motor de tributos, tabela F2D) com os valores enviados pelo SAP no IP_040
-(ZB_IBSUFVL, ZB_IBSMUVL e ZB_CBSTXVL).
+Confere a NF RCO: IBS UF, IBS municipal, CBS e IS calculados pelo Protheus (motor de
+tributos, tabela F2D) contra os valores enviados pelo SAP no IP_040 (SZA/SZB).
+
+Por item (SZB x F2D), para IBS UF, IBS municipal e CBS:
+- valor (ZB_IBSUFVL, ZB_IBSMUVL, ZB_CBSTXVL). Na divergencia, o log traz tambem a base
+  e a aliquota dos dois lados para facilitar a analise;
+- base (ZB_IBSUFBS, ZB_IBSMUBS, ZB_CBSTXBS), quando o valor confere mas a base nao. Aponta,
+  por exemplo, a base calculada antes da regravacao do item no bloco de ICMS desonerado;
+- item com IBS/CBS no SAP e sem nenhum registro de IBS/CBS na F2D (motor nao calculou).
+A aliquota (ZB_IBSUFTX, ZB_IBSMUTX, ZB_CBSTXRT) so entra no log da divergencia de valor:
+o SAP envia aliquota efetiva (SAPIP040:getItRate) e a F2D pode ter a aliquota cheia.
+
+IS (Imposto Seletivo): o IP_040 nao tem campo de IS na SZA/SZB. Se o Protheus calcular IS
+na nota (codigo do tributo em ZZ_TRIBSIS), gera aviso.
+
+Por nota (SZA x soma da F2D): ZA_IBSUFTO, ZA_IBSMUTO, ZA_CBSTOTA e ZA_IBSTOTA (UF + Mun).
 
 [RTC-2026/2027] Somente leitura. Nao altera a nota nem interrompe o processo: cada
 divergencia acima de RTC_TOLERANCIA gera um aviso no log (FWLogMsg WARN). Os valores
@@ -348,14 +366,12 @@ inconsistente.
 Executa somente quando:
 - ZZ_RTCCONF = .T. (padrao);
 - dDataBase >= MV_RTC55 (inicio da reforma, mesmo parametro do ProcRCOMsa);
-- a tabela F2D e o campo D2_IDTRIB existem no dicionario.
-
-Codigos dos tributos na F2D: ZZ_TRIBSUF, ZZ_TRIBSMU e ZZ_TRIBCBS (mesmos parametros
-e padroes do DHLIdManager).
+- a tabela F2D e o campo D2_IDTRIB existem no dicionario (verificado em U_RtcF2DNf).
 
 @type function
 @author Wellington Santana
 @since 23/11/2026
+@history 27/11/2026, Wellington Santana, [RTC-2026/2027] Base, aliquota, totais da SZA e IS.
 @param oSqlSZB, object, Itens do IP_040 (DHLIp040Sap:getItensSZB)
 @return nil
 /*/
@@ -364,93 +380,294 @@ Static Function confIbsCbs(oSqlSZB)
 	Local aArea		:= GetArea()
 	Local lConfere	:= SuperGetMv("ZZ_RTCCONF", .F., .T.)
 	Local dDataRTC	:= SuperGetMv("MV_RTC55", .F., SToD("20260105"))
-	Local cTribUF	:= ""
-	Local cTribMun	:= ""
-	Local cTribCBS	:= ""
-	Local cQuery	:= ""
-	Local cAliasQry	:= ""
 	Local cChave	:= ""
 	Local nTamItem	:= TamSx3("D2_ITEM")[1]
+	Local aRetF2D	:= {}
 	Local aProth	:= {}
-	Local aSap		:= {}
+	Local aSapVal	:= {}
+	Local aSapBas	:= {}
+	Local aSapAli	:= {}
 	Local aNomes	:= {"IBS UF", "IBS Mun", "CBS"}
+	Local aTotPro	:= {0, 0, 0, 0}
+	Local aTotSza	:= {}
+	Local aNomTot	:= {"IBS UF (ZA_IBSUFTO)", "IBS Mun (ZA_IBSMUTO)", "CBS (ZA_CBSTOTA)", "IBS total (ZA_IBSTOTA)"}
+	Local lBaseAli	:= .F.
+	Local lF2D		:= .F.
 	Local nPos		:= 0
 	Local nI		:= 0
+	Local nItens	:= 0
 	Local nDiverg	:= 0
+	Local nTolTot	:= 0
 	Local cNfLog	:= AllTrim(SF2->F2_DOC) + "/" + AllTrim(SF2->F2_SERIE)
 
-	If !lConfere .or. dDataBase < dDataRTC .or. !AliasInDic("F2D") .or. SD2->(FieldPos("D2_IDTRIB")) == 0
-		RestArea(aArea)
-		Return
+	If lConfere .and. dDataBase >= dDataRTC
+
+		// Valores do Protheus por item da nota (uma unica query, fora do laco)
+		aRetF2D		:= U_RtcF2DNf(SF2->F2_DOC, SF2->F2_SERIE, SF2->F2_CLIENTE, SF2->F2_LOJA)
+		lF2D		:= aRetF2D[1]
+		lBaseAli	:= aRetF2D[2]
+		aProth		:= aRetF2D[3]
+
 	EndIf
 
-	cTribUF		:= SuperGetMv("ZZ_TRIBSUF", .F., "TR0002")
-	cTribMun	:= SuperGetMv("ZZ_TRIBSMU", .F., "TR0003")
-	cTribCBS	:= SuperGetMv("ZZ_TRIBCBS", .F., "TR0001")
+	If lF2D
 
-	// Valores do Protheus por item da nota (uma unica query, fora do laco)
-	cQuery := " SELECT SD2.D2_COD, SD2.D2_ITEM, "
-	cQuery += " SUM(CASE WHEN F2D.F2D_TRIB = '" + cTribUF  + "' THEN F2D.F2D_VALOR ELSE 0 END) VLIBSUF, "
-	cQuery += " SUM(CASE WHEN F2D.F2D_TRIB = '" + cTribMun + "' THEN F2D.F2D_VALOR ELSE 0 END) VLIBSMU, "
-	cQuery += " SUM(CASE WHEN F2D.F2D_TRIB = '" + cTribCBS + "' THEN F2D.F2D_VALOR ELSE 0 END) VLCBS "
-	cQuery += " FROM " + RetSqlName("SD2") + " SD2 "
-	cQuery += " LEFT JOIN " + RetSqlName("F2D") + " F2D ON F2D.F2D_FILIAL = '" + xFilial("F2D") + "' "
-	cQuery += " 	AND F2D.F2D_IDREL = SD2.D2_IDTRIB "
-	cQuery += " 	AND F2D.F2D_TABELA = 'SD2' "
-	cQuery += " 	AND F2D.D_E_L_E_T_ = ' ' "
-	cQuery += " WHERE SD2.D2_FILIAL = '" + xFilial("SD2") + "' "
-	cQuery += " 	AND SD2.D2_DOC = '" + SF2->F2_DOC + "' "
-	cQuery += " 	AND SD2.D2_SERIE = '" + SF2->F2_SERIE + "' "
-	cQuery += " 	AND SD2.D2_CLIENTE = '" + SF2->F2_CLIENTE + "' "
-	cQuery += " 	AND SD2.D2_LOJA = '" + SF2->F2_LOJA + "' "
-	cQuery += " 	AND SD2.D_E_L_E_T_ = ' ' "
-	cQuery += " GROUP BY SD2.D2_COD, SD2.D2_ITEM "
-	cQuery := ChangeQuery(cQuery)
-
-	cAliasQry := GetNextAlias()
-	dbUseArea(.T., "TOPCONN", TcGenQry(,, cQuery), cAliasQry, .F., .T.)
-	While (cAliasQry)->(!Eof())
-		aAdd(aProth, {AllTrim((cAliasQry)->D2_COD) + "|" + AllTrim((cAliasQry)->D2_ITEM), ;
-			{(cAliasQry)->VLIBSUF, (cAliasQry)->VLIBSMU, (cAliasQry)->VLCBS}})
-		(cAliasQry)->(dbSkip())
-	EndDo
-	(cAliasQry)->(dbCloseArea())
-
-	// Compara com o SAP (mesma chave produto + item usada no posicionamento da SD2 deste fonte)
-	oSqlSZB:goTop()
-	While oSqlSZB:notIsEof()
-
-		cChave	:= AllTrim(oSqlSZB:getValue("ZB_ITEM")) + "|" + PadL(AllTrim(oSqlSZB:getValue("ZB_LINITEM")), nTamItem, "0")
-		aSap	:= {oSqlSZB:getValue("ZB_IBSUFVL"), oSqlSZB:getValue("ZB_IBSMUVL"), oSqlSZB:getValue("ZB_CBSTXVL")}
-		nPos	:= aScan(aProth, {|x| x[1] == cChave})
-
-		If nPos == 0
-			nDiverg++
-			FWLogMsg("WARN", , "BusinessObject", "PrcGrvRco", "", "01", ;
-				"[RTC-2026/2027] NF RCO " + cNfLog + ": item " + cChave + " do IP_040 nao encontrado na SD2 para conferir IBS/CBS.", 0, 0, {})
-		Else
-			For nI := 1 To Len(aSap)
-				If Abs(aSap[nI] - aProth[nPos][2][nI]) > RTC_TOLERANCIA
-					nDiverg++
-					FWLogMsg("WARN", , "BusinessObject", "PrcGrvRco", "", "01", ;
-						"[RTC-2026/2027] NF RCO " + cNfLog + ", item " + cChave + ": " + aNomes[nI] + ;
-						" SAP = " + AllTrim(Str(aSap[nI], 14, 2)) + " / Protheus = " + AllTrim(Str(aProth[nPos][2][nI], 14, 2)), 0, 0, {})
-				EndIf
+		// Totais do Protheus: IBS UF, IBS Mun, CBS e IS
+		For nPos := 1 To Len(aProth)
+			For nI := 1 To Len(aTotPro)
+				aTotPro[nI] += aProth[nPos][2][nI]
 			Next nI
+		Next nPos
+
+		// Compara com o SAP (mesma chave produto + item usada no posicionamento da SD2 deste fonte)
+		oSqlSZB:goTop()
+		While oSqlSZB:notIsEof()
+
+			nItens++
+			cChave	:= AllTrim(oSqlSZB:getValue("ZB_ITEM")) + "|" + PadL(AllTrim(oSqlSZB:getValue("ZB_LINITEM")), nTamItem, "0")
+			aSapVal	:= {oSqlSZB:getValue("ZB_IBSUFVL"), oSqlSZB:getValue("ZB_IBSMUVL"), oSqlSZB:getValue("ZB_CBSTXVL")}
+			aSapBas	:= {oSqlSZB:getValue("ZB_IBSUFBS"), oSqlSZB:getValue("ZB_IBSMUBS"), oSqlSZB:getValue("ZB_CBSTXBS")}
+			aSapAli	:= {oSqlSZB:getValue("ZB_IBSUFTX"), oSqlSZB:getValue("ZB_IBSMUTX"), oSqlSZB:getValue("ZB_CBSTXRT")}
+			nPos	:= aScan(aProth, {|x| x[1] == cChave})
+
+			If nPos == 0
+				nDiverg++
+				logRtc(cNfLog, "item " + cChave + " do IP_040 nao encontrado na SD2 para conferir IBS/CBS.")
+			ElseIf aProth[nPos][5] == 0 .and. (aSapVal[1] + aSapVal[2] + aSapVal[3]) > RTC_TOLERANCIA
+				nDiverg++
+				logRtc(cNfLog, "item " + cChave + " com IBS/CBS no SAP e sem registro de IBS/CBS na F2D " + ;
+					"(motor de tributos nao calculou). Revisar a TES e o cadastro de tributos.")
+			Else
+				nDiverg += confItem(cNfLog, cChave, aNomes, aSapVal, aSapBas, aSapAli, aProth[nPos], lBaseAli)
+			EndIf
+
+			oSqlSZB:skip()
+		EndDo
+		oSqlSZB:goTop()
+
+		// IS: o IP_040 nao traz Imposto Seletivo (SAP equivale a zero)
+		If aTotPro[4] > RTC_TOLERANCIA
+			nDiverg++
+			logRtc(cNfLog, "IS calculado pelo Protheus = " + fmtVal(aTotPro[4]) + ", mas o IP_040 nao possui campo " + ;
+				"de Imposto Seletivo (SAP = 0). Conferir a TES e o cadastro de tributos.")
 		EndIf
 
-		oSqlSZB:skip()
-	EndDo
+		// Totais da nota: SZA (gravada pelo SAPIP040 com a soma dos itens) x soma da F2D
+		nTolTot	:= RTC_TOLERANCIA * Max(nItens, 1)
+		aTotSza	:= {SZA->ZA_IBSUFTO, SZA->ZA_IBSMUTO, SZA->ZA_CBSTOTA, SZA->ZA_IBSTOTA}
+		aTotPro[4] := aTotPro[1] + aTotPro[2]	// posicao 4 passa a ser o IBS total (IS ja conferido acima)
+		For nI := 1 To Len(aTotSza)
+			If Abs(aTotSza[nI] - aTotPro[nI]) > nTolTot
+				nDiverg++
+				logRtc(cNfLog, "total " + aNomTot[nI] + " SAP = " + fmtVal(aTotSza[nI]) + " / Protheus = " + fmtVal(aTotPro[nI]))
+			EndIf
+		Next nI
 
-	If nDiverg > 0
-		FWLogMsg("WARN", , "BusinessObject", "PrcGrvRco", "", "01", ;
-			"[RTC-2026/2027] NF RCO " + cNfLog + ": " + cValToChar(nDiverg) + " divergencia(s) de IBS/CBS entre SAP e Protheus. Chave NF SCJ: " + ;
-			AllTrim(SZA->ZA_KENFSCJ), 0, 0, {})
+		If nDiverg > 0
+			logRtc(cNfLog, cValToChar(nDiverg) + " divergencia(s) de IBS/CBS/IS entre SAP e Protheus. Chave NF SCJ: " + ;
+				AllTrim(SZA->ZA_KENFSCJ))
+		EndIf
+
 	EndIf
 
 	RestArea(aArea)
 
 Return
+
+
+/*/{Protheus.doc} confItem
+Confere um item da NF RCO: valor e base de IBS UF, IBS municipal e CBS (SAP x F2D).
+
+@type function
+@author Wellington Santana
+@since 27/11/2026
+@param cNfLog, character, Nota/serie para o log
+@param cChave, character, Produto|item
+@param aNomes, array, Nomes dos tributos {"IBS UF", "IBS Mun", "CBS"}
+@param aSapVal, array, Valores do SAP
+@param aSapBas, array, Bases do SAP
+@param aSapAli, array, Aliquotas do SAP
+@param aItProth, array, Item retornado por U_RtcF2DNf
+@param lBaseAli, logical, F2D com base e aliquota disponiveis
+@return numeric, Quantidade de divergencias do item
+/*/
+Static Function confItem(cNfLog, cChave, aNomes, aSapVal, aSapBas, aSapAli, aItProth, lBaseAli)
+
+	Local nI		:= 0
+	Local nDiverg	:= 0
+	Local cDetalhe	:= ""
+
+	For nI := 1 To Len(aNomes)
+		If Abs(aSapVal[nI] - aItProth[2][nI]) > RTC_TOLERANCIA
+			nDiverg++
+			cDetalhe := ""
+			If lBaseAli
+				cDetalhe := " (base SAP " + fmtVal(aSapBas[nI]) + " x Protheus " + fmtVal(aItProth[3][nI]) + ;
+					"; aliquota SAP " + fmtVal(aSapAli[nI]) + " x Protheus " + fmtVal(aItProth[4][nI]) + ")"
+			EndIf
+			logRtc(cNfLog, "item " + cChave + ": " + aNomes[nI] + " SAP = " + fmtVal(aSapVal[nI]) + ;
+				" / Protheus = " + fmtVal(aItProth[2][nI]) + cDetalhe)
+		ElseIf lBaseAli .and. (aSapVal[nI] + aItProth[2][nI]) > 0 .and. Abs(aSapBas[nI] - aItProth[3][nI]) > RTC_TOLERANCIA
+			// Base so e conferida quando ha tributo: IBS municipal zerado (2026) pode vir sem base no SAP
+			nDiverg++
+			logRtc(cNfLog, "item " + cChave + ": base de " + aNomes[nI] + " SAP = " + fmtVal(aSapBas[nI]) + ;
+				" / Protheus = " + fmtVal(aItProth[3][nI]))
+		EndIf
+	Next nI
+
+Return nDiverg
+
+
+/*/{Protheus.doc} logRtc
+Registra aviso da conferencia IBS/CBS/IS da NF RCO no log (FWLogMsg WARN).
+
+@type function
+@author Wellington Santana
+@since 27/11/2026
+@param cNfLog, character, Nota/serie
+@param cMsg, character, Mensagem
+@return nil
+/*/
+Static Function logRtc(cNfLog, cMsg)
+
+	FWLogMsg("WARN", , "BusinessObject", "PrcGrvRco", "", "01", "[RTC-2026/2027] NF RCO " + cNfLog + ": " + cMsg, 0, 0, {})
+
+Return
+
+
+/*/{Protheus.doc} fmtVal
+Formata valor numerico com 2 casas para o log.
+
+@type function
+@author Wellington Santana
+@since 27/11/2026
+@param nValor, numeric, Valor
+@return character, Valor formatado
+/*/
+Static Function fmtVal(nValor)
+Return AllTrim(Str(nValor, 16, 2))
+
+
+/*/{Protheus.doc} RtcF2DNf
+Le na F2D (motor de tributos) o IBS UF, o IBS municipal, a CBS e o IS calculados para
+cada item de uma nota fiscal de saida. Usada pela conferencia da NF RCO (PrcGrvRco) e
+pela auditoria da NF de retorno simbolico (PrcNfRet).
+
+Codigos dos tributos (F2D_TRIB) lidos dos parametros:
+- ZZ_TRIBSUF (IBS UF), ZZ_TRIBSMU (IBS Mun) e ZZ_TRIBCBS (CBS): mesmos parametros e
+  padroes do DHLIdManager;
+- ZZ_TRIBSIS (IS): sem padrao. Vazio = IS nao lido (retorna zero).
+Ignora tributo excluido (F2D_DTEXCL preenchido), como o padrao (FISA175/tciclass).
+Base e aliquota so sao lidas quando F2D_BASE e F2D_ALIQ existem no dicionario.
+
+@type function
+@author Wellington Santana
+@since 27/11/2026
+@param cDoc, character, Numero da nota (F2_DOC)
+@param cSerie, character, Serie (F2_SERIE)
+@param cCliente, character, Cliente (F2_CLIENTE). Vazio = nao filtra cliente/loja
+@param cLoja, character, Loja (F2_LOJA)
+@return array, {lF2D, lBaseAli, aItens}
+        lF2D     - F2D e D2_IDTRIB existem no dicionario (consulta executada)
+        lBaseAli - base e aliquota disponiveis
+        aItens   - {cChave (D2_COD|D2_ITEM), {vlIBSUF, vlIBSMun, vlCBS, vlIS},
+                    {bsIBSUF, bsIBSMun, bsCBS}, {alIBSUF, alIBSMun, alCBS}, nQtdIBSCBS}
+/*/
+User Function RtcF2DNf(cDoc, cSerie, cCliente, cLoja)
+
+	Local aTrib			:= {}
+	Local aBind			:= {}
+	Local aItens		:= {}
+	Local aBas			:= {}
+	Local aAli			:= {}
+	Local lF2D			:= .F.
+	Local lBaseAli		:= .F.
+	Local lDtExcl		:= .F.
+	Local cQuery		:= ""
+	Local cAliasQry		:= ""
+	Local oStatement	:= nil
+	Local nI			:= 0
+
+	Default cCliente	:= ""
+	Default cLoja		:= ""
+
+	lF2D := AliasInDic("F2D") .and. !Empty(GetSx3Cache("D2_IDTRIB", "X3_CAMPO"))
+
+	If lF2D
+
+		lBaseAli	:= !Empty(GetSx3Cache("F2D_BASE", "X3_CAMPO")) .and. !Empty(GetSx3Cache("F2D_ALIQ", "X3_CAMPO"))
+		lDtExcl		:= !Empty(GetSx3Cache("F2D_DTEXCL", "X3_CAMPO"))
+		aTrib		:= {SuperGetMv("ZZ_TRIBSUF", .F., "TR0002"), SuperGetMv("ZZ_TRIBSMU", .F., "TR0003"), ;
+						SuperGetMv("ZZ_TRIBCBS", .F., "TR0001"), SuperGetMv("ZZ_TRIBSIS", .F., "")}
+
+		cQuery := " SELECT SD2.D2_COD, SD2.D2_ITEM "
+		cQuery += " , SUM(CASE WHEN F2D.F2D_TRIB IN (?, ?, ?) THEN 1 ELSE 0 END) QTDIBSCBS "
+		aAdd(aBind, aTrib[1])
+		aAdd(aBind, aTrib[2])
+		aAdd(aBind, aTrib[3])
+		For nI := 1 To 4
+			cQuery += " , SUM(CASE WHEN F2D.F2D_TRIB = ? THEN F2D.F2D_VALOR ELSE 0 END) VL" + cValToChar(nI)
+			aAdd(aBind, aTrib[nI])
+		Next nI
+		If lBaseAli
+			For nI := 1 To 3
+				cQuery += " , SUM(CASE WHEN F2D.F2D_TRIB = ? THEN F2D.F2D_BASE ELSE 0 END) BS" + cValToChar(nI)
+				aAdd(aBind, aTrib[nI])
+				cQuery += " , MAX(CASE WHEN F2D.F2D_TRIB = ? THEN F2D.F2D_ALIQ ELSE 0 END) AL" + cValToChar(nI)
+				aAdd(aBind, aTrib[nI])
+			Next nI
+		EndIf
+		cQuery += " FROM " + RetSqlName("SD2") + " SD2 "
+		cQuery += " LEFT JOIN " + RetSqlName("F2D") + " F2D ON F2D.F2D_FILIAL = ? "
+		aAdd(aBind, xFilial("F2D"))
+		cQuery += " 	AND F2D.F2D_IDREL = SD2.D2_IDTRIB "
+		cQuery += " 	AND SD2.D2_IDTRIB <> ' ' "
+		cQuery += " 	AND F2D.F2D_TABELA = 'SD2' "
+		If lDtExcl
+			cQuery += " 	AND F2D.F2D_DTEXCL = ' ' "
+		EndIf
+		cQuery += " 	AND F2D.D_E_L_E_T_ = ' ' "
+		cQuery += " WHERE SD2.D2_FILIAL = ? "
+		aAdd(aBind, xFilial("SD2"))
+		cQuery += " 	AND SD2.D2_DOC = ? "
+		aAdd(aBind, cDoc)
+		cQuery += " 	AND SD2.D2_SERIE = ? "
+		aAdd(aBind, cSerie)
+		If !Empty(cCliente)
+			cQuery += " 	AND SD2.D2_CLIENTE = ? "
+			aAdd(aBind, cCliente)
+			cQuery += " 	AND SD2.D2_LOJA = ? "
+			aAdd(aBind, cLoja)
+		EndIf
+		cQuery += " 	AND SD2.D_E_L_E_T_ = ' ' "
+		cQuery += " GROUP BY SD2.D2_COD, SD2.D2_ITEM "
+		cQuery += " ORDER BY SD2.D2_ITEM "
+
+		oStatement := FWExecStatement():New(ChangeQuery(cQuery))
+		For nI := 1 To Len(aBind)
+			oStatement:SetString(nI, aBind[nI])
+		Next nI
+		cAliasQry := oStatement:OpenAlias()
+
+		While (cAliasQry)->(!Eof())
+			aBas := {0, 0, 0}
+			aAli := {0, 0, 0}
+			If lBaseAli
+				aBas := {(cAliasQry)->BS1, (cAliasQry)->BS2, (cAliasQry)->BS3}
+				aAli := {(cAliasQry)->AL1, (cAliasQry)->AL2, (cAliasQry)->AL3}
+			EndIf
+			aAdd(aItens, {AllTrim((cAliasQry)->D2_COD) + "|" + AllTrim((cAliasQry)->D2_ITEM), ;
+				{(cAliasQry)->VL1, (cAliasQry)->VL2, (cAliasQry)->VL3, (cAliasQry)->VL4}, ;
+				aBas, aAli, (cAliasQry)->QTDIBSCBS})
+			(cAliasQry)->(dbSkip())
+		EndDo
+
+		(cAliasQry)->(dbCloseArea())
+		oStatement:Destroy()
+
+	EndIf
+
+Return {lF2D, lBaseAli, aItens}
 
 
 /*

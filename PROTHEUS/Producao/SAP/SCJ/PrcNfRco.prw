@@ -3,12 +3,18 @@
 
 #define NF_TABELA 					"01"
 
+// Wellington Santana 27/11/2026 - [RTC-2026/2027] tolerancia de arredondamento por item na conferencia de IBS/CBS
+#define RTC_TOLERANCIA	0.01
+
 /*/{Protheus.doc} PrcNfRco
 Processamento NF Remessa por Conta e Ordem
 @author Thiago Meschiatti
 @since 20/05/2017
 @version undefined
 @param lGerarRet, logical, Determina se efetuará somente a geração da NF Ret
+@history 27/11/2026, Wellington Santana, [RTC-2026/2027] Antes de gerar a NF RCO (MATA920), confere os
+         totais de IBS/CBS da SZA (ZA_IBSUFTO/ZA_IBSMUTO/ZA_IBSTOTA/ZA_CBSTOTA) com a soma dos itens da
+         SZB e os itens com valor de IBS/CBS sem base (vldRtcSzb). Somente aviso no log.
 
 @type function
 /*/
@@ -162,6 +168,13 @@ Static Function prepRCO(aHeader, aItems, oSqlSZB)
 		lRet := .f.
 	EndIf
 
+	// INICIO Wellington Santana 27/11/2026 - [RTC-2026/2027] Confere IBS/CBS do IP_040 (SZA x SZB) antes
+	// de gerar a NF RCO. Somente aviso no log: o calculo da nota e do motor de tributos (F2D).
+	If lRet
+		vldRtcSzb(oSqlSZB)
+	EndIf
+	// FIM Wellington Santana 27/11/2026
+
 	If lRet .and. !oIp040:HasNfRet()
 		mountHeader(@aHeader)
 
@@ -198,6 +211,92 @@ Static Function prepRCO(aHeader, aItems, oSqlSZB)
 	FWLogMsg("INFO", "LAST", "BusinessObject", funName(), "", "01", "*********************FIM prepRCO IN PrcNfRco.PRW " + time() + " ********************" + CRLF, 0, 0, {})
 
 Return (lRet)
+
+
+/*/{Protheus.doc} vldRtcSzb
+Confere os dados de IBS/CBS recebidos do SAP no IP_040 antes da geracao da NF RCO:
+- totais da SZA (ZA_IBSUFTO, ZA_IBSMUTO, ZA_CBSTOTA e ZA_IBSTOTA = UF + Mun) contra a
+  soma dos itens da SZB (ZB_IBSUFVL, ZB_IBSMUVL, ZB_CBSTXVL). O SAPIP040 grava o total
+  pela soma dos itens; divergencia aqui indica SZA/SZB alterada depois da importacao;
+- item com valor de IBS UF, IBS Mun ou CBS e sem a base correspondente
+  (ZB_IBSUFBS, ZB_IBSMUBS, ZB_CBSTXBS);
+- IP_040 sem IBS/CBS em nenhum item (aviso informativo).
+
+[RTC-2026/2027] Somente leitura e somente aviso no log: nao bloqueia a NF RCO, cujo
+IBS/CBS/IS e calculado pelo motor de tributos (F2D) no MATA920. A conferencia SAP x F2D
+e feita depois, no PrcGrvRco (confIbsCbs). O IP_040 nao tem campo de IS.
+
+Executa somente com ZZ_RTCCONF = .T. (padrao) e dDataBase >= MV_RTC55.
+Ao final o cursor da SZB volta para o primeiro registro.
+
+@type function
+@author Wellington Santana
+@since 27/11/2026
+@param oSqlSZB, object, Itens do IP_040 (DHLIp040Sap:getItensSZB)
+@return nil
+/*/
+Static Function vldRtcSzb(oSqlSZB)
+
+	Local lConfere	:= SuperGetMv("ZZ_RTCCONF", .F., .T.)
+	Local dDataRTC	:= SuperGetMv("MV_RTC55", .F., SToD("20260105"))
+	Local aCpoVal	:= {"ZB_IBSUFVL", "ZB_IBSMUVL", "ZB_CBSTXVL"}
+	Local aCpoBas	:= {"ZB_IBSUFBS", "ZB_IBSMUBS", "ZB_CBSTXBS"}
+	Local aSomaSzb	:= {0, 0, 0, 0}
+	Local aTotSza	:= {}
+	Local aNomes	:= {"IBS UF (ZA_IBSUFTO)", "IBS Mun (ZA_IBSMUTO)", "CBS (ZA_CBSTOTA)", "IBS total (ZA_IBSTOTA)"}
+	Local nItens	:= 0
+	Local nI		:= 0
+	Local nTolTot	:= 0
+	Local nDiverg	:= 0
+	Local cItem		:= ""
+	Local cChvLog	:= "[RTC-2026/2027] IP_040 NF SCJ " + AllTrim(SZA->ZA_DOCSCJ) + "/" + AllTrim(SZA->ZA_SERISCJ) + ": "
+
+	If lConfere .and. dDataBase >= dDataRTC
+
+		oSqlSZB:goTop()
+		While oSqlSZB:notIsEof()
+
+			nItens++
+			cItem := AllTrim(oSqlSZB:getValue("ZB_ITEM")) + "|" + AllTrim(oSqlSZB:getValue("ZB_LINITEM"))
+
+			For nI := 1 To Len(aCpoVal)
+				aSomaSzb[nI] += oSqlSZB:getValue(aCpoVal[nI])
+				If oSqlSZB:getValue(aCpoVal[nI]) > 0 .and. oSqlSZB:getValue(aCpoBas[nI]) <= 0
+					nDiverg++
+					FWLogMsg("WARN", , "BusinessObject", "PrcNfRco", "", "01", cChvLog + "item " + cItem + " com " + ;
+						aCpoVal[nI] + " = " + AllTrim(Str(oSqlSZB:getValue(aCpoVal[nI]), 16, 2)) + " e " + aCpoBas[nI] + " zerada.", 0, 0, {})
+				EndIf
+			Next nI
+
+			oSqlSZB:skip()
+		EndDo
+		oSqlSZB:goTop()
+
+		aSomaSzb[4]	:= aSomaSzb[1] + aSomaSzb[2]
+		aTotSza		:= {SZA->ZA_IBSUFTO, SZA->ZA_IBSMUTO, SZA->ZA_CBSTOTA, SZA->ZA_IBSTOTA}
+		nTolTot		:= RTC_TOLERANCIA * Max(nItens, 1)
+
+		For nI := 1 To Len(aTotSza)
+			If Abs(aTotSza[nI] - aSomaSzb[nI]) > nTolTot
+				nDiverg++
+				FWLogMsg("WARN", , "BusinessObject", "PrcNfRco", "", "01", cChvLog + "total " + aNomes[nI] + " = " + ;
+					AllTrim(Str(aTotSza[nI], 16, 2)) + " diferente da soma dos itens da SZB = " + AllTrim(Str(aSomaSzb[nI], 16, 2)), 0, 0, {})
+			EndIf
+		Next nI
+
+		If nItens > 0 .and. (aSomaSzb[3] + aSomaSzb[4]) == 0
+			FWLogMsg("INFO", , "BusinessObject", "PrcNfRco", "", "01", cChvLog + "SAP nao enviou IBS/CBS nos itens. " + ;
+				"A NF RCO sera gerada com o calculo do motor de tributos (F2D).", 0, 0, {})
+		EndIf
+
+		If nDiverg > 0
+			FWLogMsg("WARN", , "BusinessObject", "PrcNfRco", "", "01", cChvLog + cValToChar(nDiverg) + ;
+				" inconsistencia(s) de IBS/CBS no IP_040. Chave NF SCJ: " + AllTrim(SZA->ZA_KENFSCJ), 0, 0, {})
+		EndIf
+
+	EndIf
+
+Return
 
 
 /*
