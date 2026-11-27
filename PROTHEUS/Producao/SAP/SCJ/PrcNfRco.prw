@@ -1,4 +1,4 @@
-#include 'protheus.ch'
+#include 'totvs.ch'	// Wellington Santana 27/11/2026 - antes protheus.ch (include obsoleto)
 #include 'dhl.ch'
 
 #define NF_TABELA 					"01"
@@ -514,11 +514,14 @@ static function setNewNumSX5()
 	dbselectArea("SX3")
 	SX3->(DbSetOrder(1))
 	If (SX3->(dbSeek("SD9"))) .And. cTpNrNfs == "3"
-		conout("** PRCNFRCO** OBTENDO NUMERACAO MA461NumNf ALIAS: " + alias() + " data/hora " + time() + " " + cValToChar(dDataBase) )
+		// Wellington Santana 27/11/2026 - conout substituido por FWLogMsg (SonarQube CA1004)
+		FWLogMsg("INFO", , "BusinessObject", "PrcNfRco", "", "01", "** PRCNFRCO** OBTENDO NUMERACAO MA461NumNf ALIAS: " + alias() + " data/hora " + time() + " " + cValToChar(dDataBase), 0, 0, {})
 		cNumDoc := MA461NumNf(.T., cSerie)
-		conout("** PRCNFRCO** OBTIDO NUMERACAO MA461NumNf ALIAS: " + alias() + " data/hora " + time() + " " + cValToChar(dDataBase) )
+		FWLogMsg("INFO", , "BusinessObject", "PrcNfRco", "", "01", "** PRCNFRCO** OBTIDO NUMERACAO MA461NumNf ALIAS: " + alias() + " data/hora " + time() + " " + cValToChar(dDataBase), 0, 0, {})
 	Else
-		Alert("Não foi possível atribuir número de NF! Verifique o conteúdo do parâmetro MV_TPNRNFS.")
+		// Wellington Santana 27/11/2026 - Alert substituido por MsgAlert e registro no log
+		FWLogMsg("WARN", , "BusinessObject", "PrcNfRco", "", "01", "Não foi possível atribuir número de NF! Verifique o conteúdo do parâmetro MV_TPNRNFS.", 0, 0, {})
+		MsgAlert("Não foi possível atribuir número de NF! Verifique o conteúdo do parâmetro MV_TPNRNFS.")
 		lOk := .f.
 	EndIf
 

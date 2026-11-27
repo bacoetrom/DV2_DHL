@@ -1,4 +1,4 @@
-#include "protheus.ch"
+#include "totvs.ch"	// Wellington Santana 27/11/2026 - antes protheus.ch (include obsoleto)
 #include "dhl.ch"
 
 // Wellington Santana 23/11/2026 - [RTC-2026/2027] tolerancia de arredondamento por item na conferencia de IBS/CBS
@@ -42,6 +42,7 @@ User Function PrcGrvRco()
 	Local aIdItens		:= {}
 	Local lSerCont		:= aScan(separa(GetNewPar("ZZ_SERCONT", ""), ";"), {|x| x == upper(alltrim(cSerie))}) > 0
 	Local lRet			:= .t.
+	Local lReturn		:= .t.	// Wellington Santana 27/11/2026 - retorno do U_PrcXmlNfe (antes sem declaracao)
 
 	// Inicio TOTVS IP Campinas iVan Oliveira - 15/06/2021 - SCJ - ICMS desonerado
 	Local _lIcmDeso	    := SZA->ZA_ICMSDES == 'S'

@@ -23,6 +23,10 @@ user function ProcRSymbMsa(oXml, cKey, cType, cSeries, cInvoice, cCustSupl, cBra
 	local lRet			:= .T.
 	local lSerCont		:= aScan(separa(GetNewPar("ZZ_SERCONT", ""), ";"), {|x| x == upper(alltrim(cSeries))}) > 0
 	local cTxtFile   		:= ""
+	// INICIO Wellington Santana 27/11/2026 - [RTC-2026/2027 - IP050] Regras da Reforma Tributaria
+	// replicadas do ProcMsaNFe/ProcRCOMsa. MV_RTC55 = data de implantacao da reforma em producao
+	local dDataRTC		:= SuperGetMv('MV_RTC55',.f.,stod('20260105'))
+	// FIM Wellington Santana 27/11/2026
 	private cTypeInv		:= cType
 	private oTxtFile 		:= nil
 	private oArquivo 		:= MsafNFeTag():newMsafNFeTag("arquivo")
@@ -33,7 +37,22 @@ user function ProcRSymbMsa(oXml, cKey, cType, cSeries, cInvoice, cCustSupl, cBra
 	private cCodSupCust	:= cCustSupl
 	private cCodBranch	:= cBranch
 	private	nVOutros		:= 0
-	
+	// INICIO Wellington Santana 27/11/2026 - [RTC-2026/2027 - IP050]
+	// lRefTribCo  : reforma vigente na data base (MV_RTC55), mesma regra do ProcMsaNFe
+	// lRtcIP050   : liga os grupos IBS/CBS/IS no TXT do IP050. Os grupos novos MUDAM O LAYOUT
+	//               POSICIONAL lido pelo SAP (decisao 4 do Diagnostico_Consolidado_NFe_2027_SCJ),
+	//               por isso o default e .F. (layout atual preservado) ate o SAP SCJ confirmar.
+	// cRtcTaxIcm / cRtcTaxIS : codigos do tributo no XML, lidos uma unica vez (SonarQube G2)
+	private lRefTribCo	:= dDataBase >= dDataRTC
+	private lRtcIP050		:= GetNewPar("ZZ_RTCIP50", .F.)
+	private cRtcTaxIcm	:= GetNewPar("ZZ_TRIBICM", "ICMS")
+	private cRtcTaxIS		:= GetNewPar("ZZ_TRIBIS", "IS")
+
+	// Auditoria de tags da Reforma Tributaria: so registra em log a tag esperada que nao veio
+	// do XmlNfeSef. Nao altera o XML nem o TXT. Inerte antes da data de MV_RTC55
+	U_DHLRtcTagAudit(oXmlUtil, cNrInvoice, cNrSeries)
+	// FIM Wellington Santana 27/11/2026
+
 	if !lSerCont
 		mountTags()
 
@@ -59,7 +78,12 @@ Static Function MountTags()
 	SetPrvt("oPis_aliq,oPis_qtde,oPis_nt,oPis_outr,oX_pis_percent,oX_pis_valor,oPISST,oPis_st,oX_pisst_percent,oX_pisst_valor,oCOFINS,oCofins_aliq,oCofins_qtde")
 	SetPrvt("oCofins_nt,oCofins_outr,oX_cofinsoutr_percent,oX_cofinsoutr_valor,oCOFINSST,oCofins_st,oX_cofinsst_percent,oX_cofinsst_valor,oISSQN,oImposto_devol,oIpi_devol,oInf_adicionais,oDocSerieOrig,oShipment,oKeySCJ")
 	SetPrvt("oDelivery, oNfProtocol")
-	
+	// INICIO Wellington Santana 27/11/2026 - [RTC-2026/2027 - IP050] objetos dos grupos da Reforma Tributaria
+	SetPrvt("oSeqXML,oIBSCBS,ogIBSCBS,ogIBSUF,ogIBSUFDif,ogIBSUFDevTrib,ogIBSUFRed,ogIBSMu,ogIBSMuDif,ogIBSMuDevTrib,ogIBSMuRed,ogCBS,ogCBSDif,ogCBSDevTrib,ogCBSRed,ogTribRegular,ogIBSCredPres,ogCBSCredPres,ogTribCompraGov")
+	SetPrvt("ogIBSCBSMon,ogMonPadrao,ogMonReten,ogMonRet,ogMonDif,ogIBCBMonAttrib,ogTransfCred,ogCredPresIBSZFM,oIBSCBSTot,ogIBSTot,ogIBSUFTot,ogIBSMuTot,ogIBSTotAttrib,ogCBSTot,ogMonTot,ovNFTot")
+	SetPrvt("ovItem,oIS,ogAjusteCompet,ogEstornoCred,oICMSPrevAnt,oDFeRef,ovProdLiqTot,oISTot")
+	// FIM Wellington Santana 27/11/2026
+
 	DoNota()
 	DoVersaoLayout()
 	DoInfNFe()
@@ -81,9 +105,29 @@ Static Function MountTags()
 	DoEntrega()
 	DoAutXML()
 	DoTotal()
+	// INICIO Wellington Santana 27/11/2026 - [RTC-2026/2027 - IP050] vProdLiqTot vem antes do ICMSTot
+	// (NT 2025.002, rejeicoes 1282/1283). So entra com ZZ_RTCIP50 ligado (muda o layout)
+	If lRtcIP050
+		DovProdLiqTot()
+	EndIf
+	// FIM Wellington Santana 27/11/2026
 	DoIcmsTot()
 	DoIssqnTot()
 	DoRetTrib()
+	// INICIO Wellington Santana 27/11/2026 - [RTC-2026/2027 - IP050] ISTot depois do ICMSTot e antes do
+	// IBSCBSTot; totais de IBS/CBS e vNFTot. Mesma ordem do ProcMsaNFe
+	If lRtcIP050
+		DoISTot()
+		DoIBSCBSTot()
+		DogIBSTot()
+		DogIBSUFTot()
+		DogIBSMuTot()
+		DogIBSTotAttrib()
+		DogCBSTot()
+		DogMonTot()
+		DovNFTot()
+	EndIf
+	// FIM Wellington Santana 27/11/2026
 	DoInfTransporte()
 	DoTransp()
 	DoTransporta()
@@ -190,11 +234,31 @@ static function DoIde()
 	oIde:setAttributeValue("tpNF"		,	iif(retValueAttribute("infnfe:_ide:_tpNF:text") $ '2', '0', retValueAttribute("infnfe:_ide:_tpNF:text")))
 	oIde:setAttributeValue("idDest"		,	retValueAttribute("infnfe:_ide:_idDest:text")		)
 	oIde:setAttributeValue("cMunFG"		,	cMunFG )
+	// INICIO Wellington Santana 27/11/2026 - [RTC-2026/2027 - IP050] cMunFGIBS, mesma regra do ProcMsaNFe
+	If lRtcIP050
+		oIde:setAttributeValue("cMunFGIBS"	,	EMPTY_VALUE )
+	EndIf
+	// FIM Wellington Santana 27/11/2026
 	oIde:setAttributeValue("tpImp"		,	cTpImp )
 	oIde:setAttributeValue("tpEmis"		,	cTpEmis	)
 	oIde:setAttributeValue("cDV"		,	cDv )
 	oIde:setAttributeValue("tpAmb"		,	cTpAmb )
 	oIde:setAttributeValue("finNfe"		,	cFinNfe )
+	// INICIO Wellington Santana 27/11/2026 - [RTC-2026/2027 - IP050] tpNFDebito (finNFe 6) e
+	// tpNFCredito (finNFe 5): valor da nota autorizada, fallback F2_TPCOMPL/F1_TPCOMPL com 2 digitos
+	If lRtcIP050
+		If cFinNfe == "6"
+			oIde:setAttributeValue("tpNFDebito"	,	getTpCompl("tpNFDebito") )
+		Else
+			oIde:setAttributeValue("tpNFDebito"	,	EMPTY_VALUE )
+		EndIf
+		If cFinNfe == "5"
+			oIde:setAttributeValue("tpNFCredito",	getTpCompl("tpNFCredito") )
+		Else
+			oIde:setAttributeValue("tpNFCredito",	EMPTY_VALUE )
+		EndIf
+	EndIf
+	// FIM Wellington Santana 27/11/2026
 	oIde:setAttributeValue("indFinal"	,	retValueAttribute("infnfe:_ide:_indFinal:text")	)
 	// INICIO Wellington Santana 22/11/2026 - [RTC-2026/2027 - Lote 4] indPres reflete a nota autorizada (XML);
 	// "0" mantido como fallback (regra Emerson Holanda 26/02/2021 - NT 2020.006)
@@ -225,9 +289,73 @@ static function getFinNfe()
 		endif
 	elseIf (cTipoNf $ "CIP")
 		cFinNfe := "2"
+	// INICIO Wellington Santana 27/11/2026 - [RTC-2026/2027 - IP050] Regras de finalidade replicadas do
+	// ProcMsaNFe (Wellington 18/11/2026), na versao corrigida do Lote 4 (ProcRCOMsa 22/11/2026).
+	// So troca valor do finNfe; o layout do IP050 nao muda.
+	// finNFe 5 (credito) e 6 (debito): definicao da area fiscal; subtipo em F2_TPCOMPL/F1_TPCOMPL.
+	elseIf (cTipoNf == "5")   // nota de credito
+		cFinNfe := "5"
+	elseIf (cTipoNf == "6")   // nota de debito
+		cFinNfe := "6"
+	else
+		// finNFe 3 (ajuste): unidades habilitadas em ZZ_FINAJUS (default so AG2). SF2/SD2 so sao
+		// validos na saida (F1_ZZTPNF nao existe) e unidade vazia e rejeitada
+		if !Empty(FWUnitBusiness()) .and. (cTypeInv == DHL_NFE_INVOICE_OUTFLOW) .and. ;
+			(FWUnitBusiness() $ GetNewPar("ZZ_FINAJUS", DHL_BUSINESSUNIT_AG2))
+
+			if SF2->F2_ZZTPNF == AJUSTE_FISCAL
+				cFinNfe := "3"
+			endIf
+
+		endIf
+
+		// Retorno de sacarias (regra Emerson Holanda 03/05/2019): so existe CFOP de devolucao e o
+		// retorno e feito com tipo normal. Apenas na saida, onde o SD2 e o da propria nota
+		if (cTypeInv == DHL_NFE_INVOICE_OUTFLOW) .and. AllTrim(SD2->D2_CF) $ "5921/6921"
+			cFinNfe := "4" //devolucao
+		endIf
+	// FIM Wellington Santana 27/11/2026
 	endIf
-	
+
 return cFinNfe
+
+/*/{Protheus.doc} getTpCompl
+Subtipo da nota de credito (tpNFCredito) ou de debito (tpNFDebito) para o IP050.
+
+[RTC-2026/2027 - IP050] Replicado do ProcMsaNFe/ProcRCOMsa:
+- prioriza o valor da nota autorizada (tag do XML), para o TXT nao divergir do XML transmitido;
+- fallback F2_TPCOMPL (saida) / F1_TPCOMPL (entrada);
+- formatado com 2 digitos (NT 2025.002 exige "07"; o campo TOTVS guarda "7").
+
+@type function
+@author Wellington Santana
+@since 27/11/2026
+@param cTagXml, character, nome da tag no ide do XML (tpNFDebito ou tpNFCredito)
+@return character, subtipo com 2 digitos ou vazio
+/*/
+static function getTpCompl(cTagXml)
+
+	local cTpCompl := ""
+
+	default cTagXml := ""
+
+	if !Empty(cTagXml)
+		cTpCompl := AllTrim(retValueAttribute("infnfe:_ide:_" + cTagXml + ":text"))
+	endIf
+
+	if Empty(cTpCompl)
+		if cTypeInv == DHL_NFE_INVOICE_INFLOW
+			cTpCompl := AllTrim(SF1->F1_TPCOMPL)
+		else
+			cTpCompl := AllTrim(SF2->F2_TPCOMPL)
+		endIf
+	endIf
+
+	if !Empty(cTpCompl)
+		cTpCompl := PadL(cTpCompl, 2, "0")
+	endIf
+
+return cTpCompl
 
 /**
  * Calculo do DV da NFe
@@ -1375,6 +1503,13 @@ static function DoEXTIPI()
 	oEXTIPI:setAttributeValue("qCom"		,validTagValue("oDetProd:_prod:_qCom:text"))
 	oEXTIPI:setAttributeValue("vUnCom"		,validTagValue("oDetProd:_prod:_vUnCom:text"))
 	oEXTIPI:setAttributeValue("vProd"		,validTagValue("oDetProd:_prod:_vProd:text"))
+	// INICIO Wellington Santana 27/11/2026 - [RTC-2026/2027 - IP050] vUnComLiq e vProdLiq entre vProd e
+	// cEANTrib (ordem da NT). vProdLiq = vUnComLiq x qCom (rejeicao 1279). Mesma regra do ProcMsaNFe
+	If lRtcIP050
+		oEXTIPI:setAttributeValue("vUnComLiq"	,validTagValue("oDetProd:_prod:_vUnComLiq:text"))
+		oEXTIPI:setAttributeValue("vProdLiq"	,validTagValue("oDetProd:_prod:_vProdLiq:text"))
+	EndIf
+	// FIM Wellington Santana 27/11/2026
 	oEXTIPI:setAttributeValue("cEANTrib"	,validTagValue("oDetProd:_prod:_eantrib:text"))
 	oEXTIPI:setAttributeValue("uTrib"		,validTagValue("oDetProd:_prod:_uCom:text"))
 	oEXTIPI:setAttributeValue("qTrib"		,validTagValue("oDetProd:_prod:_qCom:text"))
@@ -2954,6 +3089,13 @@ static function DoDetProd()
 		DoImpostos()
 		DoAllTaxes(oDetProd)
 		DoInfAdicionais()
+		// INICIO Wellington Santana 27/11/2026 - [RTC-2026/2027 - IP050] vItem e DFeReferenciado
+		// (DFeReferenciado vem depois do vItem no item - NT). Mesma ordem do ProcMsaNFe
+		If lRtcIP050
+			DovItem()
+			DoDFeReferenciado()
+		EndIf
+		// FIM Wellington Santana 27/11/2026
 		DoDocSerie()
 	next nI
 return
@@ -3017,6 +3159,11 @@ return aAttribute
 **/
 static function DoAllTaxes()
 	DoICMS(oDetProd)
+	// INICIO Wellington Santana 27/11/2026 - [RTC-2026/2027 - IP050] ICMSPrevistoPagtoAntecip (debito 06)
+	If lRtcIP050
+		DoICMSPrevAntecip()
+	EndIf
+	// FIM Wellington Santana 27/11/2026
 	DoIcms00(oDetProd)
 	DoIcms10()
 	DoIcms20()
@@ -3076,6 +3223,43 @@ static function DoAllTaxes()
 	DoStCofPercent()
 	DoStCofValor()
 	DoISSQN()
+	// INICIO Wellington Santana 27/11/2026 - [RTC-2026/2027 - IP050] IS entre COFINS/ISSQN e IBSCBS
+	// (ordem da NT) e cadeia IBSCBS completa, na mesma ordem do ProcMsaNFe
+	If lRtcIP050
+		DoIS()
+		DoIBSCBS()
+		DoSIBSCBS()
+		DogIBSCBS()
+		DogIBSUF()
+		DogIBSUFDif()
+		DogIBSUFDevTrib()
+		DogIBSUFRed()
+		DogIBSMu()
+		DogIBSMuDif()
+		DogIBSMuDevTrib()
+		DogIBSMuRed()
+		DogCBS()
+		DogCBSDif()
+		DogCBSDevTrib()
+		DogCBSRed()
+		DogTribRegular()
+		DogIBSCredPres()
+		DogCBSCredPres()
+		DogTribCompraGov()
+		DogIBSCBSMon()
+		DogMonPadrao()
+		DogMonReten()
+		DogMonRet()
+		DogMonDif()
+		DogIBCBMonAttrib()
+		DogTransfCred()
+		DogCredPresIBSZFM()
+		// gAjusteCompet (debito 03) e gEstornoCred (debito 07): dependem de oSeqXML apontar para
+		// sequencia_XML_IBSCBS, por isso ficam no fim da cadeia, junto com os irmaos do gIBSCBS
+		DogAjusteCompet()
+		DogEstornoCred()
+	EndIf
+	// FIM Wellington Santana 27/11/2026
 	DoImpostoDevol()
 	DoIpiDevol()
 return
@@ -3457,3 +3641,847 @@ Retorna o tipo da variável
 */
 Static Function fTypeVar(cVar)
 Return Type(cVar)
+
+/**
+* ===================================================================
+* INICIO Wellington Santana 27/11/2026 - [RTC-2026/2027 - IP050]
+* Grupos da Reforma Tributaria (IBS, CBS e IS) replicados do ProcMsaNFe,
+* na versao corrigida do Lote 4 (ProcRCOMsa 22/11/2026).
+* So sao chamados com ZZ_RTCIP50 = .T. (ver ProcRSymbMsa e MountTags):
+* incluir estes grupos muda o layout posicional do IP050 lido pelo SAP.
+* Adaptacoes ao IP050:
+* - vItem e DFeReferenciado ficam sob "item_nota" (no IP050 o "det" so leva o nItem);
+* - DoIBSCBSTot usa retArrayAttribute (definida neste fonte) e declara oDetNfe;
+* - gCredPresIBSZFM: lFormatZero passado ao retValTax.
+* ===================================================================
+**/
+
+/**
+* Instancia o objeto que representa a tag "vItem"
+* XML oficial: det/vItem - valor total do item (NT 2025.002)
+**/
+static function DovItem()
+
+	ovItem := MsafNFeTag():newMsafNFeTag("vItem")
+
+	ovItem:setAttributeValue("vItem",validTagValue("oDetProd:_vItem:text"))
+
+	oItem_nota:addElementNode(ovItem)
+
+return
+
+/**
+* Instancia o objeto que representa a tag "IBSCBS"
+**/ 
+static function DoIBSCBS()
+	
+	local cTax			:= "IBSCBS"
+	local cAliq			:= "" 
+	local lFormatZero 	:= .F.	
+	
+	oIBSCBS := MsafNFeTag():newMsafNFeTag("IBSCBS")
+
+	oIBSCBS:setAttributeValue("CST"			, retValTax(cTax,cAliq, oDetProd, "CST" 		, "tributo", lFormatZero))	
+	oIBSCBS:setAttributeValue("cClassTrib"	, retValTax(cTax,cAliq, oDetProd, "cClassTrib"	, "tributo", lFormatZero))	
+ 
+	oImpostos:addElementNode(oIBSCBS)
+
+return
+
+/**
+* Instancia o objeto que representa a tag "sequencia_XML_IBSCBS" do nó "IBSCBS"
+**/ 
+static function DoSIBSCBS()
+   
+	oSeqXML := MsafNFeTag():newMsafNFeTag("sequencia_XML_IBSCBS")
+																			   
+	oIBSCBS:addElementNode(oSeqXML)
+	
+return
+						   
+/**
+* Instancia o objeto que representa a tag "gIBSCBS"
+**/ 
+static function DogIBSCBS()
+	
+	local cTax		:= "IBSCBS"
+	local cAliq		:= "" 
+	
+	ogIBSCBS := MsafNFeTag():newMsafNFeTag("gIBSCBS")
+	 
+	ogIBSCBS:setAttributeValue("vBC",retValTax(cTax,cAliq, oDetProd, "vBC","tributo:_gIBSCBS"))
+	ogIBSCBS:setAttributeValue("vIBS",retValTax(cTax,cAliq, oDetProd, "vIBS","tributo:_gIBSCBS"))
+
+	oSeqXML:addElementNode(ogIBSCBS)
+	
+return
+
+/**
+* Instancia o objeto que representa a tag "gIBSUF"
+**/ 
+static function DogIBSUF()
+	
+	local cTax		:= "IBSCBS"
+	local cAliq		:= "" 
+	
+	ogIBSUF := MsafNFeTag():newMsafNFeTag("gIBSUF")
+ 
+	ogIBSUF:setAttributeValue("pIBSUF",retValTax(cTax,cAliq, oDetProd, "pIBSUF","tributo:_gIBSCBS:_gIBSUF"))
+	ogIBSUF:setAttributeValue("vIBSUF",retValTax(cTax,cAliq, oDetProd, "vIBSUF","tributo:_gIBSCBS:_gIBSUF"))
+
+	ogIBSCBS:addElementNode(ogIBSUF)
+	
+return
+
+/**
+* Instancia o objeto que representa a tag "gDif" do nó "gIBSUF"
+**/ 
+static function DogIBSUFDif()
+					   
+	local cTax		:= "IBSCBS"
+	local cAliq		:= "" 
+	
+	ogIBSUFDif := MsafNFeTag():newMsafNFeTag("gDif")
+
+	ogIBSUFDif:setAttributeValue("pDif",retValTax(cTax,cAliq, oDetProd, "pDif","tributo:_gIBSCBS:_gIBSUF:_gDif"))
+	ogIBSUFDif:setAttributeValue("vDif",retValTax(cTax,cAliq, oDetProd, "vDif","tributo:_gIBSCBS:_gIBSUF:_gDif"))
+	
+	ogIBSUF:addElementNode(ogIBSUFDif)
+ 
+return
+
+/**
+* Instancia o objeto que representa a tag "gDevTrib" do nó "gIBSUF"
+**/ 
+static function DogIBSUFDevTrib()
+	
+	local cTax		:= "IBSCBS"
+	local cAliq		:= "" 
+	
+	ogIBSUFDevTrib := MsafNFeTag():newMsafNFeTag("gDevTrib")
+
+	ogIBSUFDevTrib:setAttributeValue("vDevTrib",retValTax(cTax,cAliq, oDetProd, "vDevTrib","tributo:_gIBSCBS:_gIBSUF:_gDevTrib"))
+	
+	ogIBSUF:addElementNode(ogIBSUFDevTrib)
+	
+return
+					   
+/**
+* Instancia o objeto que representa a tag "gRed" do nó "gIBSUF"
+**/ 
+static function DogIBSUFRed()
+	
+	local cTax		:= "IBSCBS"
+	local cAliq		:= "" 
+	
+	ogIBSUFRed := MsafNFeTag():newMsafNFeTag("gRed")
+
+	ogIBSUFRed:setAttributeValue("pRedAliq",retValTax(cTax,cAliq, oDetProd, "pRedAliq","tributo:_gIBSCBS:_gIBSUF:_gRed"))
+	ogIBSUFRed:setAttributeValue("pAliqEfet",retValTax(cTax,cAliq, oDetProd, "pAliqEfet","tributo:_gIBSCBS:_gIBSUF:_gRed"))
+	
+	ogIBSUF:addElementNode(ogIBSUFRed)
+	
+return
+
+/**
+* Instancia o objeto que representa a tag "gIBSMun"
+**/ 
+static function DogIBSMu()
+	
+	local cTax		:= "IBSCBS"
+	local cAliq		:= "" 
+	
+	ogIBSMu := MsafNFeTag():newMsafNFeTag("gIBSMun")
+				   
+	ogIBSMu:setAttributeValue("pIBSMun",retValTax(cTax,cAliq, oDetProd, "pIBSMun","tributo:_gIBSCBS:_gIBSMun"))
+	ogIBSMu:setAttributeValue("vIBSMun",retValTax(cTax,cAliq, oDetProd, "vIBSMun","tributo:_gIBSCBS:_gIBSMun"))
+
+	ogIBSCBS:addElementNode(ogIBSMu)
+	
+return
+
+/**
+* Instancia o objeto que representa a tag "gDif" do nó "gIBSMun"
+**/ 
+static function DogIBSMuDif()
+	
+	local cTax		:= "IBSCBS"
+	local cAliq		:= "" 
+							   
+	ogIBSMuDif := MsafNFeTag():newMsafNFeTag("gDif")
+
+	ogIBSMuDif:setAttributeValue("pDif",retValTax(cTax,cAliq, oDetProd, "pDif","tributo:_gIBSCBS:_gIBSMun:_gDif"))
+	ogIBSMuDif:setAttributeValue("vDif",retValTax(cTax,cAliq, oDetProd, "vDif","tributo:_gIBSCBS:_gIBSMun:_gDif"))
+	
+	ogIBSMu:addElementNode(ogIBSMuDif)
+ 
+return
+
+/**
+* Instancia o objeto que representa a tag "gDevTrib" do nó "gIBSMun"
+**/ 
+static function DogIBSMuDevTrib()
+	
+	local cTax		:= "IBSCBS"
+	local cAliq		:= "" 
+	
+	ogIBSMuDevTrib := MsafNFeTag():newMsafNFeTag("gDevTrib")
+
+	ogIBSMuDevTrib:setAttributeValue("vDevTrib",retValTax(cTax,cAliq, oDetProd, "vDevTrib","tributo:_gIBSCBS:_gIBSMun:_gDevTrib"))
+	
+	ogIBSMu:addElementNode(ogIBSMuDevTrib)
+ 
+return
+
+/**
+* Instancia o objeto que representa a tag "gRed" do nó "gIBSMun"
+**/ 
+static function DogIBSMuRed()
+												
+	local cTax		:= "IBSCBS"
+	local cAliq		:= "" 
+	
+	ogIBSMuRed := MsafNFeTag():newMsafNFeTag("gRed")
+
+	// INICIO Wellington 18/11/2026 - Correcao de erro existente: o gRed do gIBSMun lia o caminho do
+	// gIBSUF, gravando a reducao estadual no lugar da municipal. Correto: _gIBSMun:_gRed
+	ogIBSMuRed:setAttributeValue("pRedAliq",retValTax(cTax,cAliq, oDetProd, "pRedAliq","tributo:_gIBSCBS:_gIBSMun:_gRed"))
+	ogIBSMuRed:setAttributeValue("pAliqEfet",retValTax(cTax,cAliq, oDetProd, "pAliqEfet","tributo:_gIBSCBS:_gIBSMun:_gRed"))
+	// FIM Wellington 18/11/2026
+	
+	ogIBSMu:addElementNode(ogIBSMuRed)
+	
+return
+
+/**
+* Instancia o objeto que representa a tag "gCBS"
+**/ 
+static function DogCBS()
+	
+	local cTax		:= "IBSCBS"
+	local cAliq		:= "" 
+	
+	ogCBS := MsafNFeTag():newMsafNFeTag("gCBS")
+	 
+	ogCBS:setAttributeValue("pCBS",retValTax(cTax,cAliq, oDetProd, "pCBS","tributo:_gIBSCBS:_gCBS"))
+	ogCBS:setAttributeValue("vCBS",retValTax(cTax,cAliq, oDetProd, "vCBS","tributo:_gIBSCBS:_gCBS"))
+
+	ogIBSCBS:addElementNode(ogCBS)
+	
+return
+
+/**
+* Instancia o objeto que representa a tag "gDif" do nó "gCBS"
+**/ 
+static function DogCBSDif()
+	
+	local cTax		:= "IBSCBS"
+	local cAliq		:= "" 
+	
+	ogCBSDif := MsafNFeTag():newMsafNFeTag("gDif")
+
+	ogCBSDif:setAttributeValue("pDif",retValTax(cTax,cAliq, oDetProd, "pDif","tributo:_gIBSCBS:_gCBS:_gDif"))
+	ogCBSDif:setAttributeValue("vDif",retValTax(cTax,cAliq, oDetProd, "vDif","tributo:_gIBSCBS:_gCBS:_gDif"))
+	
+	ogCBS:addElementNode(ogCBSDif)
+ 
+return
+
+/**
+* Instancia o objeto que representa a tag "gDevTrib" do nó "gCBS"
+**/ 
+static function DogCBSDevTrib()
+	
+	local cTax		:= "IBSCBS"
+	local cAliq		:= "" 
+	
+	ogCBSDevTrib := MsafNFeTag():newMsafNFeTag("gDevTrib")
+
+	ogCBSDevTrib:setAttributeValue("vDevTrib",retValTax(cTax,cAliq, oDetProd, "vDevTrib","tributo:_gIBSCBS:_gCBS:_gDevTrib"))
+	
+	ogCBS:addElementNode(ogCBSDevTrib)
+	
+return
+
+/**
+* Instancia o objeto que representa a tag "gRed" do nó "gCBS"
+**/ 
+static function DogCBSRed()
+	
+	local cTax		:= "IBSCBS"
+	local cAliq		:= "" 
+	  
+	ogCBSRed := MsafNFeTag():newMsafNFeTag("gRed")
+
+	ogCBSRed:setAttributeValue("pRedAliq",retValTax(cTax,cAliq, oDetProd, "pRedAliq","tributo:_gIBSCBS:_gCBS:_gRed"))
+	ogCBSRed:setAttributeValue("pAliqEfet",retValTax(cTax,cAliq, oDetProd, "pAliqEfet","tributo:_gIBSCBS:_gCBS:_gRed"))
+	
+	ogCBS:addElementNode(ogCBSRed)
+	
+return
+
+/**
+* Instancia o objeto que representa a tag "gTribRegular"
+**/ 
+static function DogTribRegular()
+	
+	local cTax			:= "IBSCBS"
+	local cAliq			:= ""
+	local lFormatZero 	:= .F. 
+	
+	ogTribRegular := MsafNFeTag():newMsafNFeTag("gTribRegular")
+ 
+	ogTribRegular:setAttributeValue("CSTReg",retValTax(cTax,cAliq, oDetProd, "CSTReg","tributo:_gIBSCBS:_gTribRegular",lFormatZero))
+	ogTribRegular:setAttributeValue("cClassTribReg",retValTax(cTax,cAliq, oDetProd, "cClassTribReg","tributo:_gIBSCBS:_gTribRegular",lFormatZero))
+	ogTribRegular:setAttributeValue("pAliqEfetRegIBSUF",retValTax(cTax,cAliq, oDetProd, "pAliqEfetRegIBSUF","tributo:_gIBSCBS:_gTribRegular"))
+	ogTribRegular:setAttributeValue("vTribRegIBSUF",retValTax(cTax,cAliq, oDetProd, "vTribRegIBSUF","tributo:_gIBSCBS:_gTribRegular"))
+	ogTribRegular:setAttributeValue("pAliqEfetRegIBSMun",retValTax(cTax,cAliq, oDetProd, "pAliqEfetRegIBSMun","tributo:_gIBSCBS:_gTribRegular"))
+	ogTribRegular:setAttributeValue("vTribRegIBSMun",retValTax(cTax,cAliq, oDetProd, "vTribRegIBSMun","tributo:_gIBSCBS:_gTribRegular"))
+	ogTribRegular:setAttributeValue("pAliqEfetRegCBS",retValTax(cTax,cAliq, oDetProd, "pAliqEfetRegCBS","tributo:_gIBSCBS:_gTribRegular"))
+	ogTribRegular:setAttributeValue("vTribRegCBS",retValTax(cTax,cAliq, oDetProd, "vTribRegCBS","tributo:_gIBSCBS:_gTribRegular"))
+
+	ogIBSCBS:addElementNode(ogTribRegular)
+			  
+return
+
+/**
+* Instancia o objeto que representa a tag "gIBSCredPres"
+**/ 
+static function DogIBSCredPres()
+	
+	local cTax			:= "IBSCBS"
+	local cAliq			:= ""
+	local lFormatZero 	:= .F. 
+	 
+	ogIBSCredPres := MsafNFeTag():newMsafNFeTag("gIBSCredPres")
+
+	ogIBSCredPres:setAttributeValue("cCredPres",retValTax(cTax,cAliq, oDetProd, "cCredPres","tributo:_gIBSCBS:_gIBSCredPres",lFormatZero))
+	ogIBSCredPres:setAttributeValue("pCredPres",retValTax(cTax,cAliq, oDetProd, "pCredPres","tributo:_gIBSCBS:_gIBSCredPres"))
+	ogIBSCredPres:setAttributeValue("vCredPres",retValTax(cTax,cAliq, oDetProd, "vCredPres","tributo:_gIBSCBS:_gIBSCredPres"))
+	ogIBSCredPres:setAttributeValue("vCredPresCondSus",retValTax(cTax,cAliq, oDetProd, "vCredPresCondSus","tributo:_gIBSCBS:_gIBSCredPres"))
+	
+	ogIBSCBS:addElementNode(ogIBSCredPres)
+	
+return
+
+/**
+* Instancia o objeto que representa a tag "gCBSCredPres"
+**/ 
+static function DogCBSCredPres()
+	
+	local cTax			:= "IBSCBS"
+	local cAliq			:= ""
+	local lFormatZero 	:= .F. 
+	
+	ogCBSCredPres := MsafNFeTag():newMsafNFeTag("gCBSCredPres")
+
+	ogCBSCredPres:setAttributeValue("cCredPres",retValTax(cTax,cAliq, oDetProd, "cCredPres","tributo:_gIBSCBS:_gCBSCredPres",lFormatZero))
+	ogCBSCredPres:setAttributeValue("pCredPres",retValTax(cTax,cAliq, oDetProd, "pCredPres","tributo:_gIBSCBS:_gCBSCredPres"))
+	ogCBSCredPres:setAttributeValue("vCredPres",retValTax(cTax,cAliq, oDetProd, "vCredPres","tributo:_gIBSCBS:_gCBSCredPres"))
+	ogCBSCredPres:setAttributeValue("vCredPresCondSus",retValTax(cTax,cAliq, oDetProd, "vCredPresCondSus","tributo:_gIBSCBS:_gCBSCredPres"))
+	
+	ogIBSCBS:addElementNode(ogCBSCredPres)
+	
+return
+ 
+/**
+* Instancia o objeto que representa a tag "gTribCompraGov"
+**/ 
+static function DogTribCompraGov()
+	
+	local cTax			:= "IBSCBS"
+	local cAliq			:= ""
+	
+	ogTribCompraGov := MsafNFeTag():newMsafNFeTag("gTribCompraGov")
+ 
+	ogTribCompraGov:setAttributeValue("pAliqIBSUF",retValTax(cTax,cAliq, oDetProd, "pAliqIBSUF","tributo:_gIBSCBS:_gTribCompraGov"))
+	ogTribCompraGov:setAttributeValue("vTribIBSUF",retValTax(cTax,cAliq, oDetProd, "vTribIBSUF","tributo:_gIBSCBS:_gTribCompraGov"))
+	ogTribCompraGov:setAttributeValue("pAliqIBSMun",retValTax(cTax,cAliq, oDetProd, "pAliqIBSMun","tributo:_gIBSCBS:_gTribCompraGov"))
+	ogTribCompraGov:setAttributeValue("vTribIBSMun",retValTax(cTax,cAliq, oDetProd, "vTribIBSMun","tributo:_gIBSCBS:_gTribCompraGov"))
+	ogTribCompraGov:setAttributeValue("pAliqCBS",retValTax(cTax,cAliq, oDetProd, "pAliqCBS","tributo:_gIBSCBS:_gTribCompraGov"))
+	ogTribCompraGov:setAttributeValue("vTribCBS",retValTax(cTax,cAliq, oDetProd, "vTribCBS","tributo:_gIBSCBS:_gTribCompraGov"))
+ 
+	ogIBSCBS:addElementNode(ogTribCompraGov)
+	
+return
+
+/**
+* Instancia o objeto que representa a tag "gIBSCBSMono"
+**/ 
+static function DogIBSCBSMon()
+								
+	ogIBSCBSMon := MsafNFeTag():newMsafNFeTag("gIBSCBSMono")
+	
+	oSeqXML:addElementNode(ogIBSCBSMon)
+ 
+return
+
+/**
+* Instancia o objeto que representa a tag "gMonoPadrao"
+**/ 
+static function DogMonPadrao()
+	
+	local cTax		:= "IBSCBS"
+	local cAliq		:= ""
+	
+	ogMonPadrao := MsafNFeTag():newMsafNFeTag("gMonoPadrao")
+ 
+	ogMonPadrao:setAttributeValue("qBCMono",retValTax(cTax,cAliq, oDetProd, "qBCMono","tributo:_gMonoPadrao"))
+	ogMonPadrao:setAttributeValue("adRemIBS",retValTax(cTax,cAliq, oDetProd, "adRemIBS","tributo:_gMonoPadrao"))
+	ogMonPadrao:setAttributeValue("adRemCBS",retValTax(cTax,cAliq, oDetProd, "adRemCBS","tributo:_gMonoPadrao"))
+	ogMonPadrao:setAttributeValue("vIBSMono",retValTax(cTax,cAliq, oDetProd, "vIBSMono","tributo:_gMonoPadrao"))
+	ogMonPadrao:setAttributeValue("vCBSMono",retValTax(cTax,cAliq, oDetProd, "vCBSMono","tributo:_gMonoPadrao"))
+
+	ogIBSCBSMon:addElementNode(ogMonPadrao)
+	
+return
+
+/**
+* Instancia o objeto que representa a tag "gMonoReten"
+**/ 
+static function DogMonReten()
+	
+	local cTax		:= "IBSCBS"
+	local cAliq		:= ""
+	
+	ogMonReten := MsafNFeTag():newMsafNFeTag("gMonoReten")
+ 
+	ogMonReten:setAttributeValue("qBCMonoReten",retValTax(cTax,cAliq, oDetProd, "qBCMonoReten","tributo:_gMonoReten"))
+	ogMonReten:setAttributeValue("adRemIBSReten",retValTax(cTax,cAliq, oDetProd, "adRemIBSReten","tributo:_gMonoReten"))
+	ogMonReten:setAttributeValue("vIBSMonoReten",retValTax(cTax,cAliq, oDetProd, "vIBSMonoReten","tributo:_gMonoReten"))
+	ogMonReten:setAttributeValue("adRemCBSReten",retValTax(cTax,cAliq, oDetProd, "adRemCBSReten","tributo:_gMonoReten"))
+	ogMonReten:setAttributeValue("vCBSMonoReten",retValTax(cTax,cAliq, oDetProd, "vCBSMonoReten","tributo:_gMonoReten"))
+
+	ogIBSCBSMon:addElementNode(ogMonReten)
+	
+return
+
+/**
+* Instancia o objeto que representa a tag "gMonoRet"
+**/ 
+static function DogMonRet()
+	
+	local cTax		:= "IBSCBS"
+	local cAliq		:= ""
+	
+	ogMonRet := MsafNFeTag():newMsafNFeTag("gMonoRet")
+ 
+	ogMonRet:setAttributeValue("qBCMonoRet",retValTax(cTax,cAliq, oDetProd, "qBCMonoRet","tributo:_gMonoRet"))
+	ogMonRet:setAttributeValue("adRemIBSRet",retValTax(cTax,cAliq, oDetProd, "adRemIBSRet","tributo:_gMonoRet"))
+	ogMonRet:setAttributeValue("vIBSMonoRet",retValTax(cTax,cAliq, oDetProd, "vIBSMonoRet","tributo:_gMonoRet"))
+	ogMonRet:setAttributeValue("adRemCBSRet",retValTax(cTax,cAliq, oDetProd, "adRemCBSRet","tributo:_gMonoRet"))
+	ogMonRet:setAttributeValue("vCBSMonoRet",retValTax(cTax,cAliq, oDetProd, "vCBSMonoRet","tributo:_gMonoRet"))
+
+	ogIBSCBSMon:addElementNode(ogMonRet)
+	
+return
+
+/**
+* Instancia o objeto que representa a tag "gMonoDif"
+**/ 
+static function DogMonDif()
+	
+	local cTax		:= "IBSCBS"
+	local cAliq		:= ""
+	
+	ogMonDif := MsafNFeTag():newMsafNFeTag("gMonoDif")
+ 
+	ogMonDif:setAttributeValue("pDifIBS",retValTax(cTax,cAliq, oDetProd, "pDifIBS","tributo:_gMonoDif"))
+	ogMonDif:setAttributeValue("vIBSMonoDif",retValTax(cTax,cAliq, oDetProd, "vIBSMonoDif","tributo:_gMonoDif"))
+	ogMonDif:setAttributeValue("pDifCBS",retValTax(cTax,cAliq, oDetProd, "pDifCBS","tributo:_gMonoDif"))
+	ogMonDif:setAttributeValue("vCBSMonoDif",retValTax(cTax,cAliq, oDetProd, "vCBSMonoDif","tributo:_gMonoDif"))
+	
+	ogIBSCBSMon:addElementNode(ogMonDif)
+	
+return
+
+/**
+* Instancia o objeto que representa os atributos da tag "gIBSCBSMono"
+**/ 
+static function DogIBCBMonAttrib()
+	
+	local cTax		:= "IBSCBS"
+	local cAliq		:= ""
+	  
+	ogIBCBMonAttrib := MsafNFeTag():newMsafNFeTag("")
+
+	ogIBCBMonAttrib:setAttributeValue("vTotIBSMonoItem",retValTax(cTax,cAliq, oDetProd, "vTotIBSMonoItem","tributo:_gIBSCBSMono"))
+	ogIBCBMonAttrib:setAttributeValue("vTotCBSMonoItem",retValTax(cTax,cAliq, oDetProd, "vTotCBSMonoItem","tributo:_gIBSCBSMono"))
+	
+	ogIBSCBSMon:addElementNode(ogIBCBMonAttrib)
+	
+return
+
+/**
+* Instancia o objeto que representa a tag "gTransfCred"
+**/ 
+static function DogTransfCred()
+	
+	local cTax		:= "IBSCBS"
+	local cAliq		:= ""
+	  
+	ogTransfCred := MsafNFeTag():newMsafNFeTag("gTransfCred")
+
+	ogTransfCred:setAttributeValue("vIBS",retValTax(cTax,cAliq, oDetProd, "vIBS","tributo:_gTransfCred"))
+	ogTransfCred:setAttributeValue("vCBS",retValTax(cTax,cAliq, oDetProd, "vCBS","tributo:_gTransfCred"))
+		
+	oSeqXML:addElementNode(ogTransfCred)
+	
+return
+
+/**
+* Instancia o objeto que representa a tag "gCredPresIBSZFM"
+**/ 
+static function DogCredPresIBSZFM()
+	
+	local cTax			:= "IBSCBS"
+	local cAliq			:= ""
+	local lFormatZero 	:= .F. 
+ 
+	ogCredPresIBSZFM := MsafNFeTag():newMsafNFeTag("gCredPresIBSZFM")
+
+	// Wellington Santana 27/11/2026 - [RTC-2026/2027 - IP050] lFormatZero passado ao retValTax: no ProcMsaNFe
+	// estava na posicao de lAddNode do setAttributeValue e o codigo "0" saia formatado como valor (0.00)
+	ogCredPresIBSZFM:setAttributeValue("tpCredPresIBSZFM",retValTax(cTax,cAliq, oDetProd, "tpCredPresIBSZFM","tributo:_gCredPresIBSZFM",lFormatZero))
+	ogCredPresIBSZFM:setAttributeValue("vCredPresIBSZFM",retValTax(cTax,cAliq, oDetProd, "vCredPresIBSZFM","tributo:_gCredPresIBSZFM"))
+		
+	oSeqXML:addElementNode(ogCredPresIBSZFM)
+	
+return
+
+/**
+* ===================================================================
+* INICIO Wellington 18/11/2026 - Grupos novos da Reforma Tributaria
+* NT 2025.002 v1.53 e NT 2026.008 v1.01
+*
+* ORDEM DOS CAMPOS: segue a sequencia da NT, extraida dos 11 exemplos
+* de plan/HTMLConsolidado.xml. E HIPOTESE DE TRABALHO ate o leiaute
+* posicional do Mastersaf chegar (Fase 0, item 3, do plano).
+* O TXT e posicional: confirmar a ordem antes de homologar.
+* Ver plan/Dimensionamento_Forks_NFe_2027.md secao 3.4.
+* ===================================================================
+**/
+
+/**
+* Instancia o objeto que representa a tag "IS" (Imposto Seletivo)
+* XML oficial: det/imposto/IS - irmao de IBSCBS, entre COFINS e IBSCBS
+* CONFIRMAR NO LEIAUTE: nome do marcador e ordem do grupo entre os irmaos
+**/
+static function DoIS()
+
+	local cTax			:= cRtcTaxIS	// lido uma vez em ProcRSymbMsa() (ZZ_TRIBIS)
+	local cAliq			:= ""
+	local lFormatZero 	:= .F.
+
+	oIS := MsafNFeTag():newMsafNFeTag("IS")
+
+	oIS:setAttributeValue("CSTIS"		, retValTax(cTax,cAliq, oDetProd, "CSTIS"		, "tributo", lFormatZero))
+	oIS:setAttributeValue("cClassTribIS", retValTax(cTax,cAliq, oDetProd, "cClassTribIS", "tributo", lFormatZero))
+	oIS:setAttributeValue("vBCIS"		, retValTax(cTax,cAliq, oDetProd, "vBCIS"		, "tributo"))
+	oIS:setAttributeValue("pIS"			, retValTax(cTax,cAliq, oDetProd, "pIS"			, "tributo"))
+	oIS:setAttributeValue("vIS"			, retValTax(cTax,cAliq, oDetProd, "vIS"			, "tributo"))
+
+	oImpostos:addElementNode(oIS)
+
+return
+
+/**
+* Instancia o objeto que representa a tag "gAjusteCompet" do no "IBSCBS"
+* XML oficial: det/imposto/IBSCBS/gAjusteCompet - debito 03, CST 811
+* Quando presente, o gIBSCBS nao pode ir (rejeicoes 1021, 1170 e 1171)
+* Adiciona em oSeqXML, mesmo pai do gIBSCBS
+**/
+static function DogAjusteCompet()
+
+	local cTax		:= "IBSCBS"
+	local cAliq		:= ""
+
+	ogAjusteCompet := MsafNFeTag():newMsafNFeTag("gAjusteCompet")
+
+	ogAjusteCompet:setAttributeValue("competApur",retValTax(cTax,cAliq, oDetProd, "competApur","tributo:_gAjusteCompet", .F.))
+	ogAjusteCompet:setAttributeValue("vIBS",retValTax(cTax,cAliq, oDetProd, "vIBS","tributo:_gAjusteCompet"))
+	ogAjusteCompet:setAttributeValue("vCBS",retValTax(cTax,cAliq, oDetProd, "vCBS","tributo:_gAjusteCompet"))
+
+	oSeqXML:addElementNode(ogAjusteCompet)
+
+return
+
+/**
+* Instancia o objeto que representa a tag "gEstornoCred" do no "IBSCBS"
+* XML oficial: det/imposto/IBSCBS/gEstornoCred - debito 07, CST 410
+* Rejeicoes 1173, 1176 e 1177
+* Adiciona em oSeqXML, mesmo pai do gIBSCBS
+**/
+static function DogEstornoCred()
+
+	local cTax		:= "IBSCBS"
+	local cAliq		:= ""
+
+	ogEstornoCred := MsafNFeTag():newMsafNFeTag("gEstornoCred")
+
+	ogEstornoCred:setAttributeValue("vIBSEstCred",retValTax(cTax,cAliq, oDetProd, "vIBSEstCred","tributo:_gEstornoCred"))
+	ogEstornoCred:setAttributeValue("vCBSEstCred",retValTax(cTax,cAliq, oDetProd, "vCBSEstCred","tributo:_gEstornoCred"))
+
+	oSeqXML:addElementNode(ogEstornoCred)
+
+return
+
+/**
+* Instancia o objeto que representa a tag "ICMSPrevistoPagtoAntecip"
+* XML oficial: det/imposto/ICMS/ICMSPrevistoPagtoAntecip - debito 06
+* A partir de 01/03/2027 a ausencia gera rejeicao 1281
+**/
+static function DoICMSPrevAntecip()
+
+	local cTax		:= cRtcTaxIcm	// lido uma vez em ProcRSymbMsa() (ZZ_TRIBICM, default "ICMS")
+	local cAliq		:= ""
+
+	oICMSPrevAnt := MsafNFeTag():newMsafNFeTag("ICMSPrevistoPagtoAntecip")
+
+	oICMSPrevAnt:setAttributeValue("vICMSPrevisto",retValTax(cTax,cAliq, oDetProd, "vICMSPrevisto","tributo:_ICMSPrevistoPagtoAntecip"))
+
+	oICMS:addElementNode(oICMSPrevAnt)
+
+return
+
+/**
+* Instancia o objeto que representa a tag "DFeReferenciado" do item
+* XML oficial: det/DFeReferenciado - depois do vItem
+* Regras: a referencia vai no cabecalho OU no item, nunca nos dois
+* (VC02-05, rejeicao 1010); nItem e proibido no debito 03 (VC03-10,
+* rejeicao 1039). As regras de obrigatoriedade por finalidade dependem
+* de decisao fiscal - ver Fase 0, item 5, do plano.
+**/
+static function DoDFeReferenciado()
+
+	oDFeRef := MsafNFeTag():newMsafNFeTag("DFeReferenciado")
+
+	oDFeRef:setAttributeValue("chaveAcesso",validTagValue("oDetProd:_DFeReferenciado:_chaveAcesso:text"))
+	oDFeRef:setAttributeValue("nItem",validTagValue("oDetProd:_DFeReferenciado:_nItem:text"))
+
+	// No IP050 os grupos do item ficam sob "item_nota" (o "det" so leva o nItem)
+	oItem_nota:addElementNode(oDFeRef)
+
+return
+
+/**
+* Instancia o objeto que representa a tag "vProdLiqTot" do no "total"
+* XML oficial: total/vProdLiqTot - ANTES do ICMSTot
+* Rejeicoes 1282 e 1283
+**/
+static function DovProdLiqTot()
+
+	ovProdLiqTot := MsafNFeTag():newMsafNFeTag("vProdLiqTot")
+
+	ovProdLiqTot:setAttributeValue("vProdLiqTot",retValueAttribute("infNfe:_total:_vProdLiqTot:text"))
+
+	oTotal:addElementNode(ovProdLiqTot)
+
+return
+
+/**
+* Instancia o objeto que representa a tag "ISTot" do no "total"
+* XML oficial: total/ISTot - depois do ICMSTot e antes do IBSCBSTot
+* Obrigatorio quando algum item tem IS (rejeicao 1117)
+**/
+static function DoISTot()
+
+	oISTot := MsafNFeTag():newMsafNFeTag("ISTot")
+
+	oISTot:setAttributeValue("vIS",retValueAttribute("infNfe:_total:_ISTot:_vIS:text"))
+
+	oTotal:addElementNode(oISTot)
+
+return
+
+/**
+* FIM Wellington 18/11/2026 - Grupos novos da Reforma Tributaria
+**/
+
+
+/**
+* Instancia o objeto que representa a tag "IBSCBSTot"
+**/ 
+static function DoIBSCBSTot()
+	
+	local aItens		:= retArrayAttribute("infNfe:_det")	// Wellington Santana 27/11/2026 - funcao definida neste fonte
+	local nI			:= 0
+	local nJ			:= 0
+	local nvBCIBSCBS	:= 0
+	local cCstgXml 		:= GetNewPar("MV_CSTGXML", "000/200/210/220/510/550/830/222")
+	local oUtils		:= IpUtilsObject():newIpUtilsObject()
+	local lIBSCBS		:= .f.
+	private oDetNfe		:= nil	// Wellington Santana 27/11/2026 - Private: lido via Type()/fTypeVar
+
+	for nI := 1 to Len(aItens)
+		oDetNfe := aItens[nI]
+		if fTypeVar("oDetNfe:_imposto") == "A"
+			for nJ := 1 to len(oDetNfe:_imposto)
+				if fTypeVar("oDetNfe:_imposto["+cValToChar(nJ)+"]:_codigo") == "O"
+					if allTrim(oDetNfe:_imposto[nJ]:_codigo:text) $ "IBSCBS"
+						lIBSCBS := .t.
+						if fTypeVar("oDetNfe:_imposto["+cValToChar(nJ)+"]:_Tributo:_CST") == "O"
+							if allTrim(oDetNfe:_imposto[nJ]:_Tributo:_CST:text) $ cCstgXml
+								if fTypeVar("oDetNfe:_imposto["+cValToChar(nJ)+"]:_Tributo:_gIBSCBS:_vBC") = "O"
+									nvBCIBSCBS += val(oDetNfe:_imposto[nJ]:_Tributo:_gIBSCBS:_vBC:text)
+								endIf
+							endIf
+						endIf
+					endIf
+				endIf
+			next nJ
+		elseIf fTypeVar("oDetNfe:_imposto") == "O"
+			if fTypeVar("oDetNfe:_imposto:_codigo") == "O"
+				if allTrim(oDetNfe:_imposto:_codigo:text) $ "IBSCBS"
+					lIBSCBS := .t.
+					if fTypeVar("oDetNfe:_imposto:_Tributo:_CST") == "O"
+						if allTrim(oDetNfe:_imposto:_Tributo:_CST:text) $ cCstgXml
+							// INICIO Wellington 18/11/2026 - Correcao de erro existente: havia dois pontos
+							// duplicados em "_Tributo::_gIBSCBS". O fTypeVar nunca retornava "O" e a base do
+							// item com um unico imposto ficava fora da soma do vBCIBSCBS
+							if fTypeVar("oDetNfe:_imposto:_Tributo:_gIBSCBS:_vBC") = "O"
+								nvBCIBSCBS += val(oDetNfe:_imposto:_Tributo:_gIBSCBS:_vBC:text)
+							endif
+							// FIM Wellington 18/11/2026
+						endIf
+					endIf
+				endIf
+			endif
+		endIf
+	next nI
+
+	oIBSCBSTot := MsafNFeTag():newMsafNFeTag("IBSCBSTot")
+
+	if lRefTribCo .and. lIBSCBS
+		//oIBSCBSTot:setAttributeValue("vBCIBSCBS", retValueAttribute("infNfe:_total:_IBSCBSTot:_vBCIBSCBS:text"), lFormatZero)
+		oIBSCBSTot:setAttributeValue("vBCIBSCBS",oUtils:strAnyType(nvBCIBSCBS, "@R 999999999999.99"))
+	else
+		oIBSCBSTot:setAttributeValue("vBCIBSCBS",EMPTY_VALUE)
+	endIf
+	
+	oTotal:addElementNode(oIBSCBSTot)
+
+return
+
+/**
+* Instancia o objeto que representa a tag "gIBS_Tot"
+**/ 
+static function DogIBSTot()
+	
+	ogIBSTot := MsafNFeTag():newMsafNFeTag("gIBS_Tot")
+
+	oIBSCBSTot:addElementNode(ogIBSTot)
+	
+return
+
+/**
+* Instancia o objeto que representa a tag "gIBSUF_Tot"
+**/ 
+static function DogIBSUFTot()
+				 
+	local lFormatZero := .T.	// Wellington Santana 22/11/2026 - [RTC Lote 4] lFormatZero movido para retValueAttribute (estava na posicao de lAddNode)
+
+	ogIBSUFTot := MsafNFeTag():newMsafNFeTag("gIBSUF_Tot")
+
+	ogIBSUFTot:setAttributeValue("vDif", retValueAttribute("infNfe:_total:_IBSCBSTot:_gIBS:_gIBSUF:_vDif:text", lFormatZero))
+	ogIBSUFTot:setAttributeValue("vDevTrib", retValueAttribute("infNfe:_total:_IBSCBSTot:_gIBS:_gIBSUF:_vDevTrib:text", lFormatZero))
+	ogIBSUFTot:setAttributeValue("vIBSUF", retValueAttribute("infNfe:_total:_IBSCBSTot:_gIBS:_gIBSUF:_vIBSUF:text", lFormatZero))
+
+	ogIBSTot:addElementNode(ogIBSUFTot)
+
+return
+
+/**
+* Instancia o objeto que representa a tag "gIBSMun_Tot"
+**/ 
+static function DogIBSMuTot()
+	
+	local lFormatZero := .T.	// Wellington Santana 22/11/2026 - [RTC Lote 4] lFormatZero movido para retValueAttribute (estava na posicao de lAddNode)
+ 
+	ogIBSMuTot := MsafNFeTag():newMsafNFeTag("gIBSMun_Tot")
+
+	ogIBSMuTot:setAttributeValue("vDif", retValueAttribute("infNfe:_total:_IBSCBSTot:_gIBS:_gIBSMun:_vDif:text", lFormatZero))
+	ogIBSMuTot:setAttributeValue("vDevTrib", retValueAttribute("infNfe:_total:_IBSCBSTot:_gIBS:_gIBSMun:_vDevTrib:text", lFormatZero))
+	ogIBSMuTot:setAttributeValue("vIBSMun", retValueAttribute("infNfe:_total:_IBSCBSTot:_gIBS:_gIBSMun:_vIBSMun:text", lFormatZero))
+
+	ogIBSTot:addElementNode(ogIBSMuTot)
+
+return
+
+/**
+* Instancia o objeto que representa os atributos da tag "gIBS_Tot"
+**/ 
+static function DogIBSTotAttrib()
+	
+	local lFormatZero := .T.	// Wellington Santana 22/11/2026 - [RTC Lote 4] lFormatZero movido para retValueAttribute (estava na posicao de lAddNode)
+ 
+	ogIBSTotAttrib := MsafNFeTag():newMsafNFeTag("")
+
+	ogIBSTotAttrib:setAttributeValue("vIBS", retValueAttribute("infNfe:_total:_IBSCBSTot:_gIBS:_vIBS:text", lFormatZero))
+	// INICIO Wellington 18/11/2026 - Correcao de erro existente: nome do atributo estava
+	// "vCresPres". Nao afeta o TXT, que e posicional, mas divergia do equivalente no gCBS
+	ogIBSTotAttrib:setAttributeValue("vCredPres", retValueAttribute("infNfe:_total:_IBSCBSTot:_gIBS:_vCredPres:text", lFormatZero))
+	// FIM Wellington 18/11/2026
+	ogIBSTotAttrib:setAttributeValue("vCredPresCondSus", retValueAttribute("infNfe:_total:_IBSCBSTot:_gIBS:_vCredPresCondSus:text", lFormatZero))
+
+	ogIBSTot:addElementNode(ogIBSTotAttrib)
+	
+return
+ 
+/**
+* Instancia o objeto que representa a tag "gCBS_Tot"
+**/ 
+static function DogCBSTot()
+	
+	local lFormatZero := .T.	// Wellington Santana 22/11/2026 - [RTC Lote 4] lFormatZero movido para retValueAttribute (estava na posicao de lAddNode)
+ 
+	ogCBSTot := MsafNFeTag():newMsafNFeTag("gCBS_Tot")
+
+	ogCBSTot:setAttributeValue("vDif", retValueAttribute("infNfe:_total:_IBSCBSTot:_gCBS:_vDif:text", lFormatZero))
+	ogCBSTot:setAttributeValue("vDevTrib", retValueAttribute("infNfe:_total:_IBSCBSTot:_gCBS:_vDevTrib:text", lFormatZero))
+	ogCBSTot:setAttributeValue("vCBS", retValueAttribute("infNfe:_total:_IBSCBSTot:_gCBS:_vCBS:text", lFormatZero))
+	ogCBSTot:setAttributeValue("vCredPres", retValueAttribute("infNfe:_total:_IBSCBSTot:_gCBS:_vCredPres:text", lFormatZero))
+	ogCBSTot:setAttributeValue("vCredPresCondSus", retValueAttribute("infNfe:_total:_IBSCBSTot:_gCBS:_vCredPresCondSus:text", lFormatZero))
+			 
+	oIBSCBSTot:addElementNode(ogCBSTot)
+	
+return
+
+/**
+* Instancia o objeto que representa a tag "gMono_Tot"
+**/ 
+static function DogMonTot()
+	
+	local lFormatZero := .T.	// Wellington Santana 22/11/2026 - [RTC Lote 4] lFormatZero movido para retValueAttribute (estava na posicao de lAddNode)
+
+	ogMonTot := MsafNFeTag():newMsafNFeTag("gMono_Tot")
+
+	ogMonTot:setAttributeValue("vIBSMono", retValueAttribute("infNfe:_total:_IBSCBSTot:_gMono:_vIBSMono:text", lFormatZero))
+	ogMonTot:setAttributeValue("vCBSMono", retValueAttribute("infNfe:_total:_IBSCBSTot:_gMono:_vCBSMono:text", lFormatZero))
+	ogMonTot:setAttributeValue("vIBSMonoReten", retValueAttribute("infNfe:_total:_IBSCBSTot:_gMono:_vIBSMonoReten:text", lFormatZero))
+	ogMonTot:setAttributeValue("vCBSMonoReten", retValueAttribute("infNfe:_total:_IBSCBSTot:_gMono:_vCBSMonoReten:text", lFormatZero))
+	ogMonTot:setAttributeValue("vIBSMonoRet", retValueAttribute("infNfe:_total:_IBSCBSTot:_gMono:_vIBSMonoRet:text", lFormatZero))
+	ogMonTot:setAttributeValue("vCBSMonoRet", retValueAttribute("infNfe:_total:_IBSCBSTot:_gMono:_vCBSMonoRet:text", lFormatZero))
+	
+	oIBSCBSTot:addElementNode(ogMonTot)
+	
+return
+ 
+/**
+* Instancia o objeto que representa o atributo "vNFTot" da tag "total"
+**/ 
+static function DovNFTot()
+
+	local lFormatZero := .T.	// Wellington Santana 22/11/2026 - [RTC Lote 4] lFormatZero movido para retValueAttribute (estava na posicao de lAddNode)
+	
+	ovNFTot := MsafNFeTag():newMsafNFeTag("")
+
+	ovNFTot:setAttributeValue("vNFTot", retValueAttribute("infNfe:_total:_vNFTot:text", lFormatZero))
+
+	oTotal:addElementNode(ovNFTot)
+
+return
+
+/**
+* FIM Wellington Santana 27/11/2026 - [RTC-2026/2027 - IP050]
+**/

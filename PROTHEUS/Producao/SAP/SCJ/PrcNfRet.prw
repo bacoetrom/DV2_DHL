@@ -1,4 +1,4 @@
-#include 'protheus.ch'
+#include 'totvs.ch'	// Wellington Santana 27/11/2026 - antes protheus.ch (include obsoleto)
 #include "dhl.ch"
 
 #define POS_DELIVERY	1
@@ -676,8 +676,14 @@ Static Function GravaItens(_cSerie,_cNF)
 			If RecLock("SFT",.F.)
 				SFT->FT_ALFCPST := SZB->ZB_FCPRATE
 				SFT->FT_BSFCPST := SZB->ZB_FCPBASE
-				SFT->FT_VALFECP	:= Iif(!lIcmSt, SZB->ZB_FCPAMOU, 0)
-				SFT->FT_VFECPST := Iif(lIcmSt, SZB->ZB_FCPAMOU, 0)
+				// Wellington Santana 27/11/2026 - Iif substituido por If/Else (SonarQube CA4000)
+				If lIcmSt
+					SFT->FT_VALFECP	:= 0
+					SFT->FT_VFECPST := SZB->ZB_FCPAMOU
+				Else
+					SFT->FT_VALFECP	:= SZB->ZB_FCPAMOU
+					SFT->FT_VFECPST := 0
+				EndIf
 				MsUnlock("SFT")
 			EndIf
 		EndIf
