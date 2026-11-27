@@ -249,6 +249,7 @@ static function DoIde()
 	oIde:setAttributeValue("nNF"		,	retValueAttribute("infnfe:_ide:_nNF:text")		)
 	oIde:setAttributeValue("dhEmi"		,	retValueAttribute("infnfe:_ide:_dhEmi:text")		)
 	oIde:setAttributeValue("dhSaiEnt"	,	retValueAttribute("infnfe:_ide:_dhSaiEnt:text")	)
+	oIde:setAttributeValue("dPrevEntrega",	retValueAttribute("infnfe:_ide:_dPrevEntrega:text")	) // Agility 27/07/2026
 	oIde:setAttributeValue("tpNF"		,	iif(retValueAttribute("infnfe:_ide:_tpNF:text") $ '2', '0', retValueAttribute("infnfe:_ide:_tpNF:text")))
 	oIde:setAttributeValue("idDest"		,	retValueAttribute("infnfe:_ide:_idDest:text")		)
 	oIde:setAttributeValue("cMunFG"		,	cMunFG )
@@ -257,6 +258,7 @@ static function DoIde()
 	oIde:setAttributeValue("tpEmis"		,	cTpEmis	)
 	oIde:setAttributeValue("cDV"		,	cDv )
 	oIde:setAttributeValue("tpAmb"		,	cTpAmb )
+	oIde:setAttributeValue("finNfe"		,	cFinNfe )
 	// INICIO Pablo Regis 21/11/2026 - PREMISSA-01: o XML vem pronto do nfesefaz, que ja emite
 	// tpNFDebito/tpNFCredito com padl(aNota[11],2,'0') e gate lRefTribCo (nfesefaz.prw:7782-7792).
 	// O mapper apenas le; ir a SF1/SF2 duplicaria a regra e quebraria o gate de vigencia.
@@ -275,6 +277,7 @@ static function DoIde()
 	oIde:setAttributeValue("indIntermed",	retValueAttribute("infnfe:_ide:_indIntermed:text") )   // INICIO Pablo Regis 21/11/2026 - PREMISSA-01: le do XML
 	oIde:setAttributeValue("procEmi"	,	cProcEmi	)
 	oIde:setAttributeValue("verProc"	,	retValueAttribute("infnfe:_ide:_verProc:text")	)
+	oIde:setAttributeValue("cIndOp",EMPTY_VALUE) //Analisar
 
 	oNota:addElementNode(oIde)
 
@@ -338,7 +341,8 @@ static function CalcDigit(cChave)
 	local nSoma		:= 0
 	local nDv 		:= 0
 	local nMult		:= 2
-	local cString	:= AllTrim(cChave)		
+	local cString	:= AllTrim(cChave)	
+	Local nI        := 0	
 	
 	for nI := Len(cString) to 1 step -1		
 		nSoma += (Val(SubStr(cString, nI, 1)) * nMult)
@@ -963,6 +967,7 @@ return
 **/ 
 static function DoReboque()
 	local aAttribute	:= retArrayAttribute("infNfe:_transp:_reboque")
+	Local nI  := 0
 	
 	if isEmpty(aAttribute)
 		oReboque := MsafNFeTag():newMsafNFeTag("reboque")
@@ -1005,6 +1010,7 @@ static function DoVolume()
 	
 	local aAttribute  := retArrayAttribute("infNfe:_transp:_vol")
 	local cMarca	  := if (cTypeInv == DHL_NFE_INVOICE_INFLOW, SF1->F1_ZZMARCA, SF2->F2_ZZMARCA)
+	Local nI := 0
 	
 	if isEmpty(aAttribute)
 		oVolume := MsafNFeTag():newMsafNFeTag("volume")
@@ -1127,6 +1133,7 @@ static function DoDuplicata()
 	
 	local cVDup		  := ""
 	local aAttribute  := retArrayAttribute("infNfe:_cobr:_dup")
+	Local nI 		  := 0
 	
 	if isEmpty(aAttribute)
 		oDuplicata := MsafNFeTag():newMsafNFeTag("duplicata")
@@ -1619,7 +1626,8 @@ static function DoEXTIPI()
 	oEXTIPI := MsafNFeTag():newMsafNFeTag("")
 		
 	oEXTIPI:setAttributeValue("cBenef"		,validTagValue("oDetProd:_prod:_cBenef:text"))  //Alterado por Denis Dias | 15/06/2018 - Alterado para cBenef conforme Doc. MasterSAF 4.0
-	oEXTIPI:setAttributeValue("EXTIPI"		,validTagValue("oDetProd:_prod:_EXTIPI:text"))
+	oExTIPI:setAttributeValue("EXTIPI"		,validTagValue("oDetProd:_prod:_EXTIPI:text"))
+	oEXTIPI:setAttributeValue("tpCredPresIBSZFM"		,validTagValue("oDetProd:_prod:_tpCredPresIBSZFM:text"))
 	oEXTIPI:setAttributeValue("CFOP"		,validTagValue("oDetProd:_prod:_CFOP:text"))
 	oEXTIPI:setAttributeValue("uCom"		,validTagValue("oDetProd:_prod:_uCom:text"))
 	oEXTIPI:setAttributeValue("qCom"		,validTagValue("oDetProd:_prod:_qCom:text"))
@@ -1724,7 +1732,6 @@ static function DoXPed()
 
 	oXPed:setAttributeValue("xPed"		,validTagValue("oDetProd:_prod:_xPed:text"))
 	oXPed:setAttributeValue("nItemPed"	,validTagValue("oDetProd:_prod:_nItemPed:text"))
-	//oXPed:setAttributeValue("nFCI"		,"1")
 	oXPed:setAttributeValue("nFCI"		,validTagValue("oDetProd:_prod:_nFCI:text"))
 	
 	oProd:addElementNode(oXPed)
@@ -4800,7 +4807,7 @@ static function DogIBSCredPres()
 	ogIBSCredPres := MsafNFeTag():newMsafNFeTag("gIBSCredPres")
 
 	ogIBSCredPres:setAttributeValue("cCredPres",retValTax(cTax,cAliq, oDetProd, "cCredPres","tributo:_gIBSCBS:_gIBSCredPres",lFormatZero))
-	ogIBSCredPres:setAttributeValue("pCredPres",retValTax(cTax,cAliq, oDetProd, "pCredPres","tributo:_gIBSCBS:_gIBSCredPres"))
+	// ogIBSCredPres:setAttributeValue("pCredPres",retValTax(cTax,cAliq, oDetProd, "pCredPres","tributo:_gIBSCBS:_gIBSCredPres"))
 	ogIBSCredPres:setAttributeValue("vCredPres",retValTax(cTax,cAliq, oDetProd, "vCredPres","tributo:_gIBSCBS:_gIBSCredPres"))
 	ogIBSCredPres:setAttributeValue("vCredPresCondSus",retValTax(cTax,cAliq, oDetProd, "vCredPresCondSus","tributo:_gIBSCBS:_gIBSCredPres"))
 	
@@ -4820,7 +4827,7 @@ static function DogCBSCredPres()
 	ogCBSCredPres := MsafNFeTag():newMsafNFeTag("gCBSCredPres")
 
 	ogCBSCredPres:setAttributeValue("cCredPres",retValTax(cTax,cAliq, oDetProd, "cCredPres","tributo:_gIBSCBS:_gCBSCredPres",lFormatZero))
-	ogCBSCredPres:setAttributeValue("pCredPres",retValTax(cTax,cAliq, oDetProd, "pCredPres","tributo:_gIBSCBS:_gCBSCredPres"))
+	// ogCBSCredPres:setAttributeValue("pCredPres",retValTax(cTax,cAliq, oDetProd, "pCredPres","tributo:_gIBSCBS:_gCBSCredPres"))
 	ogCBSCredPres:setAttributeValue("vCredPres",retValTax(cTax,cAliq, oDetProd, "vCredPres","tributo:_gIBSCBS:_gCBSCredPres"))
 	ogCBSCredPres:setAttributeValue("vCredPresCondSus",retValTax(cTax,cAliq, oDetProd, "vCredPresCondSus","tributo:_gIBSCBS:_gCBSCredPres"))
 	
@@ -4872,9 +4879,9 @@ static function DogMonPadrao()
 
 	ogMonPadrao:setAttributeValue("qBCMono",retValTax(cTax,cAliq, oDetProd, "qBCMono","tributo:_gMonoPadrao"))
 	ogMonPadrao:setAttributeValue("adRemIBS",retValTax(cTax,cAliq, oDetProd, "adRemIBS","tributo:_gMonoPadrao"))
-	ogMonPadrao:setAttributeValue("adRemCBS",retValTax(cTax,cAliq, oDetProd, "adRemCBS","tributo:_gMonoPadrao"))
+	// ogMonPadrao:setAttributeValue("adRemCBS",retValTax(cTax,cAliq, oDetProd, "adRemCBS","tributo:_gMonoPadrao"))
 	ogMonPadrao:setAttributeValue("vIBSMono",retValTax(cTax,cAliq, oDetProd, "vIBSMono","tributo:_gMonoPadrao"))
-	ogMonPadrao:setAttributeValue("vCBSMono",retValTax(cTax,cAliq, oDetProd, "vCBSMono","tributo:_gMonoPadrao"))
+	// ogMonPadrao:setAttributeValue("vCBSMono",retValTax(cTax,cAliq, oDetProd, "vCBSMono","tributo:_gMonoPadrao"))
 
 	ogIBSCBSMon:addElementNode(ogMonPadrao)
 	
@@ -4893,8 +4900,8 @@ static function DogMonReten()
 	ogMonReten:setAttributeValue("qBCMonoReten",retValTax(cTax,cAliq, oDetProd, "qBCMonoReten","tributo:_gMonoReten"))
 	ogMonReten:setAttributeValue("adRemIBSReten",retValTax(cTax,cAliq, oDetProd, "adRemIBSReten","tributo:_gMonoReten"))
 	ogMonReten:setAttributeValue("vIBSMonoReten",retValTax(cTax,cAliq, oDetProd, "vIBSMonoReten","tributo:_gMonoReten"))
-	ogMonReten:setAttributeValue("adRemCBSReten",retValTax(cTax,cAliq, oDetProd, "adRemCBSReten","tributo:_gMonoReten"))
-	ogMonReten:setAttributeValue("vCBSMonoReten",retValTax(cTax,cAliq, oDetProd, "vCBSMonoReten","tributo:_gMonoReten"))
+	// ogMonReten:setAttributeValue("adRemCBSReten",retValTax(cTax,cAliq, oDetProd, "adRemCBSReten","tributo:_gMonoReten"))
+	// ogMonReten:setAttributeValue("vCBSMonoReten",retValTax(cTax,cAliq, oDetProd, "vCBSMonoReten","tributo:_gMonoReten"))
 
 	ogIBSCBSMon:addElementNode(ogMonReten)
 	
