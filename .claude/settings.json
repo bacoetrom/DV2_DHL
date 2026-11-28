@@ -9,7 +9,11 @@
       "Bash(grep -cE '🟢 Teste \\\\|\\\\s*\\\\|$' Questoes_Fiscais_NFe_2027.md)",
       "Bash(awk '{print $5, $9}')",
       "Bash(ls -la \"/d/TDS/Workspace_Protheus_Prd/PROTHEUS/Includes\" 2>/dev/null | grep -i \"safx07\\\\|safx3007\\\\|dhl.ch\" || echo \"DIR NAO ACESSIVEL/NAO EXISTE\")",
-      "Read(//d/TDS/Workspace_Protheus_Prd/PROTHEUS/**)"
+      "Read(//d/TDS/Workspace_Protheus_Prd/PROTHEUS/**)",
+      "Bash(grep -n \"^#\\\\{1,3\\\\} \" plano-safx3007-3008-rtc-1.md)",
+      "Bash(grep -n \"^#\\\\{1,3\\\\} \" Plano_Execucao_NFe_2027_IBS_CBS.md)",
+      "Bash(python -c ' *)",
+      "Bash(python -c *)"
     ]
   }
 }

@@ -133,7 +133,6 @@ Static Function getEsperadas(cFinNfe, cTpNFDeb, cTpNFCre)
 		aAdd(aEsp, {"chaveAcesso", "infnfe:_det:_DFeReferenciado:_chaveAcesso", .T.})
 	EndIf
 	// FIM Pablo Regis 21/11/2026
-	EndIf
 
 	// Debito 03: ajuste de competencia no lugar do gIBSCBS
 	If cFinNfe == "6" .And. cTpNFDeb == "03"

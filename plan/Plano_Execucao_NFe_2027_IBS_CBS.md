@@ -848,3 +848,220 @@ Integridade conferida: CP-1252 e CRLF preservados, zero bytes UTF-8, zero U+FFFD
 2. **Débito 02 precisa ser remodelado** como anulação de crédito por saídas imunes/isentas, não como uso e consumo próprio.
 3. **A nota de crédito vem do SIGACOM** — confirmar se o fluxo Mastersaf cobre documentos de entrada gerados por Compras.
 4. **`nItem` do `DFeReferenciado`** — campo físico no vínculo DKN ainda não confirmado.
+
+---
+
+## 10. Execução de 28/11/2026 — validação do TXT gerado contra o leiaute 4.19
+
+Primeira validação de um arquivo **realmente gerado** pela interface: `plan/Gerado.txt`, uma NF-e 55/102/226180 de remessa por conta e ordem (CFOP 5923), emitida em 26/11/2026 em homologação (`tpAmb=2`).
+
+### 10.1 Troca da fonte de referência da validação
+
+A validação passa a usar **apenas** dois documentos:
+
+| Fonte | Papel |
+|---|---|
+| [Layout_Envio_NFe_NFCe_4.00_DFe_4.19.md](Layout_Envio_NFe_NFCe_4.00_DFe_4.19.md) | Extração integral da aba `Envio NFe_NFCe - 4.00 -DFe 4.19`: árvore de blocos, ocorrência, tipo, tamanho, decimais, `Observação` e `Obs. integração` de cada um dos 918 campos. É a autoridade. |
+| [Leiaute_Mastersaf_4_19.md](Leiaute_Mastersaf_4_19.md) | Confronto posicional dos blocos da Reforma Tributária e regras de cálculo. |
+
+O [Inventario_Tags_NFe_2027.md](Inventario_Tags_NFe_2027.md) **sai da cadeia de validação**. Ele foi derivado do `HTMLConsolidado.xml` (11 cenários) e afirmava que `vUnComLiq`, `vProdLiq` e `vProdLiqTot` eram exigidos em **todos** os cenários. O leiaute diz o contrário:
+
+- `sequencia_XML_liq` (110.01) tem ocorrência **0-1** — bloco opcional;
+- `vProdLiqTot` (326a) é **0-1** e sua observação é explícita: *"Deve ser informado quando algum item informar `vProdLiq`"*;
+- a vigência da NB01-30 é **homologação 01/02/2027, produção 01/03/2027** ([Leiaute_Mastersaf_4_19.md](Leiaute_Mastersaf_4_19.md) §5).
+
+Ou seja: o valor líquido ainda **não** é exigência de produção, e `vProdLiqTot` vazio é o comportamento **correto** enquanto nenhum item informar `vProdLiq`. O inventário continua válido como mapa de cenários fiscais — não como critério de conformidade de leiaute.
+
+> ⚠️ **Numeração.** O [Leiaute_Mastersaf_4_19.md](Leiaute_Mastersaf_4_19.md) numera as linhas como **linha do TXT − 1**. As 12 afirmações posicionais daquele documento foram conferidas uma a uma contra a reconstrução desta seção e **todas as 12 batem** com esse offset (`sequencia_XML_liq` 358→359, `vUnComLiq` 359→360, `vProdLiq` 360→361, `vNFTot` 1232→1233, `vProdLiqTot` 1233→1234, `ICMS_Previsto` 758→759, `vICMSPrevisto` 759→760, `IS` 900→901, `CSTIS` 901→902, `vIS` item 907→908, `ISTot` 1192→1193, `vIS` total 1193→1194). Daqui para frente, usar sempre a numeração do TXT.
+
+### 10.2 Método — reconstrução verificável das 1.399 linhas
+
+O documento de leiaute lista os campos diretos de cada bloco **separados** dos seus sub-blocos, então a leitura direta não dá a ordem física do arquivo (em blocos como `prod` os campos vêm antes **e depois** dos sub-blocos). A sequência foi reconstruída assim:
+
+1. O **Índice de blocos** dá a linha da planilha de cada um dos 240 blocos; linha do TXT = linha da planilha − 12.
+2. A **Estrutura hierárquica** dá a árvore em pré-ordem e o número de campos de cada bloco.
+3. `span(bloco) = 2 + campos + Σ span(filhos)` fecha a extensão de cada bloco.
+4. Dentro de um bloco, os filhos ocupam faixas já conhecidas; as linhas livres restantes recebem os campos do bloco **na ordem da tabela de detalhamento**.
+
+**Auto-verificação — tudo fechou sem ajuste manual:**
+
+| Verificação | Resultado |
+|---|---|
+| Blocos na árvore × no índice × no detalhamento | 240 = 240 = 240 |
+| Campos somados na árvore × tabelados no detalhamento | 918 = 918 |
+| Nome, ordem e pai de cada bloco (árvore × índice) | consistentes |
+| Linha calculada × linha declarada, para os 240 blocos | **zero divergência** |
+| Total de linhas | `span(nota)` = 1.398 + `--arquivo_fim--;` = **1.399** |
+| Linhas sem registro | nenhuma |
+
+### 10.3 Resultado geral
+
+| | Canônico 4.19 | `Gerado.txt` |
+|---|---:|---:|
+| Linhas | 1.399 | 1.285 |
+| Blocos | 240 | 218 |
+
+O delta de **114 linhas** decompõe-se exatamente em:
+
+- **105 linhas** de **22 blocos** inteiros não gerados;
+- **9 linhas de campo** ausentes **dentro de blocos que são gerados** — essas são as que desalinham a leitura posicional.
+
+Nenhuma linha excedente: o arquivo não tem nada que o leiaute não preveja, todas as 1.285 linhas terminam em `;`, é ASCII puro com CRLF, e fecha com `--nota_fim--;` + `--arquivo_fim--;`.
+
+### 10.4 Blocos obrigatórios — nenhuma ausência indevida
+
+Aplicando as **Regras gerais** do leiaute:
+
+> R1 — Bloco não obrigatório: não é gerado quando os campos de integração estão vazios.
+> R2 — Bloco obrigatório (principal): é gerado com tag fechada quando os campos estão vazios.
+> R3 — Bloco principal obrigatório com subcampos vazios: apenas o bloco principal é gerado; os subblocos (mesmo obrigatórios) são ignorados.
+> R4 — Campos zerados (0.00) são incluídos no XML.
+
+Dos 22 blocos ausentes, **3 têm ocorrência obrigatória** — e os 3 estão amparados:
+
+| Bloco | Ocor | Linha | Situação |
+|---|---|---:|---|
+| `gPgto` | 1-99 | 1323 | pai `gPgtoVinc` é gerado vazio → **R3** |
+| `defensivo` | 1-20 \| CG | 1387 | pai `agropecuario` também ausente → coerente |
+| `guiaTransito` | 1-1 \| CG | 1391 | pai `agropecuario` também ausente → coerente |
+
+Os outros 19 são todos `0-x` e a omissão é exatamente o que a **R1** manda: `gCompraGov`, `ref_NFe` (do `gCompraGov`), `gPagAntecipado`, `gCred`, `origComb`, `x_icms_efetivo` (×3, em `icms_60`, `icms_st` e `icms_sn500`), `sequencia_XML_op`, `sequencia_XML_fcpdif`, `sequencia_XML_deson`, `sequencia_XML` (do `seqSeletivo`), `gALCZFMCBS`, `DFeReferenciado`, `sequencia_XML_detPag`, `infIntermed`, `infRespTec`, `seq_XML` e `agropecuario`.
+
+> **Correção de uma afirmação anterior.** `infRespTec` tem ocorrência **0-1** neste leiaute — não é bloco obrigatório do TXT, e sua omissão não viola o leiaute. A obrigatoriedade do grupo `infRespTec` no XML perante a SEFAZ é questão à parte, a confirmar com o fornecedor: o integrador pode preenchê-lo por cadastro próprio. Não tratar como defeito de integração sem essa confirmação.
+
+### 10.5 O problema é o inverso: 120 blocos opcionais gerados vazios
+
+A **R1** é violada em larga escala: **120 blocos de ocorrência `0-x` são gerados sem nenhum conteúdo**. Em **97** deles há campos de ocorrência `1-1` emitidos vazios dentro — situação que o leiaute só admite para bloco **obrigatório** (R2).
+
+Exemplos representativos (bloco → campos `1-1` vazios):
+
+| Bloco | Linha no gerado | Campos `1-1` vazios |
+|---|---:|---|
+| `sequencia_XML_liq` | 337 | `vUnComLiq`, `vProdLiq` |
+| `x_contingencia` | 52 | `dhCont`, `xJust` |
+| `avulsa` | 111 | `CNPJ`, `xOrgao`, `matr`, `xAgente`, `UF`, `repEmi` |
+| `retirada` / `entrega` | 148 / 166 | `CNPJ`, `CPF`, `xLgr`, `nro`, `xBairro`, `cMun`, `xMun`, `UF` |
+| `ISSQN` | 827 | `vBC`, `vAliq`, `vISSQN`, `cMunFG`, `cListServ`, `indISS`, `indIncentivo` |
+| `IS` / `seqSeletivo` | 845 / 848 | `CSTIS`, `cClassTribIS` / `vBCIS`, `pIS`, `vIS` |
+| `gTribRegular` | 907 | 8 campos |
+| `gMonoPadrao` (×4) | 929/948/972/991 | 3 a 6 campos cada |
+| `ICMS_Previsto` | 703 | `vICMSPrevisto` |
+| `ISTot` | 1116 | `vIS` |
+
+O padrão é claro: o gerador emite **toda** a árvore do leiaute e preenche o que tem. O leiaute pede o contrário — omitir o bloco opcional vazio. Não há evidência de que o integrador rejeite o arquivo por isso (ele é posicional e a estrutura completa é inequívoca), mas duas consequências são concretas:
+
+1. **É a razão de o arquivo não ter 1.399 linhas.** Com 120 blocos opcionais emitidos e 22 omitidos, o critério de emissão é **inconsistente** — e cada bloco omitido que o integrador espere encontrar desloca a leitura.
+2. **`sequencia_XML_liq` é o caso a decidir já**: ou se preenche `vUnComLiq`/`vProdLiq`, ou o bloco não deve ser gerado. Hoje ele sai com dois campos `1-1` vazios. Enquanto a NB01-30 não entrar em vigor (01/03/2027), **não gerar** é a opção aderente à R1.
+
+**Pendência de fornecedor (PEND-LAY-01):** confirmar com o ONESOURCE DF-e se o integrador aceita a árvore completa com blocos opcionais vazios ou se exige a aplicação estrita da R1. A resposta define se as 120 ocorrências são dívida técnica tolerável ou correção obrigatória.
+
+### 10.6 Choice Groups emitidos simultaneamente
+
+O leiaute marca alguns blocos como `CG` — *Choice Group*, escolha exclusiva entre irmãos. O gerado emite **todos os irmãos**, vazios:
+
+| Pai | CG irmãos emitidos juntos |
+|---|---|
+| `sequencia_XML_IBSCBS` | `gIBSCBS`, `gIBSCBSMono`, `gTransfCred`, `gAjusteCompet` |
+| `sequencia_XML_cred_pres` | `gCredPresOper`, `gCredPresIBSZFM` |
+| `sequencia_XML_IBSMono` | `gIBSMonoAdRem`, `gIBSMonoAdValorem` |
+| `sequencia_XML_CBSMono` | `gCBSMonoAdRem`, `gCBSMonoAdValorem` |
+
+Nenhum tem conteúdo nesta nota (CST 410), então não há ambiguidade **neste** arquivo. Mas quando um deles passar a ser preenchido, os irmãos vazios precisam deixar de sair — caso contrário o integrador recebe duas alternativas de um grupo exclusivo.
+
+O mesmo vale para o par **CE – Choice Element** do `nfReferenciada`: `refNFe` (29x.2) e `refNFeSig` (29x.2a) são marcados *"CE – Choice Element (escolha entre elementos)"* na coluna `Obs. integração`, e o gerado preenche **os dois** (ver 10.7, item 3).
+
+### 10.7 Oito defeitos de conteúdo
+
+**1. Linha 146 — `email` do `dest` (79a) usa `;` como separador.** O leiaute é explícito na `Obs. integração`: *"Para informar mais de um e-mail, os mesmos deverão ser separados **SOMENTE por , (vírgula)**"*. O gerado traz:
+
+```
+ARQUIVO.NFE@SCJ.COM,arquivo.nfe@scj.com;BR.DSC.FISCAL@DHL.COM;
+```
+
+O `;` é o terminador de campo do TXT: o integrador lê **dois campos** e desloca o resto do bloco `dest`. Além disso são 61 caracteres contra `Tam. 1-60`. Trocar o `;` por `,`.
+
+**2. Linha 1166 — `xNome` da transportadora (361) com entidade XML `&#39;`.**
+
+```
+UNIDOCK&#39;S ASSESSORIA E LOGITICA DE MATER;
+```
+
+O `;` que fecha a entidade quebra o bloco `transporta` do mesmo modo. No TXT o valor deve ser literal (`UNIDOCK'S`) — o escape para XML é do integrador.
+
+**3. Linha 58 — `refNFeSig` (29x.2a) com 44 zeros, e preenchido junto com `refNFe`.** Dois problemas:
+
+- `refNFe` e `refNFeSig` são **CE – Choice Element**: informa-se **um ou outro**, nunca ambos. O gerado traz a chave real na linha 57 **e** o `refNFeSig` na 58.
+- A descrição do campo é *"Referencia uma NF-e (modelo 55) emitida anteriormente pela sua Chave de Acesso **com código numérico zerado**, permitindo manter o sigilo da NF-e referenciada."* Isso é a chave de 44 posições com os **8 dígitos do `cNF` zerados** e o DV recalculado — **não** 44 zeros.
+
+Origem: [ProcMsaNFe.prw:5992](../PROTHEUS/Producao/Mastersaf_NFe/ProcMsaNFe.prw#L5992), repetido em 5996 e 5999 — `Replicate("0",44)` incondicional. Correção: não emitir `refNFeSig` quando `refNFe` for informado.
+
+**4. `cNF` divergente da chave de acesso.** A linha 7 (`id`, 47 posições, *"chave de acesso precedida do literal 'NFe'"*) traz a chave `...100452934` + DV `1`, cujo `cNF` embutido é `00452934`. A linha 27 (`ide/cNF`) traz `53831897`.
+
+A chave é **internamente consistente**: o DV calculado por módulo 11 base 2,9 sobre os 43 dígitos dá **1**, igual ao informado. Com `cNF = 53831897` o DV seria **0**. Logo o campo errado é o `ide/cNF`.
+
+São duas fontes independentes: `id` é montado de `cKeyInv` ([ProcMsaNFe.prw:256](../PROTHEUS/Producao/Mastersaf_NFe/ProcMsaNFe.prw#L256)) e `cNF` vem de `retValueAttribute("infnfe:_ide:_cNF:text")` ([:280](../PROTHEUS/Producao/Mastersaf_NFe/ProcMsaNFe.prw#L280)). Extrair o `cNF` das posições 36-43 da própria `cKeyInv` elimina a divergência por construção.
+
+**5. Linha 50 — `verProc` (29b) vazio.** `Caractere`, `Tam. 1-20`, ocorrência **1-1**, em bloco `ide` preenchido. *"Informar a versão do aplicativo emissor de NF-e."*
+
+**6. Linha 1099 — `dCompet` (347a) vazio.** `Numérico 8`, ocorrência **1-1**, dentro de `issqn_Tot` que está sendo gerado com todos os totais em `0.00`. Como `issqn_Tot` é `0-1` e não há serviço na nota, o bloco não deveria ser emitido (R1); emitido, o `dCompet` precisa de valor.
+
+**7. Linha 1223 — `vPag` (398c) sem decimais.** Sai `0`; a `Obs. integração` diz *"15 posições, sendo 13 inteiros e 2 decimais"*. Deve ser `0.00`.
+
+**8. Três `1-1` vazios que NÃO são defeito.** `emit/CPF` (31a, linha 87), `dest/CPF` (64, linha 126) e `dest/idEstrangeiro` (64a, linha 127) aparecem como ocorrência `1-1`, mas são alternativas excludentes do `CNPJ` — que está preenchido nos dois blocos. A planilha marca `CNPJ` e `CPF` ambos como `1-1` no mesmo bloco, o que só se explica como escolha de schema. **Não alterar.**
+
+### 10.8 Nove linhas de campo ausentes em blocos que são gerados
+
+Essas são as que desalinham a leitura posicional. Confirmado por varredura no fonte: `indDoacao`, `ISUFEmit`, `pDevTrib`, `vBCCredPres` e `cCredPres` **não existem** em `ProcMsaNFe.prw` — são campos da 4.19 nunca implementados.
+
+| Linha canônica | ID | Campo | Ocor | Bloco (linha no gerado) | Bloco preenchido? |
+|---:|---|---|---|---|---|
+| 121 | 49d | `ISUFEmit` | 0-1 | `emit` (85) | **SIM** |
+| 580 | 237.1a | `cBenefRBC` | 0-1 | `x_icms90_icms` (546) | não |
+| 918 | 324.14a | `indDoacao` | 0-1 | `IBSCBS` (855) | **SIM** |
+| 931 | 324.24a | `pDevTrib` | 0-1 | `gDevTrib` do `gIBSUF` (869) | não |
+| 947 | 324.43a | `pDevTrib` | 0-1 | `gDevTrib` do `gIBSMun` (884) | não |
+| 963 | 324.62a | `pDevTrib` | 0-1 | `gDevTrib` do `gCBS` (899) | não |
+| 1099 | 324121 | `vBCCredPres` | 1-1 | `gCredPresOper` (1028) | não |
+| 1100 | 324122 | `cCredPres` | 1-1 | `gCredPresOper` (1028) | não |
+| 1115 | 324134 | `vCredPresIBSZFM` | 1-1 | `gCredPresIBSZFM` (1040) | não |
+
+Os dois primeiros casos de bloco **preenchido** são os de risco imediato: `ISUFEmit` no `emit` e `indDoacao` no `IBSCBS`. Os `gDevTrib` emitem 1 linha onde o leiaute prevê 2 (`pDevTrib` + `vDevTrib`); a ausente é `pDevTrib`, campo novo da 4.19.
+
+### 10.9 O que está correto
+
+As três correções de posicionamento aplicadas em 22/11/2026 (§9.4) estão **confirmadas no arquivo gerado**:
+
+- `sequencia_XML_liq` como último elemento do `prod`, imediatamente antes de `--prod_fim--` → linhas 337-340;
+- `vProdLiqTot` **depois** do `vNFTot` e **fora** do `icms_Tot` → linhas 1156-1157, exatamente a mudança que a planilha alerta em relação à prévia de 15/10/2026;
+- `cIndOp` (29.6) após `verProc`/29b → linha 51.
+
+Também conferem:
+
+- os **30 campos do `icms_Tot`** alinham 1:1 com as linhas 1140-1168 do leiaute;
+- a ordem do `total`: `icms_Tot` → `issqn_Tot` → `ret_Trib` → `ISTot` → `IBSCBSTot` → `vNFTot` → `vProdLiqTot`;
+- a chave referenciada da linha 57 tem **DV válido** (5) e bate com o `infCpl` (NF 000006767, série 042, 26/05/2026, CNPJ 33.122.466/0007-04, AM);
+- aritmética do item: `qCom × vUnCom = vProd` (189.310,54), `vBC × 18% = vICMS` (34.075,90), `vProd = vNF = vNFTot = vItem`;
+- `IPI` CST 55 com `cEnq` 103, coerente com o `infCpl` ("IPI suspenso conf. Art. 43 inciso III do RIPI");
+- `IBSCBS` com `CST 410` e `cClassTrib 410029` — os 3 primeiros dígitos do `cClassTrib` batem com o CST, e `gIBSCBS` vazio + `IBSCBSTot` zerado são coerentes com não incidência;
+- `vProdLiqTot` vazio é **correto** (nenhum item informa `vProdLiq`);
+- `infCpl` com 646 caracteres, dentro do limite;
+- `tPag = 90` (sem pagamento), coerente com remessa.
+
+### 10.10 Correções a fazer no `ProcMsaNFe.prw`
+
+Em ordem de severidade:
+
+1. `email` do `dest`: separador `,` em vez de `;`, e truncar/validar em 60 posições.
+2. `xNome` da `transporta` (e qualquer campo texto): remover entidades XML (`&#39;`, `&amp;`, …) antes de gravar o TXT.
+3. `refNFeSig`: não emitir junto com `refNFe` (CE) e, quando emitir, gerar a chave com o `cNF` zerado e DV recalculado — não `Replicate("0",44)`.
+4. `ide/cNF`: extrair das posições 36-43 de `cKeyInv`, em vez de ler de outra fonte.
+5. `verProc`: preencher com a versão do emissor.
+6. `issqn_Tot`: não emitir quando não houver serviço; se emitir, preencher `dCompet`.
+7. `vPag`: formatar com 2 decimais.
+8. Implementar as 9 linhas ausentes — prioridade em `ISUFEmit` (`emit`) e `indDoacao` (`IBSCBS`), que estão em blocos preenchidos.
+9. Decidir `sequencia_XML_liq`: não gerar até a vigência da NB01-30 (01/03/2027).
+10. Após PEND-LAY-01, decidir sobre as 120 violações da R1 e os CG irmãos.
+
+### 10.11 Reprodutibilidade
+
+A reconstrução e a comparação são scripts determinísticos sobre os dois documentos de leiaute e o `Gerado.txt`, sem leitura da planilha binária: `build_ref419.py` (reconstrói e auto-verifica as 1.399 linhas), `compara419.py` (alinhamento e defeitos de conteúdo) e `obrigatoriedade.py` (análise das regras R1-R4). Devem ser reexecutados a cada novo TXT de teste.

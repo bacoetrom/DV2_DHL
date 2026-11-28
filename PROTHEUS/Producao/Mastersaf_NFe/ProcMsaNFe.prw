@@ -8,16 +8,22 @@
 * INICIO Pablo Regis 21/11/2026 - nomes dos marcadores novos do TXT Mastersaf.
 * Isolados aqui porque o leiaute posicional 2027 ainda nao foi recebido: a
 * confirmacao vira alteracao de 1 token em 1 lugar, nao cacada por literais.
-* O dfe_referenciado segue a grafia do ajuste Agility de 26/07/2026, feito
-* com o leiaute em maos - e a unica evidencia externa sobre o nome.
+*
+* ALTERADO Pablo Regis 27/11/2026 - o leiaute oficial CHEGOU: planilha
+* ONESOURCEDFE_Layout_NFe_NFCe_4_00v4_19.xlsx, aba "Envio NFe_NFCe - 4.00 -DFe
+* 4.19", documentada em plan/Layout_Envio_NFe_NFCe_4.00_DFe_4.19.md. Todas as
+* grafias abaixo passaram a ser conferidas contra ela, e nao mais inferidas.
+*   - DFeReferenciado (325i): a grafia do ajuste Agility ("dfe_referenciado")
+*     estava ERRADA. O leiaute grava --DFeReferenciado_ini--.
+*   - vProdLiqTot (326a): nao e bloco, e CAMPO do grupo total. O define foi
+*     retirado porque campo inline nao tem marcador.
 */
-#define MSA_TAG_DFEREF      "dfe_referenciado"
+#define MSA_TAG_DFEREF      "DFeReferenciado"    // 325i  - leiaute DFe 4.19
 #define MSA_TAG_IS          "IS"
 #define MSA_TAG_ISTOT       "ISTot"
 #define MSA_TAG_AJUSTCOMP   "gAjusteCompet"
 #define MSA_TAG_ESTCRED     "gEstornoCred"
 #define MSA_TAG_ICMSPREV   "ICMS_Previsto"      // 245b.01 - leiaute DFe 4.19
-#define MSA_TAG_VPRODLIQTOT "vProdLiqTot"
 #define MSA_TAG_SEQLIQ      "sequencia_XML_liq"  // 110.01 - leiaute DFe 4.19
 /* FIM Pablo Regis 21/11/2026 */
 
@@ -86,6 +92,15 @@ return lRet
 **/
 Static Function MountTags()
 
+	// INICIO Pablo Regis 27/11/2026 - defesa de tipo na leitura do MV_RESPTEC.
+	// O If testava o retorno do GetNewPar() direto. Se o X6_TIPO do ambiente
+	// estiver cadastrado como caractere ("T", ".T.", "S", "1") ou numerico - e
+	// nao como logico - o If estoura em runtime com erro de tipo. lParToLog()
+	// confere o ValType e sempre devolve logico; tipo nao previsto cai em .F.,
+	// o mesmo default informado ao GetNewPar.
+	local lRespTec := lParToLog(GetNewPar("MV_RESPTEC", .F.), "MV_RESPTEC")
+	// FIM Pablo Regis 27/11/2026
+
 	SetPrvt("oNota,oVersao,oInf_NFe,oIde,oX_Contingencia,oNfReferenciada,oRef_NFe,oRef_NFP,oRefCTe,oRef_ECF,oEmit,OX_Emitente,oCRT,oAvulsa,oDeST,oEnder_Dest,oIndIEDest,oRetirada,oXIE_Emitente,oEmitEnder,oXIE_Emitente,oIcms_st10,oIcms_st70,oContExt")
 	SetPrvt("oEntrega,oAut_XML,oTotal,oIcms_Tot,oIssqn_Tot,oRet_Trib,oInf_Transporte,oTransp,oTransporta,oRet_Transp,oX_Transp_Diversos,oVeic_Transp,oReboque,oVagao,oSeqXML,oRastroProd,oIcms90_icms")
 	SetPrvt("oVolume,oLacre,oCobr,oFat,oDuplicata,oPag,oCard,oInf_Adic,oUso_livre_c,oUso_livre_f,oProc_referenciado,oExporta,oCompra,oCana,oCana_forn_diario,oCana_deducao,oIcms_psn201")
@@ -97,7 +112,12 @@ Static Function MountTags()
 	SetPrvt("oPis_aliq,oPis_qtde,oPis_nt,oPis_outr,oX_pis_percent,oX_pis_valor,oPISST,oPis_st,oX_pisst_percent,oX_pisst_valor,oCOFINS,oCofins_aliq,oCofins_qtde,oPisst_valorf")
 	SetPrvt("oCofins_nt,oCofins_outr,oX_cofinsoutr_percent,oX_cofinsoutr_valor,oCOFINSST,oCofins_st,oX_cofinsst_percent,oX_cofinsst_valor,oISSQN,oImposto_devol,oIpi_devol,oInf_adicionais,oCofinsst_valorf,oPag_valorf,oDetPag, oxIcms_st, oSeq_IcmsSt")
 	SetPrvt("oInf_RespTec, oSeq_RespTec")
-	SetPrvt("oIBSCBS,ogIBSCBS,ogIBSUF,ogIBSUFDif,ogIBSUFDevTrib,ogIBSUFRed,ogIBSMu,ogIBSMuDif,ogIBSMuDevTrib,ogIBSMuRed,ogCBS,ogCBSDif,ogCBSDevTrib,ogCBSRed,ogTribRegular,ogIBSCredPres,ogCBSCredPres,ogTribCompraGov,ogIBSCBSMon,ogMonPadrao,ogMonReten,ogMonRet,ogMonDif,ogIBCBMonAttrib,ogTransfCred,ogCredPresIBSZFM,oIBSCBSTot,ogIBSTot,ogIBSUFTot,ogIBSMuTot,ogIBSTotAttrib,ogCBSTot,ogMonTot,ovNFTot,oIcms_02,oXIcmsSt10Des,oIcms_15,oIcms_53,oIcms_61,oXIcmsSt70Des,oXIcmsSt90Des,oIcmsParAttrib,oPBio,oObsItem,oObsCont,oObsFisco,ovItem,oIS,ogAjusteCompet,ogEstornoCred,oICMSPrevAnt,oDfe_referenciado,oSeqXmlLiq,ogEstCredTot,ovProdLiqTot,oISTot")
+	SetPrvt("oIBSCBS,ogIBSCBS,ogIBSUF,ogIBSUFDif,ogIBSUFDevTrib,ogIBSUFRed,ogIBSMu,ogIBSMuDif,ogIBSMuDevTrib,ogIBSMuRed,ogCBS,ogCBSDif,ogCBSDevTrib,ogCBSRed,ogTribRegular,ogIBSCredPres,ogCBSCredPres,ogTribCompraGov,ogIBSCBSMon,ogMonPadrao,ogMonReten,ogMonRet,ogIBCBMonAttrib,ogTransfCred,ogCredPresIBSZFM,oIBSCBSTot,ogIBSTot,ogIBSUFTot,ogIBSMuTot,ogIBSTotAttrib,ogCBSTot,ogMonTot,ovNFTot,oIcms_02,oXIcmsSt10Des,oIcms_15,oIcms_53,oIcms_61,oXIcmsSt70Des,oXIcmsSt90Des,oIcmsParAttrib,oPBio,oObsItem,oObsCont,oObsFisco,ovItem,oIS,ogAjusteCompet,ogEstornoCred,oICMSPrevAnt,oDfe_referenciado,oSeqXmlLiq,ogEstCredTot,ovProdLiqTot,oISTot")
+	// INICIO Pablo Regis 27/11/2026 - blocos novos do leiaute DFe 4.19.
+	// ogMonDif saiu da lista: o gMonoDif foi removido do leiaute 4.19.
+	SetPrvt("oSIBSMono,oSCBSMono,ogIBSMonoAdRem,ogIBSMonoAdVal,ogCBSMonoAdRem,ogCBSMonoAdVal,ogpBioDif")
+	SetPrvt("oSCredPres,ogCredPresOper,oSeqSeletivo,ogPgtoVinc,ogPgto")
+	// FIM Pablo Regis 27/11/2026
 		
 	DoNota()
 	DoVersaoLayout()
@@ -139,7 +159,7 @@ Static Function MountTags()
 	DogMonTot()
 	// INICIO Pablo Regis 22/11/2026 - gEstornoCred de TOTAL (355.29e), dentro do IBSCBSTot
 	If lRefTribCo
-		DogEstCredTot()
+		DogEstCTot()
 	EndIf
 	// FIM Pablo Regis 22/11/2026
 	DovNFTot()
@@ -147,7 +167,7 @@ Static Function MountTags()
 	// vNFTot (355.30) e fora do icms_Tot. O fornecedor alertou que a posicao
 	// mudou em relacao a previa de 15/10/2026, quando ficava no fim do icms_Tot.
 	If lRefTribCo
-		DovProdLiqTot()
+		DovProdLiq()
 	EndIf
 	// FIM Pablo Regis 22/11/2026
 	DoInfTransporte()
@@ -167,8 +187,23 @@ Static Function MountTags()
 	DoSeqPag()
 	DoCard()
 	//DoTroco() 	//Adicionado por Denis Dias | 10/06/2018
+	// INICIO Pablo Regis 27/11/2026 - NT 2026.006 v1.00, Vinculacao com a
+	// Transacao de Pagamento. Leiaute DFe 4.19: o gPgtoVinc (398.50, 0-1) e
+	// filho direto de nota, entre o infIntermed e o inf_Adic.
+	// O infIntermed (398.4x, 0-1) continua NAO implementado - e lacuna
+	// pre-existente, anterior a reforma, e nao requisito da NT 2026.006. Como
+	// o gPgtoVinc e bloco nomeado e opcional, a ausencia do infIntermed nao
+	// desloca nada: o que importa e vir antes do inf_Adic.
+	// Campos preparatorios: sem exigencia de preenchimento em producao em 2026,
+	// ativacao prevista com o split payment em 2027. Sob o gate de vigencia
+	// para nao alterar o TXT atual.
+	If lRefTribCo
+		DoGPgVinc()
+		DoGPgto()
+	EndIf
+	// FIM Pablo Regis 27/11/2026
 	DoInfAdic()
-	If GetNewPar("MV_RESPTEC", .F.)
+	If lRespTec
 		DoInfRespTec()
 		DoSeqRTec()
 	EndIf	
@@ -1581,12 +1616,15 @@ static function DoProd()
 		oProd:setAttributeValue("xProd"	,validTagValue("oDetProd:_prod:_Prod:text"))
 	EndIf
 	oProd:setAttributeValue("NCM"	,validTagValue("oDetProd:_prod:_NCM:text"))
-	
-	// INICIO Pablo Regis 22/11/2026 - bloco 110.01 como ULTIMO elemento do prod
-	If lRefTribCo
-		DoSeqXmlLiq()
-	EndIf
-	// FIM Pablo Regis 22/11/2026
+
+	// INICIO Pablo Regis 27/11/2026 - o DoSeqLiq() SAIU daqui.
+	// A intencao era o bloco 110.01 ser o ultimo elemento do prod, mas chamar
+	// de dentro do DoProd() produzia o oposto: o DoProd() roda ANTES de DoNve,
+	// DoSeqXML, DoEXTIPI, DoDi, DoDetExport, DoXPed, DoRastro, DoProdEspecifico
+	// e DoObsItem - todos com oProd:addElementNode() - entao o bloco saia como
+	// PRIMEIRO filho, logo depois do NCM, deslocando os valores inline do
+	// EXTIPI. A chamada foi para o DoDetProd(), depois do DoObsItem().
+	// FIM Pablo Regis 27/11/2026
 	oDet:addElementNode(oProd)  //Alterado por Denis Dias 16/06/2018
 
 return
@@ -3916,13 +3954,22 @@ static function DoDetProd()
 		DoObsItem()
 		DoObsCont()
 		DoObsFisco()
+		// INICIO Pablo Regis 27/11/2026 - bloco 110.01 como ULTIMO elemento do prod.
+		// Leiaute DFe 4.19: --sequencia_XML_liq_ini-- vem depois do --obsItem_fim--
+		// e imediatamente antes do --prod_fim--. Tem de ficar aqui, e nao dentro do
+		// DoProd(), porque o obsItem e o ultimo oProd:addElementNode() do item
+		// (DoObsCont/DoObsFisco penduram em oObsItem, nao em oProd).
+		If lRefTribCo
+			DoSeqLiq()
+		EndIf
+		// FIM Pablo Regis 27/11/2026
 		DoImpostos()
 		DoAllTaxes(oDetProd)
 		DoInfAdicionais()
 		DovItem()	
 		// INICIO Pablo Regis 18/11/2026 - DFeReferenciado vem depois do vItem no item (NT)
 		If lRefTribCo   // INICIO Pablo Regis 21/11/2026 - gate de vigencia
-			DoDfeReferenciado()
+			DoDfeRef()
 		EndIf           // FIM Pablo Regis 21/11/2026
 		// FIM Pablo Regis 18/11/2026
 		
@@ -3963,11 +4010,12 @@ return aAttribute
 **/
 static function DoAllTaxes()
 	DoICMS(oDetProd)
-	// INICIO Pablo Regis 18/11/2026 - ICMSPrevistoPagtoAntecip, usado no debito 06
-	If lRefTribCo   // INICIO Pablo Regis 21/11/2026 - gate de vigencia
-		DoICMSPrevAntecip()
-	EndIf           // FIM Pablo Regis 21/11/2026
-	// FIM Pablo Regis 18/11/2026
+	// INICIO Pablo Regis 27/11/2026 - o DoICMSPrev() SAIU daqui.
+	// Leiaute DFe 4.19: o --ICMS_Previsto_ini-- (245b.01) e o ULTIMO bloco do
+	// grupo ICMS, depois do --icms_sn900_fim--. Chamado aqui, logo apos o
+	// DoICMS(), saia como PRIMEIRO filho do ICMS. Foi para depois do
+	// DoSn900Credito(), que encerra a cadeia do icms_sn900.
+	// FIM Pablo Regis 27/11/2026
 	DoIcms00(oDetProd)
 	DoSICM00()		
 	DoIcms02()	
@@ -4028,6 +4076,15 @@ static function DoAllTaxes()
 	DoSTSn900Icms()
 	DoSSn900()
 	DoSn900Credito()
+	// INICIO Pablo Regis 27/11/2026 - ICMS_Previsto (245b.01) como ULTIMO bloco
+	// do grupo ICMS, conforme leiaute DFe 4.19. Tem de vir depois do
+	// DoSn900Credito() - o DoIcmssn900() e o ultimo oICMS:addElementNode() - e
+	// antes do DoIcmsUfDest(), que ja pendura em oImpostos, fora do ICMS.
+	// Usado no debito 06 (pagamento antecipado), somente NF-e modelo 55.
+	If lRefTribCo   // gate de vigencia
+		DoICMSPrev()
+	EndIf
+	// FIM Pablo Regis 27/11/2026
 	DoIcmsUfDest()
 	DoIPI()
 	DoIpiTrib()
@@ -4064,6 +4121,7 @@ static function DoAllTaxes()
 	// INICIO Pablo Regis 18/11/2026 - IS entre COFINS e IBSCBS (ordem da NT)
 	If lRefTribCo   // INICIO Pablo Regis 21/11/2026 - gate de vigencia
 		DoIS()
+		DoSeqSel()   // Pablo Regis 27/11/2026 - sub-bloco 324.04 do IS
 	EndIf           // FIM Pablo Regis 21/11/2026
 	// FIM Pablo Regis 18/11/2026
 	DoIBSCBS()
@@ -4082,27 +4140,46 @@ static function DoAllTaxes()
 	DogCBSDevTrib()
 	DogCBSRed()
 	DogTribRegular()
-	DogIBSCredPres()
-	DogCBSCredPres()
 	DogTribCompraGov()
 	DogIBSCBSMon()
-	DogMonPadrao()
-	DogMonReten()
-	DogMonRet()
-	DogMonDif()
+	// INICIO Pablo Regis 27/11/2026 - subarvore monofasica reformulada na 4.19.
+	// O gMonoPadrao/gMonoReten/gMonoRet deixaram de ser filhos diretos do
+	// gIBSCBSMono: agora vivem dentro de gIBSMonoAdRem, gIBSMonoAdValorem,
+	// gCBSMonoAdRem e gCBSMonoAdValorem, sob os wrappers sequencia_XML_IBSMono
+	// e sequencia_XML_CBSMono. O gMonoDif foi REMOVIDO do leiaute e substituido
+	// pelo gpBioDiferenca, presente nos quatro subgrupos.
+	DoSIBSMono()
+	DogIBSMonR()
+	DogIBSMonV()
+	DoSCBSMono()
+	DogCBSMonR()
+	DogCBSMonV()
+	// FIM Pablo Regis 27/11/2026
 	DogIBCBMonAttrib()
 	DogTransfCred()
-	DogCredPresIBSZFM()
 	// INICIO Pablo Regis 18/11/2026 - gAjusteCompet (debito 03) e gEstornoCred (debito 07).
 	// Dependem de oSeqXML apontar para sequencia_XML_IBSCBS, por isso ficam
 	// no fim da cadeia IBSCBS, junto com os demais irmaos do gIBSCBS
 	If lRefTribCo   // INICIO Pablo Regis 21/11/2026 - gate de vigencia
-		DogAjusteCompet()
+		DogAjuComp()
 	EndIf           // FIM Pablo Regis 21/11/2026
 	If lRefTribCo   // INICIO Pablo Regis 21/11/2026 - gate de vigencia
-		DogEstornoCred()
+		DogEstCred()
 	EndIf           // FIM Pablo Regis 21/11/2026
 	// FIM Pablo Regis 18/11/2026
+	// INICIO Pablo Regis 27/11/2026 - credito presumido reposicionado.
+	// O gIBSCredPres/gCBSCredPres penduravam em ogIBSCBS e o gCredPresIBSZFM em
+	// oSeqXML. Leiaute DFe 4.19: os tres ficam sob sequencia_XML_cred_pres, que
+	// e filho do IBSCBS e vem DEPOIS do gEstornoCred - os dois primeiros dentro
+	// do gCredPresOper, o ZFM como CG alternativo a ele.
+	// Sem gate, como os demais blocos da arvore IBSCBS, para nao alterar a
+	// estrutura do TXT emitido antes da data de MV_RTC55.
+	DoSCrdPres()
+	DogCPresOp()
+	DogIBSCredPres()
+	DogCBSCredPres()
+	DogCPresZF()
+	// FIM Pablo Regis 27/11/2026
 	DoImpostoDevol()
 	DoIpiDevol()
 return
@@ -4391,6 +4468,57 @@ Retorna o tipo da variável
 */
 Static Function fTypeVar(cVar)
 Return Type(cVar)
+
+/*/{Protheus.doc} lParToLog
+
+INICIO Pablo Regis 27/11/2026
+Normaliza para logico o retorno de um parametro do SX6.
+
+O GetNewPar()/SuperGetMv() devolve o conteudo conforme o X6_TIPO cadastrado no
+ambiente, e nao conforme o tipo do default informado na chamada. Um parametro
+logico cadastrado como caractere ou numerico faz qualquer "If GetNewPar(...)"
+estourar com erro de tipo em runtime. Esta funcao valida o ValType: sendo
+logico, devolve o proprio valor; sendo caractere ou numerico, converte;
+qualquer outro tipo devolve .F.
+
+@type  Static Function
+@author Pablo Regis
+@since 27/11/2026
+
+@param xParam   , Variant  , Conteudo retornado pelo GetNewPar/SuperGetMv
+@param cParName , Character, Nome do parametro, usado apenas no log
+
+@return Logical , Conteudo do parametro convertido para logico
+/*/
+static function lParToLog(xParam, cParName)
+
+	local lRet      := .F.
+	local cTipo     := ValType(xParam)
+	local cConteudo := ""
+
+	Default cParName := ""
+
+	Do Case
+		Case cTipo == "L"
+			lRet := xParam
+		Case cTipo == "C"
+			cConteudo := Upper(AllTrim(xParam))
+			lRet := cConteudo == "T" .Or. cConteudo == ".T." .Or. cConteudo == "S" ;
+				.Or. cConteudo == "SIM" .Or. cConteudo == "1"
+		Case cTipo == "N"
+			lRet := xParam <> 0
+	EndCase
+
+	// so loga o desvio: o processamento segue com o valor convertido
+	If cTipo <> "L"
+		FWLogMsg("WARN", , "BusinessObject", funName(), "", "01", ;
+			"Parametro " + AllTrim(cParName) + " nao retornou logico (ValType=" + ;
+			cTipo + "). Assumido " + cValToChar(lRet) + ". Revise o X6_TIPO no SX6.", ;
+			0, 0, {})
+	EndIf
+
+return lRet
+/* FIM Pablo Regis 27/11/2026 */
 
 /**
 * Obtém as informações do veículo
@@ -4795,45 +4923,87 @@ static function DogTribRegular()
 	
 return
 
+/*
+* INICIO Pablo Regis 27/11/2026 - credito presumido reposicionado conforme o
+* leiaute DFe 4.19. A arvore correta, no nivel do IBSCBS, e:
+*
+*   IBSCBS
+*     sequencia_XML_IBSCBS ...
+*     gEstornoCred
+*     sequencia_XML_cred_pres
+*       gCredPresOper [CG] -> gIBSCredPres, gCBSCredPres
+*       gCredPresIBSZFM [CG]
+*
+* Antes, o gIBSCredPres/gCBSCredPres penduravam em ogIBSCBS (nivel errado, um
+* degrau acima na arvore) e o gCredPresIBSZFM em oSeqXML (sequencia_XML_IBSCBS,
+* o wrapper vizinho). Os dois blocos wrapper nao existiam no fonte.
+*
+* Os caminhos de leitura do XML seguem inalterados: no XML o gIBSCredPres e
+* filho do gIBSCBS, e os blocos sequencia_XML_* existem so no TXT.
+*/
+
+/**
+* Instancia o objeto que representa a tag "sequencia_XML_cred_pres"
+**/
+static function DoSCrdPres()
+
+	oSCredPres := MsafNFeTag():newMsafNFeTag("sequencia_XML_cred_pres")
+
+	oIBSCBS:addElementNode(oSCredPres)
+
+return
+
+/**
+* Instancia o objeto que representa a tag "gCredPresOper"
+**/
+static function DogCPresOp()
+
+	ogCredPresOper := MsafNFeTag():newMsafNFeTag("gCredPresOper")
+
+	oSCredPres:addElementNode(ogCredPresOper)
+
+return
+
 /**
 * Instancia o objeto que representa a tag "gIBSCredPres"
-**/ 
+**/
 static function DogIBSCredPres()
-	
+
 	local cTax			:= "IBSCBS"
 	local cAliq			:= ""
-	local lFormatZero 	:= .F. 
-	
+	local lFormatZero 	:= .F.
+
 	ogIBSCredPres := MsafNFeTag():newMsafNFeTag("gIBSCredPres")
 
 	ogIBSCredPres:setAttributeValue("cCredPres",retValTax(cTax,cAliq, oDetProd, "cCredPres","tributo:_gIBSCBS:_gIBSCredPres",lFormatZero))
 	// ogIBSCredPres:setAttributeValue("pCredPres",retValTax(cTax,cAliq, oDetProd, "pCredPres","tributo:_gIBSCBS:_gIBSCredPres"))
 	ogIBSCredPres:setAttributeValue("vCredPres",retValTax(cTax,cAliq, oDetProd, "vCredPres","tributo:_gIBSCBS:_gIBSCredPres"))
 	ogIBSCredPres:setAttributeValue("vCredPresCondSus",retValTax(cTax,cAliq, oDetProd, "vCredPresCondSus","tributo:_gIBSCBS:_gIBSCredPres"))
-	
-	ogIBSCBS:addElementNode(ogIBSCredPres)
-	
+
+	ogCredPresOper:addElementNode(ogIBSCredPres)
+
 return
 
 /**
 * Instancia o objeto que representa a tag "gCBSCredPres"
-**/ 
+**/
 static function DogCBSCredPres()
-	
+
 	local cTax			:= "IBSCBS"
 	local cAliq			:= ""
-	local lFormatZero 	:= .F. 
-	
+	local lFormatZero 	:= .F.
+
 	ogCBSCredPres := MsafNFeTag():newMsafNFeTag("gCBSCredPres")
 
 	ogCBSCredPres:setAttributeValue("cCredPres",retValTax(cTax,cAliq, oDetProd, "cCredPres","tributo:_gIBSCBS:_gCBSCredPres",lFormatZero))
 	// ogCBSCredPres:setAttributeValue("pCredPres",retValTax(cTax,cAliq, oDetProd, "pCredPres","tributo:_gIBSCBS:_gCBSCredPres"))
 	ogCBSCredPres:setAttributeValue("vCredPres",retValTax(cTax,cAliq, oDetProd, "vCredPres","tributo:_gIBSCBS:_gCBSCredPres"))
 	ogCBSCredPres:setAttributeValue("vCredPresCondSus",retValTax(cTax,cAliq, oDetProd, "vCredPresCondSus","tributo:_gIBSCBS:_gCBSCredPres"))
-	
-	ogIBSCBS:addElementNode(ogCBSCredPres)
-	
+
+	ogCredPresOper:addElementNode(ogCBSCredPres)
+
 return
+/* FIM Pablo Regis 27/11/2026 */
 
 /**
 * Instancia o objeto que representa a tag "gTribCompraGov"
@@ -4867,84 +5037,214 @@ static function DogIBSCBSMon()
 	
 return
 
+/*
+* INICIO Pablo Regis 27/11/2026 - tributacao monofasica reformulada no leiaute
+* DFe 4.19 (NT 2025.002-RTC v1.50/v1.51, publicacao 22/09/2026).
+*
+* O gMonoPadrao/gMonoReten/gMonoRet deixaram de ser filhos diretos do
+* gIBSCBSMono. A arvore passou a ser:
+*
+*   gIBSCBSMono (324.84)
+*     sequencia_XML_IBSMono (324.85)
+*       gIBSMonoAdRem     (324.85a) [CG]
+*       gIBSMonoAdValorem (324.90)  [CG]
+*     sequencia_XML_CBSMono (324.95)
+*       gCBSMonoAdRem     (324.95a) [CG]
+*       gCBSMonoAdValorem (324.100) [CG]
+*     vTotIBSMonoItem (324.105a); vTotCBSMonoItem (324.105b)
+*
+* Cada um dos quatro subgrupos tem os seus proprios gMonoPadrao, gMonoReten,
+* gMonoRet e gpBioDiferenca, com campos DIFERENTES entre Ad Rem e Ad Valorem.
+* O gMonoDif (diferimento) foi REMOVIDO e substituido pelo gpBioDiferenca.
+*
+* Os blocos sequencia_XML_* existem so no TXT: no XML o gIBSMonoAdRem e filho
+* direto do gIBSCBSMono. Por isso os caminhos de leitura abaixo pulam o
+* wrapper, no mesmo padrao que o gIBSCBS usa sob o sequencia_XML_IBSCBS.
+*
+* ATENCAO - unica premissa em aberto: a PREMISSA-01 do plano cobre as tags da
+* NT 2026.008, mas NAO a reformulacao monofasica. Os caminhos
+* "tributo:_gIBSCBSMono:_<subgrupo>:_<bloco>" seguem o XML oficial e precisam
+* ser confirmados contra um XML real do nfesefaz. Se o pacote TOTVS entregar a
+* arvore achatada, muda so o cNode de cada leitura.
+*/
+
 /**
-* Instancia o objeto que representa a tag "gMonoPadrao"
-**/ 
-static function DogMonPadrao()
-	
+* Instancia o objeto que representa a tag "sequencia_XML_IBSMono" (324.85)
+**/
+static function DoSIBSMono()
+
+	oSIBSMono := MsafNFeTag():newMsafNFeTag("sequencia_XML_IBSMono")
+
+	ogIBSCBSMon:addElementNode(oSIBSMono)
+
+return
+
+/**
+* Instancia o objeto que representa a tag "gIBSMonoAdRem" (324.85a) e os seus
+* subgrupos gMonoPadrao (324.86), gMonoReten (324.87), gMonoRet (324.88) e
+* gpBioDiferenca (324.89)
+**/
+static function DogIBSMonR()
+
 	local cTax		:= "IBSCBS"
 	local cAliq		:= ""
-	
+	local cNode		:= "tributo:_gIBSCBSMono:_gIBSMonoAdRem"
+
+	ogIBSMonoAdRem := MsafNFeTag():newMsafNFeTag("gIBSMonoAdRem")
+
 	ogMonPadrao := MsafNFeTag():newMsafNFeTag("gMonoPadrao")
+	ogMonPadrao:setAttributeValue("qBCMono"		,retValTax(cTax,cAliq, oDetProd, "qBCMono"		,cNode+":_gMonoPadrao"))
+	ogMonPadrao:setAttributeValue("adRemIBS"	,retValTax(cTax,cAliq, oDetProd, "adRemIBS"		,cNode+":_gMonoPadrao"))
+	ogMonPadrao:setAttributeValue("vIBSMono"	,retValTax(cTax,cAliq, oDetProd, "vIBSMono"		,cNode+":_gMonoPadrao"))
+	ogIBSMonoAdRem:addElementNode(ogMonPadrao)
 
-	ogMonPadrao:setAttributeValue("qBCMono",retValTax(cTax,cAliq, oDetProd, "qBCMono","tributo:_gMonoPadrao"))
-	ogMonPadrao:setAttributeValue("adRemIBS",retValTax(cTax,cAliq, oDetProd, "adRemIBS","tributo:_gMonoPadrao"))
-	// ogMonPadrao:setAttributeValue("adRemCBS",retValTax(cTax,cAliq, oDetProd, "adRemCBS","tributo:_gMonoPadrao"))
-	ogMonPadrao:setAttributeValue("vIBSMono",retValTax(cTax,cAliq, oDetProd, "vIBSMono","tributo:_gMonoPadrao"))
-	// ogMonPadrao:setAttributeValue("vCBSMono",retValTax(cTax,cAliq, oDetProd, "vCBSMono","tributo:_gMonoPadrao"))
-
-	ogIBSCBSMon:addElementNode(ogMonPadrao)
-	
-return
-
-/**
-* Instancia o objeto que representa a tag "gMonoReten"
-**/ 
-static function DogMonReten()
-	
-	local cTax		:= "IBSCBS"
-	local cAliq		:= ""
-	
 	ogMonReten := MsafNFeTag():newMsafNFeTag("gMonoReten")
+	ogMonReten:setAttributeValue("qBCMonoReten"	,retValTax(cTax,cAliq, oDetProd, "qBCMonoReten"	,cNode+":_gMonoReten"))
+	ogMonReten:setAttributeValue("adRemIBSReten",retValTax(cTax,cAliq, oDetProd, "adRemIBSReten",cNode+":_gMonoReten"))
+	ogMonReten:setAttributeValue("vIBSMonoReten",retValTax(cTax,cAliq, oDetProd, "vIBSMonoReten",cNode+":_gMonoReten"))
+	ogIBSMonoAdRem:addElementNode(ogMonReten)
 
-	ogMonReten:setAttributeValue("qBCMonoReten",retValTax(cTax,cAliq, oDetProd, "qBCMonoReten","tributo:_gMonoReten"))
-	ogMonReten:setAttributeValue("adRemIBSReten",retValTax(cTax,cAliq, oDetProd, "adRemIBSReten","tributo:_gMonoReten"))
-	ogMonReten:setAttributeValue("vIBSMonoReten",retValTax(cTax,cAliq, oDetProd, "vIBSMonoReten","tributo:_gMonoReten"))
-	// ogMonReten:setAttributeValue("adRemCBSReten",retValTax(cTax,cAliq, oDetProd, "adRemCBSReten","tributo:_gMonoReten"))
-	// ogMonReten:setAttributeValue("vCBSMonoReten",retValTax(cTax,cAliq, oDetProd, "vCBSMonoReten","tributo:_gMonoReten"))
-
-	ogIBSCBSMon:addElementNode(ogMonReten)
-	
-return
-
-/**
-* Instancia o objeto que representa a tag "gMonoRet"
-**/ 
-static function DogMonRet()
-	
-	local cTax		:= "IBSCBS"
-	local cAliq		:= ""
-	
 	ogMonRet := MsafNFeTag():newMsafNFeTag("gMonoRet")
+	ogMonRet:setAttributeValue("vIBSMonoRet"	,retValTax(cTax,cAliq, oDetProd, "vIBSMonoRet"	,cNode+":_gMonoRet"))
+	ogIBSMonoAdRem:addElementNode(ogMonRet)
 
-	ogMonRet:setAttributeValue("qBCMonoRet",retValTax(cTax,cAliq, oDetProd, "qBCMonoRet","tributo:_gMonoRet"))
-	ogMonRet:setAttributeValue("adRemIBSRet",retValTax(cTax,cAliq, oDetProd, "adRemIBSRet","tributo:_gMonoRet"))
-	ogMonRet:setAttributeValue("vIBSMonoRet",retValTax(cTax,cAliq, oDetProd, "vIBSMonoRet","tributo:_gMonoRet"))
-	ogMonRet:setAttributeValue("adRemCBSRet",retValTax(cTax,cAliq, oDetProd, "adRemCBSRet","tributo:_gMonoRet"))
-	ogMonRet:setAttributeValue("vCBSMonoRet",retValTax(cTax,cAliq, oDetProd, "vCBSMonoRet","tributo:_gMonoRet"))
+	ogpBioDif := MsafNFeTag():newMsafNFeTag("gpBioDiferenca")
+	ogpBioDif:setAttributeValue("qBCBioComb"	,retValTax(cTax,cAliq, oDetProd, "qBCBioComb"	,cNode+":_gpBioDiferenca"))
+	ogpBioDif:setAttributeValue("vIBSDiferenca"	,retValTax(cTax,cAliq, oDetProd, "vIBSDiferenca",cNode+":_gpBioDiferenca"))
+	ogIBSMonoAdRem:addElementNode(ogpBioDif)
 
-	ogIBSCBSMon:addElementNode(ogMonRet)
-	
+	oSIBSMono:addElementNode(ogIBSMonoAdRem)
+
 return
 
 /**
-* Instancia o objeto que representa a tag "gMonoDif"
-**/ 
-static function DogMonDif()
-	
+* Instancia o objeto que representa a tag "gIBSMonoAdValorem" (324.90) e os
+* seus subgrupos gMonoPadrao (324.91), gMonoReten (324.92), gMonoRet (324.93)
+* e gpBioDiferenca (324.94)
+**/
+static function DogIBSMonV()
+
 	local cTax		:= "IBSCBS"
 	local cAliq		:= ""
-	
-	ogMonDif := MsafNFeTag():newMsafNFeTag("gMonoDif")
+	local cNode		:= "tributo:_gIBSCBSMono:_gIBSMonoAdValorem"
 
-	ogMonDif:setAttributeValue("pDifIBS",retValTax(cTax,cAliq, oDetProd, "pDifIBS","tributo:_gMonoDif"))
-	ogMonDif:setAttributeValue("vIBSMonoDif",retValTax(cTax,cAliq, oDetProd, "vIBSMonoDif","tributo:_gMonoDif"))
-	ogMonDif:setAttributeValue("pDifCBS",retValTax(cTax,cAliq, oDetProd, "pDifCBS","tributo:_gMonoDif"))
-	ogMonDif:setAttributeValue("vCBSMonoDif",retValTax(cTax,cAliq, oDetProd, "vCBSMonoDif","tributo:_gMonoDif"))
-	
-	ogIBSCBSMon:addElementNode(ogMonDif)
-	
+	ogIBSMonoAdVal := MsafNFeTag():newMsafNFeTag("gIBSMonoAdValorem")
+
+	ogMonPadrao := MsafNFeTag():newMsafNFeTag("gMonoPadrao")
+	ogMonPadrao:setAttributeValue("vBCMono"		,retValTax(cTax,cAliq, oDetProd, "vBCMono"		,cNode+":_gMonoPadrao"))
+	ogMonPadrao:setAttributeValue("pAliqMonoUF"	,retValTax(cTax,cAliq, oDetProd, "pAliqMonoUF"	,cNode+":_gMonoPadrao"))
+	ogMonPadrao:setAttributeValue("vIBSMonoUF"	,retValTax(cTax,cAliq, oDetProd, "vIBSMonoUF"	,cNode+":_gMonoPadrao"))
+	ogMonPadrao:setAttributeValue("pAliqMonoMun",retValTax(cTax,cAliq, oDetProd, "pAliqMonoMun"	,cNode+":_gMonoPadrao"))
+	ogMonPadrao:setAttributeValue("vIBSMonoMun"	,retValTax(cTax,cAliq, oDetProd, "vIBSMonoMun"	,cNode+":_gMonoPadrao"))
+	ogMonPadrao:setAttributeValue("vIBSMono"	,retValTax(cTax,cAliq, oDetProd, "vIBSMono"		,cNode+":_gMonoPadrao"))
+	ogIBSMonoAdVal:addElementNode(ogMonPadrao)
+
+	ogMonReten := MsafNFeTag():newMsafNFeTag("gMonoReten")
+	ogMonReten:setAttributeValue("vBCMonoReten"	 ,retValTax(cTax,cAliq, oDetProd, "vBCMonoReten"	 ,cNode+":_gMonoReten"))
+	ogMonReten:setAttributeValue("pAliqMonoReten",retValTax(cTax,cAliq, oDetProd, "pAliqMonoReten",cNode+":_gMonoReten"))
+	ogMonReten:setAttributeValue("vIBSMonoReten" ,retValTax(cTax,cAliq, oDetProd, "vIBSMonoReten" ,cNode+":_gMonoReten"))
+	ogIBSMonoAdVal:addElementNode(ogMonReten)
+
+	ogMonRet := MsafNFeTag():newMsafNFeTag("gMonoRet")
+	ogMonRet:setAttributeValue("vIBSMonoRet"	,retValTax(cTax,cAliq, oDetProd, "vIBSMonoRet"	,cNode+":_gMonoRet"))
+	ogIBSMonoAdVal:addElementNode(ogMonRet)
+
+	ogpBioDif := MsafNFeTag():newMsafNFeTag("gpBioDiferenca")
+	ogpBioDif:setAttributeValue("qBCBioComb"	,retValTax(cTax,cAliq, oDetProd, "qBCBioComb"	,cNode+":_gpBioDiferenca"))
+	ogpBioDif:setAttributeValue("vIBSDiferenca"	,retValTax(cTax,cAliq, oDetProd, "vIBSDiferenca",cNode+":_gpBioDiferenca"))
+	ogIBSMonoAdVal:addElementNode(ogpBioDif)
+
+	oSIBSMono:addElementNode(ogIBSMonoAdVal)
+
 return
+
+/**
+* Instancia o objeto que representa a tag "sequencia_XML_CBSMono" (324.95)
+**/
+static function DoSCBSMono()
+
+	oSCBSMono := MsafNFeTag():newMsafNFeTag("sequencia_XML_CBSMono")
+
+	ogIBSCBSMon:addElementNode(oSCBSMono)
+
+return
+
+/**
+* Instancia o objeto que representa a tag "gCBSMonoAdRem" (324.95a) e os seus
+* subgrupos gMonoPadrao (324.96), gMonoReten (324.97), gMonoRet (324.98) e
+* gpBioDiferenca (324.99)
+**/
+static function DogCBSMonR()
+
+	local cTax		:= "IBSCBS"
+	local cAliq		:= ""
+	local cNode		:= "tributo:_gIBSCBSMono:_gCBSMonoAdRem"
+
+	ogCBSMonoAdRem := MsafNFeTag():newMsafNFeTag("gCBSMonoAdRem")
+
+	ogMonPadrao := MsafNFeTag():newMsafNFeTag("gMonoPadrao")
+	ogMonPadrao:setAttributeValue("qBCMono"		,retValTax(cTax,cAliq, oDetProd, "qBCMono"		,cNode+":_gMonoPadrao"))
+	ogMonPadrao:setAttributeValue("adRemCBS"	,retValTax(cTax,cAliq, oDetProd, "adRemCBS"		,cNode+":_gMonoPadrao"))
+	ogMonPadrao:setAttributeValue("vCBSMono"	,retValTax(cTax,cAliq, oDetProd, "vCBSMono"		,cNode+":_gMonoPadrao"))
+	ogCBSMonoAdRem:addElementNode(ogMonPadrao)
+
+	ogMonReten := MsafNFeTag():newMsafNFeTag("gMonoReten")
+	ogMonReten:setAttributeValue("qBCMonoReten"	,retValTax(cTax,cAliq, oDetProd, "qBCMonoReten"	,cNode+":_gMonoReten"))
+	ogMonReten:setAttributeValue("adRemCBSReten",retValTax(cTax,cAliq, oDetProd, "adRemCBSReten",cNode+":_gMonoReten"))
+	ogMonReten:setAttributeValue("vCBSMonoReten",retValTax(cTax,cAliq, oDetProd, "vCBSMonoReten",cNode+":_gMonoReten"))
+	ogCBSMonoAdRem:addElementNode(ogMonReten)
+
+	ogMonRet := MsafNFeTag():newMsafNFeTag("gMonoRet")
+	ogMonRet:setAttributeValue("vCBSMonoRet"	,retValTax(cTax,cAliq, oDetProd, "vCBSMonoRet"	,cNode+":_gMonoRet"))
+	ogCBSMonoAdRem:addElementNode(ogMonRet)
+
+	ogpBioDif := MsafNFeTag():newMsafNFeTag("gpBioDiferenca")
+	ogpBioDif:setAttributeValue("qBCBioComb"	,retValTax(cTax,cAliq, oDetProd, "qBCBioComb"	,cNode+":_gpBioDiferenca"))
+	ogpBioDif:setAttributeValue("vCBSDiferenca"	,retValTax(cTax,cAliq, oDetProd, "vCBSDiferenca",cNode+":_gpBioDiferenca"))
+	ogCBSMonoAdRem:addElementNode(ogpBioDif)
+
+	oSCBSMono:addElementNode(ogCBSMonoAdRem)
+
+return
+
+/**
+* Instancia o objeto que representa a tag "gCBSMonoAdValorem" (324.100) e os
+* seus subgrupos gMonoPadrao (324.101), gMonoReten (324.102), gMonoRet
+* (324.103) e gpBioDiferenca (324.104)
+**/
+static function DogCBSMonV()
+
+	local cTax		:= "IBSCBS"
+	local cAliq		:= ""
+	local cNode		:= "tributo:_gIBSCBSMono:_gCBSMonoAdValorem"
+
+	ogCBSMonoAdVal := MsafNFeTag():newMsafNFeTag("gCBSMonoAdValorem")
+
+	ogMonPadrao := MsafNFeTag():newMsafNFeTag("gMonoPadrao")
+	ogMonPadrao:setAttributeValue("vBCMono"		,retValTax(cTax,cAliq, oDetProd, "vBCMono"		,cNode+":_gMonoPadrao"))
+	ogMonPadrao:setAttributeValue("pAliqMonoCBS",retValTax(cTax,cAliq, oDetProd, "pAliqMonoCBS"	,cNode+":_gMonoPadrao"))
+	ogMonPadrao:setAttributeValue("vCBSMono"	,retValTax(cTax,cAliq, oDetProd, "vCBSMono"		,cNode+":_gMonoPadrao"))
+	ogCBSMonoAdVal:addElementNode(ogMonPadrao)
+
+	ogMonReten := MsafNFeTag():newMsafNFeTag("gMonoReten")
+	ogMonReten:setAttributeValue("vBCMonoReten"	 ,retValTax(cTax,cAliq, oDetProd, "vBCMonoReten"	 ,cNode+":_gMonoReten"))
+	ogMonReten:setAttributeValue("pAliqMonoReten",retValTax(cTax,cAliq, oDetProd, "pAliqMonoReten",cNode+":_gMonoReten"))
+	ogMonReten:setAttributeValue("vCBSMonoReten" ,retValTax(cTax,cAliq, oDetProd, "vCBSMonoReten" ,cNode+":_gMonoReten"))
+	ogCBSMonoAdVal:addElementNode(ogMonReten)
+
+	ogMonRet := MsafNFeTag():newMsafNFeTag("gMonoRet")
+	ogMonRet:setAttributeValue("vCBSMonoRet"	,retValTax(cTax,cAliq, oDetProd, "vCBSMonoRet"	,cNode+":_gMonoRet"))
+	ogCBSMonoAdVal:addElementNode(ogMonRet)
+
+	ogpBioDif := MsafNFeTag():newMsafNFeTag("gpBioDiferenca")
+	ogpBioDif:setAttributeValue("qBCBioComb"	,retValTax(cTax,cAliq, oDetProd, "qBCBioComb"	,cNode+":_gpBioDiferenca"))
+	ogpBioDif:setAttributeValue("vCBSDiferenca"	,retValTax(cTax,cAliq, oDetProd, "vCBSDiferenca",cNode+":_gpBioDiferenca"))
+	ogCBSMonoAdVal:addElementNode(ogpBioDif)
+
+	oSCBSMono:addElementNode(ogCBSMonoAdVal)
+
+return
+/* FIM Pablo Regis 27/11/2026 */
 
 /**
 * Instancia o objeto que representa os atributos da tag "gIBSCBSMono"
@@ -4982,20 +5282,24 @@ return
 
 /**
 * Instancia o objeto que representa a tag "gCredPresIBSZFM"
-**/ 
-static function DogCredPresIBSZFM()
-	
+*
+* ALTERADO Pablo Regis 27/11/2026 - o pai era oSeqXML (sequencia_XML_IBSCBS).
+* Leiaute DFe 4.19: o gCredPresIBSZFM e CG do sequencia_XML_cred_pres,
+* alternativo ao gCredPresOper.
+**/
+static function DogCPresZF()
+
 	local cTax			:= "IBSCBS"
 	local cAliq			:= ""
-	local lFormatZero 	:= .F. 
+	local lFormatZero 	:= .F.
 
 	ogCredPresIBSZFM := MsafNFeTag():newMsafNFeTag("gCredPresIBSZFM")
 
 	ogCredPresIBSZFM:setAttributeValue("tpCredPresIBSZFM",retValTax(cTax,cAliq, oDetProd, "tpCredPresIBSZFM","tributo:_gCredPresIBSZFM"),lFormatZero)
 	ogCredPresIBSZFM:setAttributeValue("vCredPresIBSZFM",retValTax(cTax,cAliq, oDetProd, "vCredPresIBSZFM","tributo:_gCredPresIBSZFM"))
-		
-	oSeqXML:addElementNode(ogCredPresIBSZFM)
-	
+
+	oSCredPres:addElementNode(ogCredPresIBSZFM)
+
 return
 
 /**
@@ -5014,7 +5318,13 @@ return
 /**
 * Instancia o objeto que representa a tag "IS" (Imposto Seletivo)
 * XML oficial: det/imposto/IS - irmao de IBSCBS, entre COFINS e IBSCBS
-* CONFIRMAR NO LEIAUTE: nome do marcador e ordem do grupo entre os irmaos
+*
+* ALTERADO Pablo Regis 27/11/2026 - conferido contra o leiaute DFe 4.19:
+* o marcador IS e a posicao do grupo (324.01, depois do ISSQN) estavam certos,
+* mas o grupo IS tem apenas DOIS campos diretos - CSTIS (324.02) e
+* cClassTribIS (324.03). O vBCIS, pIS e vIS pertencem ao sub-bloco
+* seqSeletivo (324.04), que nao existia no fonte, e junto com eles entra o
+* adRemIS (324.07, ex-pISEspec), que tambem faltava.
 **/
 static function DoIS()
 
@@ -5026,11 +5336,36 @@ static function DoIS()
 
 	oIS:setAttributeValue("CSTIS"		, retValTax(cTax,cAliq, oDetProd, "CSTIS"		, "tributo", lFormatZero))
 	oIS:setAttributeValue("cClassTribIS", retValTax(cTax,cAliq, oDetProd, "cClassTribIS", "tributo", lFormatZero))
-	oIS:setAttributeValue("vBCIS"		, retValTax(cTax,cAliq, oDetProd, "vBCIS"		, "tributo"))
-	oIS:setAttributeValue("pIS"			, retValTax(cTax,cAliq, oDetProd, "pIS"			, "tributo"))
-	oIS:setAttributeValue("vIS"			, retValTax(cTax,cAliq, oDetProd, "vIS"			, "tributo"))
 
 	oImpostos:addElementNode(oIS)
+
+return
+
+/**
+* Instancia o objeto que representa a tag "seqSeletivo" (324.04)
+*
+* INICIO Pablo Regis 27/11/2026 - leiaute DFe 4.19. Bloco nomeado, unico filho
+* do grupo IS. No XML os campos sao filhos diretos do IS: o seqSeletivo existe
+* so no TXT, como os demais sequencia_XML.
+*   324.05 vBCIS   - numerico, 15 posicoes, 2 decimais
+*   324.06 pIS     - caractere, 7 posicoes, 2 a 4 decimais
+*   324.07 adRemIS - numerico, 7 posicoes, 2 a 4 decimais (opcional, 0-1)
+*   324.11 vIS     - numerico, 15 posicoes, 2 decimais
+* FIM Pablo Regis 27/11/2026
+**/
+static function DoSeqSel()
+
+	local cTax			:= GetNewPar("ZZ_TRIBIS", "IS")
+	local cAliq			:= ""
+
+	oSeqSeletivo := MsafNFeTag():newMsafNFeTag("seqSeletivo")
+
+	oSeqSeletivo:setAttributeValue("vBCIS"	, retValTax(cTax,cAliq, oDetProd, "vBCIS"	, "tributo"))
+	oSeqSeletivo:setAttributeValue("pIS"	, retValTax(cTax,cAliq, oDetProd, "pIS"		, "tributo"))
+	oSeqSeletivo:setAttributeValue("adRemIS", retValTax(cTax,cAliq, oDetProd, "adRemIS"	, "tributo"))
+	oSeqSeletivo:setAttributeValue("vIS"	, retValTax(cTax,cAliq, oDetProd, "vIS"		, "tributo"))
+
+	oIS:addElementNode(oSeqSeletivo)
 
 return
 
@@ -5040,7 +5375,7 @@ return
 * Quando presente, o gIBSCBS nao pode ir (rejeicoes 1021, 1170 e 1171)
 * Adiciona em oSeqXML, mesmo pai do gIBSCBS
 **/
-static function DogAjusteCompet()
+static function DogAjuComp()
 
 	local cTax		:= "IBSCBS"
 	local cAliq		:= ""
@@ -5059,9 +5394,14 @@ return
 * Instancia o objeto que representa a tag "gEstornoCred" do no "IBSCBS"
 * XML oficial: det/imposto/IBSCBS/gEstornoCred - debito 07, CST 410
 * Rejeicoes 1173, 1176 e 1177
-* Adiciona em oSeqXML, mesmo pai do gIBSCBS
+*
+* ALTERADO Pablo Regis 27/11/2026 - o pai era oSeqXML (sequencia_XML_IBSCBS),
+* o que punha o grupo DENTRO do wrapper. Leiaute DFe 4.19: o gEstornoCred do
+* item e filho direto do IBSCBS, DEPOIS do --sequencia_XML_IBSCBS_fim--.
+* Diferente do gAjusteCompet e do gTransfCred, que sao CG do wrapper e
+* continuam em oSeqXML.
 **/
-static function DogEstornoCred()
+static function DogEstCred()
 
 	local cTax		:= "IBSCBS"
 	local cAliq		:= ""
@@ -5071,7 +5411,7 @@ static function DogEstornoCred()
 	ogEstornoCred:setAttributeValue("vIBSEstCred",retValTax(cTax,cAliq, oDetProd, "vIBSEstCred","tributo:_gEstornoCred"))
 	ogEstornoCred:setAttributeValue("vCBSEstCred",retValTax(cTax,cAliq, oDetProd, "vCBSEstCred","tributo:_gEstornoCred"))
 
-	oSeqXML:addElementNode(ogEstornoCred)
+	oIBSCBS:addElementNode(ogEstornoCred)
 
 return
 
@@ -5080,7 +5420,7 @@ return
 * XML oficial: det/imposto/ICMS/ICMSPrevistoPagtoAntecip - debito 06
 * A partir de 01/03/2027 a ausencia gera rejeicao 1281
 **/
-static function DoICMSPrevAntecip()
+static function DoICMSPrev()
 
 	local cTax		:= GetNewPar("ZZ_TRIBICM", "ICMS")
 	local cAliq		:= ""
@@ -5094,18 +5434,27 @@ static function DoICMSPrevAntecip()
 return
 
 /**
-* Instancia o objeto que representa a tag "dfe_referenciado"
+* Instancia o objeto que representa a tag "DFeReferenciado" (325i)
 *
-* INICIO Pablo Regis 21/11/2026 - adotado o nome do ajuste Agility (merge) para
-* evitar funcao duplicada: identificadores AdvPL sao case-insensitive.
-* O no pode vir como OBJETO (1 referencia) ou ARRAY (N referencias), conforme
-* o nfesefaz emitir - PREMISSA-01 diz que o mapper apenas le o que vier, entao
-* a resiliencia de leitura e responsabilidade daqui.
+* INICIO Pablo Regis 21/11/2026 - o no pode vir como OBJETO (1 referencia) ou
+* ARRAY (N referencias), conforme o nfesefaz emitir - PREMISSA-01 diz que o
+* mapper apenas le o que vier, entao a resiliencia de leitura e
+* responsabilidade daqui.
 * FIM Pablo Regis 21/11/2026
+*
+* ALTERADO Pablo Regis 27/11/2026 - conferido contra o leiaute DFe 4.19:
+*   - o marcador e --DFeReferenciado_ini--, nao "dfe_referenciado". A grafia
+*     anterior vinha do ajuste Agility, que era a unica evidencia disponivel.
+*   - a ocorrencia e 0-1, e nao 0-n: o laco emitia um bloco por referencia
+*     quando o no vinha como array. Passa a emitir apenas a PRIMEIRA, e as
+*     demais vao para log, porque descartar em silencio esconderia perda de
+*     dado fiscal.
+*   - bloco opcional vazio nao e gravado (regra geral do leiaute: "bloco nao
+*     obrigatorio nao e gerado quando os campos de integracao estao vazios").
+*     Antes gravava --DFeReferenciado_ini-- com chaveAcesso/nItem em branco.
 **/
-static function DoDfeReferenciado()
+static function DoDfeRef()
 
-	local nI    := 0
 	local nQtd  := 0
 	local cTipo := ""
 	local cPath := ""
@@ -5119,28 +5468,101 @@ static function DoDfeReferenciado()
 			nQtd := 1
 	EndCase
 
-	// sem referencia: grava o bloco vazio, preservando a estrutura do TXT
+	// bloco opcional (0-1): sem referencia, nao grava nada
 	If nQtd == 0
-		oDfe_referenciado := MsafNFeTag():newMsafNFeTag(MSA_TAG_DFEREF)
-		oDfe_referenciado:setAttributeValue("chaveAcesso", EMPTY_VALUE)
-		oDfe_referenciado:setAttributeValue("nItem"      , EMPTY_VALUE)
-		oDet:addElementNode(oDfe_referenciado)
 		Return
 	EndIf
 
-	For nI := 1 To nQtd
-		If cTipo == "A"
-			cPath := "oDetProd:_DFeReferenciado[" + cValToChar(nI) + "]"
-		Else
-			cPath := "oDetProd:_DFeReferenciado"
-		EndIf
-		oDfe_referenciado := MsafNFeTag():newMsafNFeTag(MSA_TAG_DFEREF)
-		oDfe_referenciado:setAttributeValue("chaveAcesso", validTagValue(cPath + ":_chaveAcesso:text"))
-		oDfe_referenciado:setAttributeValue("nItem"      , validTagValue(cPath + ":_nItem:text"))
-		oDet:addElementNode(oDfe_referenciado)
+	If cTipo == "A"
+		cPath := "oDetProd:_DFeReferenciado[1]"
+	Else
+		cPath := "oDetProd:_DFeReferenciado"
+	EndIf
+
+	If nQtd > 1
+		FWLogMsg("WARN", , "BusinessObject", funName(), "", "01", ;
+			"DFeReferenciado (325i) aceita 0-1 no leiaute DFe 4.19, mas o XML " + ;
+			"trouxe " + cValToChar(nQtd) + " referencias no item. Gravada apenas " + ;
+			"a primeira. Nota " + AllTrim(cNrInvoice) + "/" + AllTrim(cNrSeries), 0, 0, {})
+	EndIf
+
+	oDfe_referenciado := MsafNFeTag():newMsafNFeTag(MSA_TAG_DFEREF)
+	oDfe_referenciado:setAttributeValue("chaveAcesso", validTagValue(cPath + ":_chaveAcesso:text"))
+	oDfe_referenciado:setAttributeValue("nItem"      , validTagValue(cPath + ":_nItem:text"))
+	oDet:addElementNode(oDfe_referenciado)
+
+return
+
+/*
+* INICIO Pablo Regis 27/11/2026 - NT 2026.006 v1.00, Reforma Tributaria do
+* Consumo: Vinculacao com a Transacao de Pagamento do DF-e.
+*
+* Vigencia SEFAZ: homologacao 05/10/2026, producao 03/11/2026. Os campos sao
+* de carater preparatorio - nao ha exigencia de preenchimento em producao em
+* 2026, e a ativacao vem com o split payment, previsto para 2027.
+*
+* Leiaute DFe 4.19, filho direto de nota, entre infIntermed e inf_Adic:
+*
+*   gPgtoVinc (398.50) [0-1]
+*     gPgto (398.51) [1-99]
+*       nPag        (398.52) numerico  3 posicoes
+*       idTransacao (398.53) caractere 2 a 35 posicoes
+*       tpMeioPgto  (398.54) numerico  2 posicoes
+*       CNPJReceb   (398.55) caractere 14 posicoes
+*       CNPJBasePSP (398.56) caractere 8 posicoes
+*
+* O CNPJReceb homonimo do grupo card nao tem relacao com este.
+* O evento de Vinculacao da Transacao de Pagamento (110300) segue em analise
+* pela SEFAZ e sera liberado em versao posterior do leiaute.
+*/
+
+/**
+* Instancia o objeto que representa a tag "gPgtoVinc" (398.50)
+**/
+static function DoGPgVinc()
+
+	ogPgtoVinc := MsafNFeTag():newMsafNFeTag("gPgtoVinc")
+
+	oNota:addElementNode(ogPgtoVinc)
+
+return
+
+/**
+* Instancia os objetos que representam a tag "gPgto" (398.51), ocorrencia
+* 1-99 no leiaute.
+*
+* Le o no pelo retArrayAttribute(), que devolve array vazio quando o no nao
+* existe no XML - mesmo padrao do DoDetProd() com o "infNfe:_det". Nao usa o
+* fTypeVar() aqui: ele resolve via Type(), que avalia expressao AdvPL, e
+* "infNfe:..." e caminho do oXmlUtil, nao variavel em escopo. O no de cada
+* ocorrencia precisa ir para uma variavel para o validTagValue() poder
+* macro-substituir.
+**/
+static function DoGPgto()
+
+	local nI    := 0
+	local aPgto := retArrayAttribute("infNfe:_gPgtoVinc:_gPgto")
+
+	private oPgtoNode := nil
+
+	// bloco opcional: sem transacao vinculada, nao grava o gPgto
+	If Len(aPgto) == 0
+		Return
+	EndIf
+
+	For nI := 1 To Len(aPgto)
+		oPgtoNode := aPgto[nI]
+		ogPgto := MsafNFeTag():newMsafNFeTag("gPgto")
+		ogPgto:setAttributeValue("nPag"       , validTagValue("oPgtoNode:_nPag:text"))
+		ogPgto:setAttributeValue("idTransacao", validTagValue("oPgtoNode:_idTransacao:text"))
+		ogPgto:setAttributeValue("tpMeioPgto" , validTagValue("oPgtoNode:_tpMeioPgto:text"))
+		ogPgto:setAttributeValue("CNPJReceb"  , validTagValue("oPgtoNode:_CNPJReceb:text"))
+		ogPgto:setAttributeValue("CNPJBasePSP", validTagValue("oPgtoNode:_CNPJBasePSP:text"))
+		ogPgtoVinc:addElementNode(ogPgto)
 	Next nI
 
 return
+/* FIM Pablo Regis 27/11/2026 */
 
 
 /**
@@ -5155,7 +5577,7 @@ return
 *   110.03 vProdLiq  - numerico, 15 posicoes, 2 decimais
 * FIM Pablo Regis 22/11/2026
 **/
-static function DoSeqXmlLiq()
+static function DoSeqLiq()
 
 	oSeqXmlLiq := MsafNFeTag():newMsafNFeTag(MSA_TAG_SEQLIQ)
 
@@ -5167,13 +5589,18 @@ static function DoSeqXmlLiq()
 return
 
 /**
-* Instancia o objeto que representa a tag "vProdLiqTot" do no "total"
+* Instancia o objeto que representa o atributo "vProdLiqTot" da tag "total"
 * XML oficial: total/vProdLiqTot - ANTES do ICMSTot
 * Rejeicoes 1282 e 1283
+*
+* ALTERADO Pablo Regis 27/11/2026 - era tag NOMEADA, gravava os marcadores
+* --vProdLiqTot_ini--/--vProdLiqTot_fim-- que o leiaute NAO preve. O 326a e
+* CAMPO do grupo total (tabela "Continuacao dos campos de total", logo apos o
+* vNFTot 355.30), portanto 1 linha e nao 3. Mesmo padrao do DovNFTot().
 **/
-static function DovProdLiqTot()
+static function DovProdLiq()
 
-	ovProdLiqTot := MsafNFeTag():newMsafNFeTag(MSA_TAG_VPRODLIQTOT)
+	ovProdLiqTot := MsafNFeTag():newMsafNFeTag("")
 
 	ovProdLiqTot:setAttributeValue("vProdLiqTot",retValueAttribute("infNfe:_total:_vProdLiqTot:text"))
 
@@ -5378,7 +5805,7 @@ return
 *   355.29g vCBSEstCred - numerico, 15 posicoes, 2 decimais
 * FIM Pablo Regis 22/11/2026
 **/
-static function DogEstCredTot()
+static function DogEstCTot()
 
 	local lFormatZero := .T.
 
